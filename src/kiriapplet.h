@@ -237,6 +237,9 @@ private:
     QProcess *m_recordProcess = nullptr;
     QProcess *m_ttsProcess = nullptr;
     QProcess *m_wakeWordProcess = nullptr;
+    QByteArray m_wakeWordPcmBuffer;
+    bool m_wakeWordEvaluating = false;
+    QElapsedTimer m_wakeWordCooldown;
     QTimer *m_vadTimer = nullptr;
     QTimer *m_reminderTimer = nullptr;
     QTimer *m_readinessTimer = nullptr;

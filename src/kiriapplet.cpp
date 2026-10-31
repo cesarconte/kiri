@@ -139,6 +139,14 @@ void KiriApplet::setState(const QString &newState, const QString &newStatus)
     if (statusChangedFlag) {
         Q_EMIT statusMessageChanged();
     }
+
+    if (newState == QLatin1String("idle") && m_wakeWordEnabled) {
+        QTimer::singleShot(500, this, [this]() {
+            if (m_state == QLatin1String("idle") && m_wakeWordEnabled) {
+                startWakeWordListener();
+            }
+        });
+    }
 }
 
 // =========================================================================
@@ -552,6 +560,7 @@ void KiriApplet::startRecording()
         return;
     }
 
+    stopWakeWordListener();
     stopSpeaking();
 
     m_currentRecordingPath = QDir::tempPath() + QStringLiteral("/kiri_rec_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
@@ -875,40 +884,172 @@ QString KiriApplet::stripMarkdownForSpeech(const QString &markdown) const
 }
 
 // =========================================================================
-// Wake Word Listener ("Oye Kiri" / "Hey Kiri")
+// Wake Word Listener ("Hola Kiri" / "Oye Kiri" / "Hey Kiri")
 // =========================================================================
 
 void KiriApplet::startWakeWordListener()
 {
-    stopWakeWordListener();
+    if (!m_wakeWordEnabled) {
+        return;
+    }
+
+    if (m_state == QLatin1String("listening") || m_state == QLatin1String("speaking")) {
+        return;
+    }
+
+    if (m_wakeWordProcess && m_wakeWordProcess->state() == QProcess::Running) {
+        return;
+    }
 
     const QString pwRecord = QStandardPaths::findExecutable(QStringLiteral("pw-record"));
     if (pwRecord.isEmpty()) return;
 
-    // Wake word background monitoring loop
-    m_wakeWordEnabled = true;
-    Q_EMIT wakeWordEnabledChanged();
+    m_wakeWordPcmBuffer.clear();
+    m_wakeWordEvaluating = false;
+
+    if (!m_wakeWordProcess) {
+        m_wakeWordProcess = new QProcess(this);
+        connect(m_wakeWordProcess, &QProcess::readyReadStandardOutput, this, &KiriApplet::onWakeWordAudioChunkReady);
+    }
+
+    QStringList args;
+    args << QStringLiteral("--format=s16")
+         << QStringLiteral("--rate=16000")
+         << QStringLiteral("--channels=1")
+         << QStringLiteral("-");
+
+    m_wakeWordProcess->start(pwRecord, args);
 }
 
 void KiriApplet::stopWakeWordListener()
 {
-    m_wakeWordEnabled = false;
-    Q_EMIT wakeWordEnabledChanged();
     if (m_wakeWordProcess) {
-        m_wakeWordProcess->kill();
-        m_wakeWordProcess->deleteLater();
-        m_wakeWordProcess = nullptr;
+        if (m_wakeWordProcess->state() == QProcess::Running) {
+            m_wakeWordProcess->terminate();
+            if (!m_wakeWordProcess->waitForFinished(500)) {
+                m_wakeWordProcess->kill();
+            }
+        }
     }
+    m_wakeWordPcmBuffer.clear();
+    m_wakeWordEvaluating = false;
 }
 
 void KiriApplet::onWakeWordAudioChunkReady()
 {
-    // Evaluates wake word sliding buffer
+    if (!m_wakeWordProcess) return;
+
+    const QByteArray chunk = m_wakeWordProcess->readAllStandardOutput();
+    if (chunk.isEmpty()) return;
+
+    m_wakeWordPcmBuffer.append(chunk);
+
+    // Keep circular buffer to ~2.5 seconds (16000 samples/sec * 2 bytes = 32000 B/s -> 80000 B)
+    if (m_wakeWordPcmBuffer.size() > 80000) {
+        m_wakeWordPcmBuffer = m_wakeWordPcmBuffer.right(80000);
+    }
+
+    if (m_wakeWordEvaluating) return;
+
+    // Fast RMS volume check on the incoming audio chunk
+    const int sampleCount = chunk.size() / sizeof(qint16);
+    if (sampleCount <= 0) return;
+
+    const qint16 *samples = reinterpret_cast<const qint16 *>(chunk.constData());
+    double sumSquares = 0.0;
+    for (int i = 0; i < sampleCount; ++i) {
+        const double s = samples[i] / 32768.0;
+        sumSquares += s * s;
+    }
+    const double rms = std::sqrt(sumSquares / sampleCount);
+
+    // Voice detected and not in post-evaluation cooldown
+    if (rms > 0.028 && (!m_wakeWordCooldown.isValid() || m_wakeWordCooldown.elapsed() > 1400)) {
+        if (m_wakeWordPcmBuffer.size() >= 32000) { // At least 1 second buffered
+            m_wakeWordEvaluating = true;
+            // Allow 450ms for user to finish saying "Hola Kiri"
+            QTimer::singleShot(450, this, [this]() {
+                if (!m_wakeWordEnabled || m_state != QLatin1String("idle")) {
+                    m_wakeWordEvaluating = false;
+                    return;
+                }
+                const QString tmpWav = QDir::tempPath() + QStringLiteral("/kiri_ww_probe_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
+                QFile f(tmpWav);
+                if (f.open(QIODevice::WriteOnly)) {
+                    const QByteArray pcmData = m_wakeWordPcmBuffer.right(64000); // last 2 seconds
+                    const QByteArray header = createWavHeader(pcmData.size(), 16000, 1, 16);
+                    f.write(header);
+                    f.write(pcmData);
+                    f.close();
+                    checkWakeWordTranscription(tmpWav);
+                } else {
+                    m_wakeWordEvaluating = false;
+                }
+            });
+        }
+    }
 }
 
 void KiriApplet::checkWakeWordTranscription(const QString &wavPath)
 {
-    Q_UNUSED(wavPath)
+    QString whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper-cli"));
+    if (whisperCli.isEmpty()) {
+        whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper"));
+    }
+    const QString modelPath = resolveWhisperModelPath();
+
+    if (whisperCli.isEmpty() || modelPath.isEmpty()) {
+        QFile::remove(wavPath);
+        m_wakeWordEvaluating = false;
+        return;
+    }
+
+    QProcess *whisperProc = new QProcess(this);
+    QStringList args;
+    args << QStringLiteral("-m") << modelPath
+         << QStringLiteral("-f") << wavPath
+         << QStringLiteral("-l") << QStringLiteral("es")
+         << QStringLiteral("--prompt") << QStringLiteral("Hola Kiri, Oye Kiri, Hey Kiri")
+         << QStringLiteral("--no-timestamps")
+         << QStringLiteral("-t") << QStringLiteral("4")
+         << QStringLiteral("-np");
+
+    const QString wavToClean = wavPath;
+
+    connect(whisperProc, &QProcess::finished, this, [this, whisperProc, wavToClean](int exitCode, QProcess::ExitStatus) {
+        whisperProc->deleteLater();
+        QFile::remove(wavToClean);
+        m_wakeWordEvaluating = false;
+        m_wakeWordCooldown.start();
+
+        if (exitCode != 0) return;
+
+        QString raw = QString::fromUtf8(whisperProc->readAllStandardOutput()).trimmed();
+        static const QRegularExpression bracketRegex(QStringLiteral("\\[.*?\\]|\\(.*?\\)"));
+        raw.remove(bracketRegex);
+        const QString cleaned = raw.trimmed().toLower();
+
+        static const QRegularExpression wwRegex(
+            QStringLiteral("\\b(?:hola|oye|hey|ok)?\\s*(?:kiri|quiri|ciri|kili)\\b"),
+            QRegularExpression::CaseInsensitiveOption);
+
+        if (cleaned.contains(wwRegex) || cleaned.contains(QStringLiteral("kiri"))) {
+            qInfo() << "Kiri Wake Word triggered successfully! Transcribed:" << cleaned;
+
+            KNotification::event(QStringLiteral("notification"),
+                                 i18n("Kiri"),
+                                 i18n("¡Hola! Te escucho…"));
+
+            stopWakeWordListener();
+            Q_EMIT wakeWordTriggered();
+
+            QTimer::singleShot(250, this, [this]() {
+                startRecording();
+            });
+        }
+    });
+
+    whisperProc->start(whisperCli, args);
 }
 
 // =========================================================================
