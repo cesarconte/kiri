@@ -1460,22 +1460,6 @@ void KiriApplet::ensureKnowledgeBaseReady()
     if (!dir.exists()) {
         dir.mkpath(kbPath);
     }
-
-    const QString readmeFile = kbPath + QStringLiteral("/LEEME.md");
-    if (!QFile::exists(readmeFile) && dir.entryList(QStringList() << QStringLiteral("*.txt") << QStringLiteral("*.md"), QDir::Files).isEmpty()) {
-        QFile file(readmeFile);
-        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            QTextStream out(&file);
-            out << QStringLiteral("# Base de Conocimiento Local de Kiri\n\n"
-                                  "Este directorio es tu base de conocimiento privada (RAG local).\n\n"
-                                  "## Instrucciones:\n"
-                                  "- Guarda aquí tus notas personales, documentación o procedimientos en formato Markdown (`.md`) o texto (`.txt`).\n"
-                                  "- Kiri consultará estos documentos cuando le hagas preguntas relacionadas, de manera 100% privada y local.\n\n"
-                                  "Ejemplos útiles:\n"
-                                  "- `apuntes_servidor.txt`: contraseñas o comandos frecuentes que usas.\n"
-                                  "- `proyectos.md`: arquitectura o tareas pendientes de tus proyectos.\n");
-        }
-    }
 }
 
 QString KiriApplet::fetchKnowledgeBaseContext(const QString &query) const
@@ -1492,7 +1476,7 @@ QString KiriApplet::fetchKnowledgeBaseContext(const QString &query) const
         return QString();
     }
 
-    // Stopwords comunes en español e inglés
+    // Common stopwords in Spanish and English to extract meaningful search keywords
     static const QSet<QString> stopWords = {
         QStringLiteral("el"), QStringLiteral("la"), QStringLiteral("los"), QStringLiteral("las"),
         QStringLiteral("un"), QStringLiteral("una"), QStringLiteral("unos"), QStringLiteral("unas"),
@@ -1527,7 +1511,7 @@ QString KiriApplet::fetchKnowledgeBaseContext(const QString &query) const
     QList<MatchItem> matches;
 
     for (const QString &fname : files) {
-        if (fname.startsWith(QStringLiteral("LEEME"), Qt::CaseInsensitive) || fname.startsWith(QStringLiteral("README"), Qt::CaseInsensitive)) {
+        if (fname.startsWith(QStringLiteral("README"), Qt::CaseInsensitive)) {
             continue;
         }
 
@@ -1563,10 +1547,10 @@ QString KiriApplet::fetchKnowledgeBaseContext(const QString &query) const
     });
 
     QString accumulated;
-    accumulated.append(QStringLiteral("[Documentos de Conocimiento Local (RAG):]\n"));
+    accumulated.append(QStringLiteral("[Local Knowledge Documents (RAG):]\n"));
     const int count = qMin(matches.size(), maxSnippets);
     for (int i = 0; i < count; ++i) {
-        accumulated.append(QStringLiteral("--- Archivo: %1 ---\n%2\n\n").arg(matches.at(i).filename, matches.at(i).snippet.trimmed()));
+        accumulated.append(QStringLiteral("--- File: %1 ---\n%2\n\n").arg(matches.at(i).filename, matches.at(i).snippet.trimmed()));
     }
 
     return accumulated.trimmed();

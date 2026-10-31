@@ -334,11 +334,24 @@ KCMUtils.SimpleKCM {
             Layout.fillWidth: true
             enabled: kbEnabledCheck.checked
 
-            QQC2.Label {
-                text: "~/.local/share/kiri/knowledge/"
-                font.family: "monospace"
+            ColumnLayout {
                 Layout.fillWidth: true
-                elide: Text.ElideMiddle
+                spacing: Kirigami.Units.smallSpacing
+
+                QQC2.Label {
+                    text: "~/.local/share/kiri/knowledge/"
+                    font.family: "monospace"
+                    Layout.fillWidth: true
+                    elide: Text.ElideMiddle
+                }
+
+                QQC2.Label {
+                    text: i18n("Place personal .txt or .md notes here. Kiri will securely search them to answer your questions offline.")
+                    font: Kirigami.Theme.smallFont
+                    opacity: 0.75
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
             }
 
             QQC2.Button {
@@ -351,16 +364,6 @@ KCMUtils.SimpleKCM {
                     Qt.openUrlExternally("file://" + path);
                 }
             }
-        }
-
-        QQC2.Label {
-            Kirigami.FormData.isSubgroup: true
-            text: i18n("Place personal .txt or .md notes here. Kiri will securely search them to answer your questions offline.")
-            font: Kirigami.Theme.smallFont
-            opacity: 0.75
-            wrapMode: Text.WordWrap
-            Layout.fillWidth: true
-            enabled: kbEnabledCheck.checked
         }
 
         // ---------------------------------------------------------------------
