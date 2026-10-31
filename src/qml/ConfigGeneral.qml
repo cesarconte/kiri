@@ -195,10 +195,13 @@ KCMUtils.SimpleKCM {
         RowLayout {
             Kirigami.FormData.label: i18n("Default Model:")
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
 
             QQC2.ComboBox {
                 id: ollamaModelCombo
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 0
                 editable: true
                 model: configRoot.detectedModels
                 editText: configRoot.cfg_ollamaModel
@@ -237,9 +240,14 @@ KCMUtils.SimpleKCM {
 
         RowLayout {
             Kirigami.FormData.label: i18n("Temperature (%1):", configRoot.cfg_ollamaTemperature.toFixed(2))
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+
             QQC2.Slider {
                 id: tempSlider
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 0
                 from: 0
                 to: 100
                 stepSize: 5
@@ -297,6 +305,8 @@ KCMUtils.SimpleKCM {
             id: systemPromptArea
             Kirigami.FormData.label: i18n("System Prompt:")
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: 0
             implicitHeight: Kirigami.Units.gridUnit * 5
             wrapMode: TextEdit.Wrap
             QQC2.ToolTip.text: i18n("Base personality and instructions passed to the assistant")
@@ -316,6 +326,8 @@ KCMUtils.SimpleKCM {
             Kirigami.FormData.label: i18n("Local RAG:")
             text: i18n("Search local documents to augment answers")
             checked: true
+            QQC2.ToolTip.text: i18n("Place personal .txt or .md notes in ~/.local/share/kiri/knowledge/ to allow Kiri to securely search them offline")
+            QQC2.ToolTip.visible: hovered
         }
 
         QQC2.SpinBox {
@@ -332,26 +344,15 @@ KCMUtils.SimpleKCM {
         RowLayout {
             Kirigami.FormData.label: i18n("Documents Folder:")
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             enabled: kbEnabledCheck.checked
 
-            ColumnLayout {
+            QQC2.Label {
+                text: "~/.local/share/kiri/knowledge/"
+                font.family: "monospace"
                 Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-
-                QQC2.Label {
-                    text: "~/.local/share/kiri/knowledge/"
-                    font.family: "monospace"
-                    Layout.fillWidth: true
-                    elide: Text.ElideMiddle
-                }
-
-                QQC2.Label {
-                    text: i18n("Place personal .txt or .md notes here. Kiri will securely search them to answer your questions offline.")
-                    font: Kirigami.Theme.smallFont
-                    opacity: 0.75
-                    wrapMode: Text.WordWrap
-                    Layout.fillWidth: true
-                }
+                Layout.minimumWidth: 0
+                elide: Text.ElideMiddle
             }
 
             QQC2.Button {
@@ -446,10 +447,13 @@ KCMUtils.SimpleKCM {
         RowLayout {
             Kirigami.FormData.label: i18n("Whisper Model Path:")
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
 
             QQC2.TextField {
                 id: whisperModelField
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 0
                 placeholderText: i18n("Auto-detected in ~/.local/share/kiri/models/")
             }
 
@@ -492,10 +496,13 @@ KCMUtils.SimpleKCM {
         RowLayout {
             Kirigami.FormData.label: i18n("Piper Voice Model (.onnx):")
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
 
             QQC2.TextField {
                 id: piperVoiceField
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 0
                 placeholderText: i18n("Auto-detected in ~/.local/share/kiri/voices/")
             }
 
