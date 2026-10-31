@@ -78,6 +78,20 @@ void KiriApplet::init()
     }
 }
 
+void KiriApplet::configChanged()
+{
+    Plasma::Applet::configChanged();
+
+    // 1. Sync wake word listener state with updated configuration
+    const bool wakeEnabled = readConfigBool(QStringLiteral("wakeWordEnabled"), false);
+    if (m_wakeWordEnabled != wakeEnabled) {
+        setWakeWordEnabled(wakeEnabled);
+    }
+
+    // 2. Re-evaluate models and audio stack readiness
+    checkReadiness();
+}
+
 // =========================================================================
 // Property Accessors
 // =========================================================================

@@ -68,6 +68,7 @@ public:
     ~KiriApplet() override;
 
     void init() override;
+    void configChanged() override;
 
     QString state() const;
     QString statusMessage() const;
