@@ -23,7 +23,6 @@ find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS
     Gui
     Network
     Quick
-    Widgets
 )
 
 find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS
@@ -32,7 +31,6 @@ find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS
     I18n
     Notifications
     Service
-    WindowSystem
 )
 
 find_package(Plasma REQUIRED)

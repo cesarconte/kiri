@@ -37,13 +37,11 @@ target_link_libraries(org.cesar.kiri PRIVATE
     Qt6::Gui
     Qt6::Network
     Qt6::Quick
-    Qt6::Widgets
     KF6::ConfigCore
     KF6::CoreAddons
     KF6::I18n
     KF6::Notifications
     KF6::Service
-    KF6::WindowSystem
     Plasma::Plasma
     Plasma::PlasmaQuick
 )

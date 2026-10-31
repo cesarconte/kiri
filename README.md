@@ -60,23 +60,23 @@ plasmashell --replace &
 ```
 kiri/
 ├── CMakeLists.txt              # Configuración CMake principal para Plasma 6
-├── metadata.json               # Metadatos del plasmoide Kiri
 ├── .gitignore
 ├── README.md
-├── icons/                      # Iconos vectoriales SVG (breeze/siri theme)
 ├── scripts/
+│   ├── install-audio-tools.sh  # Script para instalar/compilar Whisper.cpp y Piper TTS
 │   └── setup-models.sh         # Script para descargar modelos STT y TTS
 └── src/
     ├── CMakeLists.txt          # Configuración del módulo Plasma Applet C++
+    ├── metadata.json           # Metadatos del plasmoide Kiri (Plasma 6)
     ├── kiriapplet.h            # Cabecera principal del plasmoide
     ├── kiriapplet.cpp          # Lógica backend C++
-    ├── qml/                    # Vistas e interfaz QML Plasma 6
+    ├── qml/                    # Vistas e interfaz QML Plasma 6 (Kirigami)
     │   ├── main.qml            # Representación compacta y acciones contextuales
     │   ├── ExpandedRepresentation.qml # Interfaz expandida del asistente
     │   ├── SiriOrbAnimation.qml# Orbe animado con visualizador reactivo
     │   ├── config.qml          # Configuración del plasmoide
     │   └── ConfigGeneral.qml   # Ajustes de Ollama, Whisper, Piper y atajos
-    └── res/                    # Recursos XML (KConfigXT) e iconos
+    └── res/                    # Recursos XML (KConfigXT) e iconos vectoriales SVG
         ├── main.xml
         └── *.svg
 ```
