@@ -426,7 +426,7 @@ KCMUtils.SimpleKCM {
         QQC2.TextField {
             id: whisperLangField
             Kirigami.FormData.label: i18n("Recognition Language:")
-            placeholderText: i18n("auto (follows System Settings), es, or en")
+            placeholderText: i18n("es (predeterminado), en, auto")
         }
 
         RowLayout {

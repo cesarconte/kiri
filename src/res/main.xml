@@ -40,15 +40,15 @@
     </entry>
     <entry name="systemPrompt" type="String">
       <label>System instructions provided to the AI assistant</label>
-      <default>You are Kiri, a concise, helpful, and natural voice assistant integrated into KDE Plasma on CachyOS Linux. Keep answers clear, direct, and easy to read aloud. Reply in the same language the user speaks or writes to you.</default>
+      <default>Eres Kiri, un asistente de voz e inteligencia artificial nativo para KDE Plasma en CachyOS Linux. Responde SIEMPRE en español de España (castellano), de forma concisa, clara, directa y natural, optimizada para síntesis de voz (TTS).</default>
     </entry>
     <entry name="whisperModelPath" type="String">
       <label>Path to the whisper.cpp GGML model file (.bin). Leave empty to auto-detect in ~/.local/share/kiri/models/</label>
       <default></default>
     </entry>
     <entry name="whisperLanguage" type="String">
-      <label>Speech recognition language code (e.g. auto, es, en)</label>
-      <default>auto</default>
+      <label>Speech recognition language code (e.g. es, en, auto)</label>
+      <default>es</default>
     </entry>
     <entry name="piperVoicePath" type="String">
       <label>Path to the Piper TTS ONNX model file (.onnx). Leave empty to auto-detect in ~/.local/share/kiri/voices/</label>

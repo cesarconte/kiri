@@ -210,8 +210,8 @@ QString KiriApplet::resolveVisionModel() const
 QString KiriApplet::resolveSystemPrompt() const
 {
     return readConfigString(QStringLiteral("systemPrompt"),
-        QStringLiteral("You are Kiri, a concise, helpful, and natural voice assistant integrated into KDE Plasma on CachyOS Linux. "
-                       "Keep answers clear, direct, and easy to read aloud. Reply in the same language the user speaks or writes to you."));
+        QStringLiteral("Eres Kiri, un asistente de voz e inteligencia artificial nativo para KDE Plasma en CachyOS Linux. "
+                       "Responde SIEMPRE en español de España (castellano), de forma concisa, clara, directa y natural, optimizada para síntesis de voz (TTS)."));
 }
 
 QString KiriApplet::resolveWhisperModelPath() const
@@ -230,7 +230,11 @@ QString KiriApplet::resolveWhisperModelPath() const
 
 QString KiriApplet::resolveWhisperLanguage() const
 {
-    return readConfigString(QStringLiteral("whisperLanguage"), QStringLiteral("auto"));
+    const QString lang = readConfigString(QStringLiteral("whisperLanguage"), QStringLiteral("es")).trimmed().toLower();
+    if (lang.isEmpty() || lang == QStringLiteral("auto")) {
+        return QStringLiteral("es");
+    }
+    return lang;
 }
 
 QString KiriApplet::resolvePiperVoicePath() const
@@ -398,7 +402,10 @@ void KiriApplet::sendToOllama(const QString &userPrompt, const QString &injected
     Q_EMIT streamingTextChanged();
 
     const bool hasVision = !base64Image.isEmpty();
-    const QString modelToUse = hasVision ? resolveVisionModel() : resolveOllamaModel();
+    QString modelToUse = hasVision ? resolveVisionModel() : resolveOllamaModel();
+    if (!hasVision && modelToUse.contains(QStringLiteral("moondream"), Qt::CaseInsensitive)) {
+        modelToUse = QStringLiteral("qwen2.5:7b");
+    }
 
     // Build chat messages array
     QJsonArray chatMsgs;
@@ -407,6 +414,9 @@ void KiriApplet::sendToOllama(const QString &userPrompt, const QString &injected
     QJsonObject sysObj;
     sysObj[QStringLiteral("role")] = QStringLiteral("system");
     QString fullSysPrompt = resolveSystemPrompt();
+    if (!fullSysPrompt.contains(QStringLiteral("español"), Qt::CaseInsensitive)) {
+        fullSysPrompt.prepend(QStringLiteral("REGLA ESTRICTA DE IDIOMA: Responde SIEMPRE y exclusivamente en español de España (castellano).\n\n"));
+    }
     const QString vitals = collectSystemVitals();
     if (!vitals.isEmpty()) {
         fullSysPrompt.append(QStringLiteral("\n[System Environment: %1]").arg(vitals));
