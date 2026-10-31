@@ -1,45 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 22" width="22" height="22">
   <defs>
-    <!-- Core Sphere Radial Gradient (Active Glowing Amber-Coral/Cyan) -->
-    <radialGradient id="activeCoreGrad" cx="35%" cy="35%" r="65%">
-      <stop offset="0%" stop-color="#ffffff" />
-      <stop offset="25%" stop-color="#38bdf8" />
-      <stop offset="70%" stop-color="#0284c7" />
-      <stop offset="100%" stop-color="#0369a1" />
-    </radialGradient>
-
-    <!-- Glowing Active Ribbons -->
-    <linearGradient id="activeRibbon1" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#38bdf8" />
-      <stop offset="100%" stop-color="#0284c7" />
-    </linearGradient>
-
-    <linearGradient id="activeRibbon2" x1="100%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#f43f5e" />
-      <stop offset="50%" stop-color="#ec4899" />
-      <stop offset="100%" stop-color="#8b5cf6" />
-    </linearGradient>
-
-    <!-- Active Waves Gradient (Energetic Cyan) -->
-    <linearGradient id="activeWaveGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+    <!-- Radiant Listening Green/Cyan Gradient -->
+    <linearGradient id="listenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#00e5ff" />
-      <stop offset="100%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#00e676" />
     </linearGradient>
+
+    <radialGradient id="listenCore" cx="40%" cy="38%" r="62%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="45%" stop-color="#69f0ae" />
+      <stop offset="100%" stop-color="#00c853" />
+    </radialGradient>
   </defs>
 
-  <!-- Expanded Active Acoustic Waves (Left & Right) -->
-  <path fill="url(#activeWaveGrad)" d="M 2.2 4.2 C 2.65 3.8 3.3 3.85 3.7 4.3 C 4.1 4.75 4.05 5.4 3.6 5.8 C 2.9 6.4 2.5 7.15 2.5 8 C 2.5 8.85 2.9 9.6 3.6 10.2 C 4.05 10.6 4.1 11.25 3.7 11.7 C 3.3 12.15 2.65 12.2 2.2 11.8 C 1.3 10.75 0.8 9.45 0.8 8 C 0.8 6.55 1.3 5.25 2.2 4.2 Z" />
-  <path fill="url(#activeWaveGrad)" d="M 13.8 4.2 C 14.7 5.25 15.2 6.55 15.2 8 C 15.2 9.45 14.7 10.75 13.8 11.8 C 13.35 12.2 12.7 12.15 12.3 11.7 C 11.9 11.25 11.95 10.6 12.4 10.2 C 13.1 9.6 13.5 8.85 13.5 8 C 13.5 7.15 13.1 6.4 12.4 5.8 C 11.95 5.4 11.9 4.75 12.3 4.3 C 12.7 3.85 13.35 3.8 13.8 4.2 Z" />
+  <!-- Expanded Active Listening Resonance Waves -->
+  <path d="M 2.2 7.0 C 0.8 9.5 0.8 12.5 2.2 15.0" fill="none" stroke="#00e5ff" stroke-width="1.3" stroke-linecap="round" opacity="0.6" />
+  <path d="M 4.4 7.8 C 3.2 9.7 3.2 12.3 4.4 14.2" fill="none" stroke="#69f0ae" stroke-width="1.3" stroke-linecap="round" opacity="0.85" />
 
-  <!-- Active Gyroscopic Ribbons -->
-  <path fill="url(#activeRibbon1)" 
-        d="M 8 1.8 C 11.2 1.8 13.6 4.5 13.6 8 C 13.6 11.5 11.2 14.2 8 14.2 C 4.8 14.2 2.4 11.5 2.4 8 C 2.4 4.5 4.8 1.8 8 1.8 Z M 8 3.2 C 5.5 3.2 3.8 5.4 3.8 8 C 3.8 10.6 5.5 12.8 8 12.8 C 10.5 12.8 12.2 10.6 12.2 8 C 12.2 5.4 10.5 3.2 8 3.2 Z"
-        transform="rotate(-28 8 8)" />
-  <path fill="url(#activeRibbon2)" 
-        d="M 8 1.8 C 11.2 1.8 13.6 4.5 13.6 8 C 13.6 11.5 11.2 14.2 8 14.2 C 4.8 14.2 2.4 11.5 2.4 8 C 2.4 4.5 4.8 1.8 8 1.8 Z M 8 3.2 C 5.5 3.2 3.8 5.4 3.8 8 C 3.8 10.6 5.5 12.8 8 12.8 C 10.5 12.8 12.2 10.6 12.2 8 C 12.2 5.4 10.5 3.2 8 3.2 Z"
-        transform="rotate(28 8 8)" />
+  <path d="M 19.8 7.0 C 21.2 9.5 21.2 12.5 19.8 15.0" fill="none" stroke="#00e5ff" stroke-width="1.3" stroke-linecap="round" opacity="0.6" />
+  <path d="M 17.6 7.8 C 18.8 9.7 18.8 12.3 17.6 14.2" fill="none" stroke="#69f0ae" stroke-width="1.3" stroke-linecap="round" opacity="0.85" />
 
-  <!-- Active Listening Voice Core (radiant pulse orb) -->
-  <circle cx="8" cy="8" r="3.2" fill="url(#activeCoreGrad)" />
-  <circle cx="8" cy="8" r="1.4" fill="#ffffff" opacity="0.9" />
+  <!-- Active Listening Central Sphere -->
+  <circle cx="11" cy="11" r="4.6" fill="url(#listenCore)" />
+
+  <!-- Entangled Active Loops -->
+  <path d="M 6.4 8.2 C 8.4 5.8 15.0 7.8 16.0 12.5 C 16.5 14.5 14.5 16.5 11.8 16.0 C 9.0 15.4 6.5 12.8 6.4 10.4"
+        fill="none" stroke="url(#listenGrad)" stroke-width="1.5" stroke-linecap="round" />
+
+  <circle cx="10.3" cy="10.1" r="1.3" fill="#ffffff" opacity="0.9" />
 </svg>

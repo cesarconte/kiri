@@ -20,10 +20,19 @@ PlasmoidItem {
 
     Plasmoid.icon: {
         const isColor = Plasmoid.configuration.panelIconStyle === "color";
+        const tc = Kirigami.Theme.textColor;
+        const isDarkTheme = (tc.r * 0.299 + tc.g * 0.587 + tc.b * 0.114) > 0.5;
+
         if (Plasmoid.state === "listening") {
-            return isColor ? "kiri-listening" : "kiri-listening-symbolic";
+            if (isColor) {
+                return "kiri-listening";
+            }
+            return isDarkTheme ? "kiri-listening-light" : "kiri-listening-dark";
         }
-        return isColor ? "kiri" : "kiri-symbolic";
+        if (isColor) {
+            return "kiri";
+        }
+        return isDarkTheme ? "kiri-light" : "kiri-dark";
     }
 
     Plasmoid.status: PlasmaCore.Types.ActiveStatus

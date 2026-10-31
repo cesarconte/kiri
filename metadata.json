@@ -13,7 +13,7 @@
     "FormFactors": [
       "desktop"
     ],
-    "Icon": "kiri",
+    "Icon": "org.cesar.kiri",
     "License": "GPL-3.0-or-later",
     "Name": "Kiri",
     "Name[es]": "Kiri",
