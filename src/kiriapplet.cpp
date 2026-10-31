@@ -73,7 +73,8 @@ void KiriApplet::init()
     checkReadiness();
     refreshModels();
 
-    if (readConfigBool(QStringLiteral("wakeWordEnabled"), false)) {
+    m_wakeWordEnabled = readConfigBool(QStringLiteral("wakeWordEnabled"), false);
+    if (m_wakeWordEnabled) {
         startWakeWordListener();
     }
 }
@@ -84,9 +85,7 @@ void KiriApplet::configChanged()
 
     // 1. Sync wake word listener state with updated configuration
     const bool wakeEnabled = readConfigBool(QStringLiteral("wakeWordEnabled"), false);
-    if (m_wakeWordEnabled != wakeEnabled) {
-        setWakeWordEnabled(wakeEnabled);
-    }
+    setWakeWordEnabled(wakeEnabled);
 
     // 2. Re-evaluate models and audio stack readiness
     checkReadiness();
@@ -155,25 +154,37 @@ void KiriApplet::setState(const QString &newState, const QString &newStatus)
 
 QString KiriApplet::readConfigString(const QString &key, const QString &def) const
 {
-    KConfigGroup cfg = config();
+    const KConfigGroup cfg = config();
+    if (cfg.hasGroup(QStringLiteral("General")) && cfg.group(QStringLiteral("General")).hasKey(key)) {
+        return cfg.group(QStringLiteral("General")).readEntry(key, def);
+    }
     return cfg.readEntry(key, def);
 }
 
 int KiriApplet::readConfigInt(const QString &key, int def) const
 {
-    KConfigGroup cfg = config();
+    const KConfigGroup cfg = config();
+    if (cfg.hasGroup(QStringLiteral("General")) && cfg.group(QStringLiteral("General")).hasKey(key)) {
+        return cfg.group(QStringLiteral("General")).readEntry(key, def);
+    }
     return cfg.readEntry(key, def);
 }
 
 double KiriApplet::readConfigDouble(const QString &key, double def) const
 {
-    KConfigGroup cfg = config();
+    const KConfigGroup cfg = config();
+    if (cfg.hasGroup(QStringLiteral("General")) && cfg.group(QStringLiteral("General")).hasKey(key)) {
+        return cfg.group(QStringLiteral("General")).readEntry(key, def);
+    }
     return cfg.readEntry(key, def);
 }
 
 bool KiriApplet::readConfigBool(const QString &key, bool def) const
 {
-    KConfigGroup cfg = config();
+    const KConfigGroup cfg = config();
+    if (cfg.hasGroup(QStringLiteral("General")) && cfg.group(QStringLiteral("General")).hasKey(key)) {
+        return cfg.group(QStringLiteral("General")).readEntry(key, def);
+    }
     return cfg.readEntry(key, def);
 }
 
@@ -902,7 +913,10 @@ void KiriApplet::startWakeWordListener()
     }
 
     const QString pwRecord = QStandardPaths::findExecutable(QStringLiteral("pw-record"));
-    if (pwRecord.isEmpty()) return;
+    if (pwRecord.isEmpty()) {
+        qWarning() << "Kiri: pw-record not found in PATH for wake word listener";
+        return;
+    }
 
     m_wakeWordPcmBuffer.clear();
     m_wakeWordEvaluating = false;
@@ -916,9 +930,15 @@ void KiriApplet::startWakeWordListener()
     args << QStringLiteral("--format=s16")
          << QStringLiteral("--rate=16000")
          << QStringLiteral("--channels=1")
+         << QStringLiteral("--container=raw")
          << QStringLiteral("-");
 
     m_wakeWordProcess->start(pwRecord, args);
+    if (!m_wakeWordProcess->waitForStarted(2000)) {
+        qWarning() << "Kiri: Failed to start pw-record for wake word listener";
+    } else {
+        qInfo() << "Kiri: Wake word background listener started successfully (PID:" << m_wakeWordProcess->processId() << ")";
+    }
 }
 
 void KiriApplet::stopWakeWordListener()
@@ -963,12 +983,14 @@ void KiriApplet::onWakeWordAudioChunkReady()
     }
     const double rms = std::sqrt(sumSquares / sampleCount);
 
-    // Voice detected and not in post-evaluation cooldown
-    if (rms > 0.028 && (!m_wakeWordCooldown.isValid() || m_wakeWordCooldown.elapsed() > 1400)) {
-        if (m_wakeWordPcmBuffer.size() >= 32000) { // At least 1 second buffered
+    // Voice detected above background noise (>= 0.016) and not in cooldown
+    if (rms >= 0.016 && (!m_wakeWordCooldown.isValid() || m_wakeWordCooldown.elapsed() > 1200)) {
+        if (m_wakeWordPcmBuffer.size() >= 24000) { // At least ~0.75s buffered
             m_wakeWordEvaluating = true;
-            // Allow 450ms for user to finish saying "Hola Kiri"
-            QTimer::singleShot(450, this, [this]() {
+            qInfo() << "Kiri: Speech detected in background stream (RMS:" << rms << "), capturing wake word window...";
+
+            // Allow 650ms for user to finish saying "Hola Kiri"
+            QTimer::singleShot(650, this, [this]() {
                 if (!m_wakeWordEnabled || m_state != QLatin1String("idle")) {
                     m_wakeWordEvaluating = false;
                     return;
@@ -976,7 +998,7 @@ void KiriApplet::onWakeWordAudioChunkReady()
                 const QString tmpWav = QDir::tempPath() + QStringLiteral("/kiri_ww_probe_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
                 QFile f(tmpWav);
                 if (f.open(QIODevice::WriteOnly)) {
-                    const QByteArray pcmData = m_wakeWordPcmBuffer.right(64000); // last 2 seconds
+                    const QByteArray pcmData = m_wakeWordPcmBuffer.right(64000); // last ~2 seconds
                     const QByteArray header = createWavHeader(pcmData.size(), 16000, 1, 16);
                     f.write(header);
                     f.write(pcmData);
@@ -1029,12 +1051,14 @@ void KiriApplet::checkWakeWordTranscription(const QString &wavPath)
         raw.remove(bracketRegex);
         const QString cleaned = raw.trimmed().toLower();
 
+        qInfo() << "Kiri: Wake word probe transcription result:" << cleaned;
+
         static const QRegularExpression wwRegex(
-            QStringLiteral("\\b(?:hola|oye|hey|ok)?\\s*(?:kiri|quiri|ciri|kili)\\b"),
+            QStringLiteral("(?:hola|oye|hey|ok|quiri|ciri|kili)?\\s*kiri|hola\\s*quiri"),
             QRegularExpression::CaseInsensitiveOption);
 
-        if (cleaned.contains(wwRegex) || cleaned.contains(QStringLiteral("kiri"))) {
-            qInfo() << "Kiri Wake Word triggered successfully! Transcribed:" << cleaned;
+        if (cleaned.contains(wwRegex) || cleaned.contains(QStringLiteral("kiri")) || cleaned.contains(QStringLiteral("quiri"))) {
+            qInfo() << "Kiri: WAKE WORD ACTIVATED! ('" << cleaned << "')";
 
             KNotification::event(QStringLiteral("notification"),
                                  i18n("Kiri"),

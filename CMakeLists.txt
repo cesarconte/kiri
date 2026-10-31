@@ -11,6 +11,8 @@ find_package(ECM ${KF_MIN_VERSION} REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
 include(KDEInstallDirs)
+set(KDE_INSTALL_QTPLUGINDIR "${KDE_INSTALL_LIBDIR}/qt6/plugins" CACHE PATH "Qt6 plugins directory" FORCE)
+set(KDE_INSTALL_PLUGINDIR "${KDE_INSTALL_LIBDIR}/qt6/plugins" CACHE PATH "Plugins directory" FORCE)
 include(KDECMakeSettings)
 include(KDECompilerSettings NO_POLICY_SCOPE)
 include(ECMQmlModule)
