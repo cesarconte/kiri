@@ -314,7 +314,7 @@ KCMUtils.SimpleKCM {
         QQC2.CheckBox {
             id: kbEnabledCheck
             Kirigami.FormData.label: i18n("Local RAG:")
-            text: i18n("Search local documents (~/.local/share/kiri/knowledge/) to augment answers")
+            text: i18n("Search local documents to augment answers")
             checked: true
         }
 
@@ -332,10 +332,11 @@ KCMUtils.SimpleKCM {
         RowLayout {
             Kirigami.FormData.label: i18n("Documents Folder:")
             Layout.fillWidth: true
+            enabled: kbEnabledCheck.checked
 
             QQC2.Label {
                 text: "~/.local/share/kiri/knowledge/"
-                color: Kirigami.Theme.neutralTextColor
+                font.family: "monospace"
                 Layout.fillWidth: true
                 elide: Text.ElideMiddle
             }
@@ -343,13 +344,23 @@ KCMUtils.SimpleKCM {
             QQC2.Button {
                 icon.name: "document-open-folder"
                 text: i18n("Open in Dolphin")
-                QQC2.ToolTip.text: i18n("Open knowledge directory to add Markdown or text reference files")
+                QQC2.ToolTip.text: i18n("Open knowledge directory in Dolphin to add Markdown or text notes")
                 QQC2.ToolTip.visible: hovered
                 onClicked: {
                     const path = StandardPaths.writableLocation(StandardPaths.GenericDataLocation) + "/kiri/knowledge";
                     Qt.openUrlExternally("file://" + path);
                 }
             }
+        }
+
+        QQC2.Label {
+            Kirigami.FormData.isSubgroup: true
+            text: i18n("Place personal .txt or .md notes here. Kiri will securely search them to answer your questions offline.")
+            font: Kirigami.Theme.smallFont
+            opacity: 0.75
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+            enabled: kbEnabledCheck.checked
         }
 
         // ---------------------------------------------------------------------

@@ -214,6 +214,7 @@ private:
     void loadScheduledReminders();
     void saveScheduledReminders();
     void triggerReminderNotification(const ScheduledReminder &reminder);
+    void ensureKnowledgeBaseReady();
 
     // HTTP Helpers
     QByteArray httpGetSync(const QUrl &url, int timeoutMs = 4000) const;

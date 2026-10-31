@@ -62,6 +62,7 @@ void KiriApplet::init()
     loadConversationHistory();
     loadContacts();
     loadScheduledReminders();
+    ensureKnowledgeBaseReady();
 
     connect(m_vadTimer, &QTimer::timeout, this, &KiriApplet::checkVoiceActivity);
     connect(m_reminderTimer, &QTimer::timeout, this, &KiriApplet::checkScheduledReminders);
@@ -1452,24 +1453,123 @@ QString KiriApplet::fetchDynamicLocalContext(const QString &query, const QString
     return QString();
 }
 
+void KiriApplet::ensureKnowledgeBaseReady()
+{
+    const QString kbPath = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kiri/knowledge");
+    QDir dir(kbPath);
+    if (!dir.exists()) {
+        dir.mkpath(kbPath);
+    }
+
+    const QString readmeFile = kbPath + QStringLiteral("/LEEME.md");
+    if (!QFile::exists(readmeFile) && dir.entryList(QStringList() << QStringLiteral("*.txt") << QStringLiteral("*.md"), QDir::Files).isEmpty()) {
+        QFile file(readmeFile);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream out(&file);
+            out << QStringLiteral("# Base de Conocimiento Local de Kiri\n\n"
+                                  "Este directorio es tu base de conocimiento privada (RAG local).\n\n"
+                                  "## Instrucciones:\n"
+                                  "- Guarda aquí tus notas personales, documentación o procedimientos en formato Markdown (`.md`) o texto (`.txt`).\n"
+                                  "- Kiri consultará estos documentos cuando le hagas preguntas relacionadas, de manera 100% privada y local.\n\n"
+                                  "Ejemplos útiles:\n"
+                                  "- `apuntes_servidor.txt`: contraseñas o comandos frecuentes que usas.\n"
+                                  "- `proyectos.md`: arquitectura o tareas pendientes de tus proyectos.\n");
+        }
+    }
+}
+
 QString KiriApplet::fetchKnowledgeBaseContext(const QString &query) const
 {
     const QString kbDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kiri/knowledge");
     QDir dir(kbDir);
-    if (!dir.exists()) return QString();
+    if (!dir.exists()) {
+        return QString();
+    }
 
+    const int maxSnippets = readConfigInt(QStringLiteral("knowledgeBaseMaxSnippets"), 3);
     const QStringList files = dir.entryList(QStringList() << QStringLiteral("*.txt") << QStringLiteral("*.md"), QDir::Files);
-    QString accumulated;
+    if (files.isEmpty()) {
+        return QString();
+    }
+
+    // Stopwords comunes en español e inglés
+    static const QSet<QString> stopWords = {
+        QStringLiteral("el"), QStringLiteral("la"), QStringLiteral("los"), QStringLiteral("las"),
+        QStringLiteral("un"), QStringLiteral("una"), QStringLiteral("unos"), QStringLiteral("unas"),
+        QStringLiteral("de"), QStringLiteral("del"), QStringLiteral("en"), QStringLiteral("por"),
+        QStringLiteral("para"), QStringLiteral("con"), QStringLiteral("sin"), QStringLiteral("sobre"),
+        QStringLiteral("que"), QStringLiteral("qué"), QStringLiteral("como"), QStringLiteral("cómo"),
+        QStringLiteral("cual"), QStringLiteral("cuál"), QStringLiteral("donde"), QStringLiteral("dónde"),
+        QStringLiteral("cuando"), QStringLiteral("cuándo"), QStringLiteral("quien"), QStringLiteral("quién"),
+        QStringLiteral("dime"), QStringLiteral("busca"), QStringLiteral("saber"), QStringLiteral("tengo"),
+        QStringLiteral("este"), QStringLiteral("esta"), QStringLiteral("estos"), QStringLiteral("estas"),
+        QStringLiteral("the"), QStringLiteral("and"), QStringLiteral("for"), QStringLiteral("with")
+    };
+
+    const QStringList tokens = query.toLower().split(QRegularExpression(QStringLiteral("[\\s,;:.!?¡¿]+")), Qt::SkipEmptyParts);
+    QStringList keywords;
+    for (const QString &tok : tokens) {
+        if (tok.length() >= 3 && !stopWords.contains(tok)) {
+            keywords.append(tok);
+        }
+    }
+
+    if (keywords.isEmpty()) {
+        return QString();
+    }
+
+    struct MatchItem {
+        QString filename;
+        QString snippet;
+        int score = 0;
+    };
+
+    QList<MatchItem> matches;
+
     for (const QString &fname : files) {
+        if (fname.startsWith(QStringLiteral("LEEME"), Qt::CaseInsensitive) || fname.startsWith(QStringLiteral("README"), Qt::CaseInsensitive)) {
+            continue;
+        }
+
         QFile f(dir.filePath(fname));
         if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
             const QString content = QString::fromUtf8(f.readAll());
-            if (content.contains(query.section(QLatin1Char(' '), 0, 0), Qt::CaseInsensitive)) {
-                accumulated.append(QStringLiteral("--- File: %1 ---\n%2\n\n").arg(fname, content.left(1000)));
+            int score = 0;
+            for (const QString &kw : keywords) {
+                if (content.contains(kw, Qt::CaseInsensitive)) {
+                    score += 2;
+                }
+                if (fname.contains(kw, Qt::CaseInsensitive)) {
+                    score += 3;
+                }
+            }
+
+            if (score > 0) {
+                MatchItem item;
+                item.filename = fname;
+                item.score = score;
+                item.snippet = content.left(1200);
+                matches.append(item);
             }
         }
     }
-    return accumulated;
+
+    if (matches.isEmpty()) {
+        return QString();
+    }
+
+    std::sort(matches.begin(), matches.end(), [](const MatchItem &a, const MatchItem &b) {
+        return a.score > b.score;
+    });
+
+    QString accumulated;
+    accumulated.append(QStringLiteral("[Documentos de Conocimiento Local (RAG):]\n"));
+    const int count = qMin(matches.size(), maxSnippets);
+    for (int i = 0; i < count; ++i) {
+        accumulated.append(QStringLiteral("--- Archivo: %1 ---\n%2\n\n").arg(matches.at(i).filename, matches.at(i).snippet.trimmed()));
+    }
+
+    return accumulated.trimmed();
 }
 
 QString KiriApplet::captureScreenToPng(const QString &destPath) const
