@@ -81,13 +81,7 @@ Item {
                     ? Plasmoid.availableModels
                     : [Plasmoid.configuration.ollamaModel]
                 currentIndex: {
-                    let idx = model.indexOf(Plasmoid.configuration.ollamaModel);
-                    if (idx < 0 || (Plasmoid.configuration.ollamaModel && Plasmoid.configuration.ollamaModel.indexOf("llama3.2") !== -1)) {
-                        const qwenIdx = model.indexOf("qwen2.5:7b");
-                        if (qwenIdx >= 0) {
-                            return qwenIdx;
-                        }
-                    }
+                    const idx = model.indexOf(Plasmoid.configuration.ollamaModel);
                     return idx >= 0 ? idx : 0;
                 }
                 onActivated: index => {

@@ -40,7 +40,7 @@ KCMUtils.SimpleKCM {
                     }
                     if (list.length > 0) {
                         configRoot.detectedModels = list;
-                        if (!configRoot.cfg_ollamaModel || configRoot.cfg_ollamaModel.indexOf("llama3.2") !== -1) {
+                        if (!configRoot.cfg_ollamaModel || list.indexOf(configRoot.cfg_ollamaModel) === -1) {
                             if (list.indexOf("qwen2.5:7b") !== -1) {
                                 configRoot.cfg_ollamaModel = "qwen2.5:7b";
                             } else {

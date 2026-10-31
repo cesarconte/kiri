@@ -52,7 +52,7 @@
     </entry>
     <entry name="piperVoicePath" type="String">
       <label>Path to the Piper TTS ONNX model file (.onnx). Leave empty to auto-detect in ~/.local/share/kiri/voices/</label>
-      <default>/home/cesar/.local/share/kiri/voices/es_ES-sharvard-medium.onnx</default>
+      <default></default>
     </entry>
     <entry name="panelIconStyle" type="String">
       <label>Visual style of the panel icon: symbolic (monochrome) or color</label>

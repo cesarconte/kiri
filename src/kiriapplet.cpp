@@ -6,6 +6,8 @@
 #include "kiriapplet.h"
 #include "debug.h"
 
+#include <cmath>
+
 #include <KConfigGroup>
 #include <KLocalizedString>
 #include <KNotification>
@@ -19,6 +21,7 @@
 #include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDBusReply>
+#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -319,6 +322,11 @@ void KiriApplet::sendMessage(const QString &text, bool fromVoice)
         context.append(weatherCtx + QStringLiteral("\n\n"));
     }
 
+    const QString webCtx = fetchWebSearchContext(trimmed);
+    if (!webCtx.isEmpty()) {
+        context.append(webCtx + QStringLiteral("\n\n"));
+    }
+
     const QString localCtx = fetchDynamicLocalContext(trimmed, QStringLiteral("auto"));
     if (!localCtx.isEmpty()) {
         context.append(localCtx + QStringLiteral("\n\n"));
@@ -601,24 +609,58 @@ void KiriApplet::checkVoiceActivity()
 {
     if (!m_recordProcess || m_currentRecordingPath.isEmpty()) return;
 
-    QFileInfo fi(m_currentRecordingPath);
-    if (!fi.exists()) return;
+    QFile file(m_currentRecordingPath);
+    if (!file.open(QIODevice::ReadOnly)) return;
 
-    const qint64 size = fi.size();
-    if (size > 32000) { // ~1 second of audio recorded
-        m_speechDetected = true;
-        // Simulate dynamic audio level pulse for UI orb animation
-        m_audioLevel = 0.4 + (static_cast<qreal>(size % 1000) / 1000.0) * 0.5;
+    const qint64 fileSize = file.size();
+    if (fileSize <= 44) return; // Wait for WAV header to finish
+
+    // Read the most recent ~100ms of 16kHz 16-bit mono PCM (3200 bytes)
+    const qint64 bytesToRead = qMin<qint64>(fileSize - 44, 3200);
+    if (!file.seek(fileSize - bytesToRead)) return;
+
+    const QByteArray chunk = file.read(bytesToRead);
+    const int sampleCount = chunk.size() / sizeof(qint16);
+    if (sampleCount <= 0) return;
+
+    const qint16 *samples = reinterpret_cast<const qint16 *>(chunk.constData());
+    double sumSquares = 0.0;
+    for (int i = 0; i < sampleCount; ++i) {
+        const double norm = samples[i] / 32768.0;
+        sumSquares += norm * norm;
+    }
+    const double rms = std::sqrt(sumSquares / sampleCount);
+
+    // Audio level normalized for reactive Siri orb animation (0.0 to 1.0)
+    const qreal newLevel = qBound(0.0, rms * 4.5, 1.0);
+    if (std::abs(m_audioLevel - newLevel) > 0.015) {
+        m_audioLevel = newLevel;
         Q_EMIT audioLevelChanged();
     }
 
-    // VAD auto-stop timeout after silence
-    if (m_speechDetected && readConfigBool(QStringLiteral("vadEnabled"), true)) {
+    // Voice Activity Detection (audible speech typically > 0.025 RMS)
+    const double speechRmsThreshold = 0.025;
+    const bool isSpeakingNow = (rms >= speechRmsThreshold);
+
+    if (isSpeakingNow) {
+        m_speechDetected = true;
+        // User is currently speaking: reset the silence countdown
+        m_speechSilenceTimer.start();
+    }
+
+    if (readConfigBool(QStringLiteral("vadEnabled"), true)) {
         const int silenceTimeout = readConfigInt(QStringLiteral("vadSilenceTimeoutMs"), 1300);
-        if (!m_speechSilenceTimer.isValid()) {
-            m_speechSilenceTimer.start();
-        } else if (m_speechSilenceTimer.elapsed() > (silenceTimeout + 3000)) { // Safety limit: auto stop
-            stopRecording();
+
+        if (m_speechDetected) {
+            // After speech was detected, stop once silence extends beyond silenceTimeout
+            if (!isSpeakingNow && m_speechSilenceTimer.isValid() && m_speechSilenceTimer.elapsed() > silenceTimeout) {
+                stopRecording();
+            }
+        } else {
+            // Safety guard: stop after 7 seconds if no voice was ever detected
+            if (fileSize > static_cast<qint64>(16000 * sizeof(qint16) * 7)) {
+                stopRecording();
+            }
         }
     }
 }
@@ -766,8 +808,9 @@ void KiriApplet::speakSentence(const QString &sentence)
     const QString voicePath = resolvePiperVoicePath();
     const QString pwPlay = QStandardPaths::findExecutable(QStringLiteral("pw-play"));
 
-    if (piperCli.isEmpty() || voicePath.isEmpty() || pwPlay.isEmpty()) {
+    if (piperCli.isEmpty() || voicePath.isEmpty() || pwPlay.isEmpty() || sentence.trimmed().isEmpty()) {
         m_isSpeakingSentence = false;
+        playNextTtsQueueItem();
         return;
     }
 
@@ -775,12 +818,19 @@ void KiriApplet::speakSentence(const QString &sentence)
     setState(QStringLiteral("speaking"), i18n("Reproduciendo respuesta…"));
 
     // Pipeline: piper --model voicePath --output_file - | pw-play -
-    const QString shCmd = QStringLiteral("echo %1 | %2 --model %3 --output_file - | %4 -")
-        .arg(QString(sentence).replace(QLatin1Char('\''), QStringLiteral("'\\''")))
-        .arg(piperCli, voicePath, pwPlay);
-
     m_ttsProcess = new QProcess(this);
-    connect(m_ttsProcess, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
+    QProcess *pwPlayProcess = new QProcess(m_ttsProcess);
+
+    m_ttsProcess->setStandardOutputProcess(pwPlayProcess);
+
+    QStringList piperArgs;
+    piperArgs << QStringLiteral("--model") << voicePath
+              << QStringLiteral("--output_file") << QStringLiteral("-");
+
+    QStringList pwArgs;
+    pwArgs << QStringLiteral("-");
+
+    connect(pwPlayProcess, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
         if (m_ttsProcess) {
             m_ttsProcess->deleteLater();
             m_ttsProcess = nullptr;
@@ -788,7 +838,11 @@ void KiriApplet::speakSentence(const QString &sentence)
         playNextTtsQueueItem();
     });
 
-    m_ttsProcess->start(QStringLiteral("sh"), QStringList() << QStringLiteral("-c") << shCmd);
+    m_ttsProcess->start(piperCli, piperArgs);
+    pwPlayProcess->start(pwPlay, pwArgs);
+
+    m_ttsProcess->write(sentence.toUtf8());
+    m_ttsProcess->closeWriteChannel();
 }
 
 QString KiriApplet::stripMarkdownForSpeech(const QString &markdown) const
@@ -944,6 +998,61 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         });
 
         const QString resp = i18n("Temporizador establecido para %1 %2.", val, unit);
+        sendMessage(resp, false);
+        speakText(resp);
+        return true;
+    }
+
+    // 7. KDE Connect Find My Phone: "haz sonar mi móvil/teléfono"
+    static const QRegularExpression findPhoneRegex(QStringLiteral("(?:haz\\s+sonar|encuentra|busca|d[oó]nde\\s+est[aá])\\s+(?:mi\\s+)?(?:tel[eé]fono|m[oó]vil|dispositivo)"), QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(findPhoneRegex)) {
+        const auto devices = getKdeConnectDevices();
+        if (!devices.isEmpty()) {
+            if (ringKdeConnectDevice(devices.first().id)) {
+                const QString resp = i18n("Haciendo sonar tu teléfono (%1)…", devices.first().name);
+                sendMessage(resp, false);
+                speakText(resp);
+                return true;
+            }
+        }
+    }
+
+    // 8. KDE Connect Battery: "batería del móvil/teléfono"
+    static const QRegularExpression phoneBatteryRegex(QStringLiteral("(?:bater[ií]a|carga)\\s+(?:de|del|en\\s+el)?\\s*(?:tel[eé]fono|m[oó]vil)"), QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(phoneBatteryRegex)) {
+        const auto devices = getKdeConnectDevices();
+        if (!devices.isEmpty()) {
+            const QString bStr = getKdeConnectBattery(devices.first().id);
+            if (!bStr.isEmpty()) {
+                sendMessage(bStr, false);
+                speakText(bStr);
+                return true;
+            }
+        }
+    }
+
+    // 9. Calendar Events: "crea/añade/pon evento ..."
+    static const QRegularExpression calRegex(QStringLiteral("(?:crea|a[ñn]ade|pon)\\s+(?:un\\s+)?evento\\s+(.+)"), QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch calMatch = calRegex.match(trimmed);
+    if (calMatch.hasMatch()) {
+        const QString evPrompt = calMatch.captured(1).trimmed();
+        if (createCalendarEvent(evPrompt, QString())) {
+            const QString resp = i18n("Evento registrado en el calendario: %1.", evPrompt);
+            sendMessage(resp, false);
+            speakText(resp);
+            return true;
+        }
+    }
+
+    // 10. Email Composition: "envía correo a X diciendo Y"
+    static const QRegularExpression emailRegex(QStringLiteral("(?:env[ií]a|redacta|escribe)\\s+(?:un\\s+)?(?:correo|email|mensaje)\\s+a\\s+([^\\s]+)(?:\\s+(?:diciendo|con|asunto)\\s+(.+))?"), QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch emMatch = emailRegex.match(trimmed);
+    if (emMatch.hasMatch()) {
+        const QString to = emMatch.captured(1).trimmed();
+        const QString body = emMatch.captured(2).trimmed();
+        const QString client = readConfigString(QStringLiteral("defaultEmailClient"), QStringLiteral("proton"));
+        composeEmail(to, i18n("Mensaje de Kiri"), body, client);
+        const QString resp = i18n("Abriendo cliente de correo para enviar mensaje a %1.", to);
         sendMessage(resp, false);
         speakText(resp);
         return true;
@@ -1336,6 +1445,413 @@ void KiriApplet::triggerReminderNotification(const ScheduledReminder &reminder)
                          i18n("Recordatorio Kiri"),
                          reminder.text);
     speakText(i18n("Recordatorio: %1", reminder.text));
+}
+
+// =========================================================================
+// WAV Audio & Vision Helpers
+// =========================================================================
+
+QByteArray KiriApplet::createWavHeader(int dataSize, int sampleRate, int channels, int bitsPerSample) const
+{
+    QByteArray header(44, 0);
+    char *h = header.data();
+
+    // RIFF header
+    memcpy(h, "RIFF", 4);
+    const qint32 chunkSize = 36 + dataSize;
+    memcpy(h + 4, &chunkSize, 4);
+    memcpy(h + 8, "WAVE", 4);
+
+    // fmt subchunk
+    memcpy(h + 12, "fmt ", 4);
+    const qint32 subchunk1Size = 16;
+    memcpy(h + 16, &subchunk1Size, 4);
+    const qint16 audioFormat = 1; // PCM
+    memcpy(h + 20, &audioFormat, 2);
+    const qint16 numChannels = static_cast<qint16>(channels);
+    memcpy(h + 22, &numChannels, 2);
+    const qint32 sRate = sampleRate;
+    memcpy(h + 24, &sRate, 4);
+    const qint32 byteRate = sampleRate * channels * (bitsPerSample / 8);
+    memcpy(h + 28, &byteRate, 4);
+    const qint16 blockAlign = static_cast<qint16>(channels * (bitsPerSample / 8));
+    memcpy(h + 32, &blockAlign, 2);
+    const qint16 bitsPerSamp = static_cast<qint16>(bitsPerSample);
+    memcpy(h + 34, &bitsPerSamp, 2);
+
+    // data subchunk
+    memcpy(h + 36, "data", 4);
+    const qint32 dSize = dataSize;
+    memcpy(h + 40, &dSize, 4);
+
+    return header;
+}
+
+QString KiriApplet::detectAvailableVisionModel() const
+{
+    const QString configured = readConfigString(QStringLiteral("ollamaVisionModel"));
+    if (!configured.isEmpty() && m_availableModels.contains(configured)) {
+        return configured;
+    }
+
+    const QStringList knownVision = {
+        QStringLiteral("moondream"),
+        QStringLiteral("llava"),
+        QStringLiteral("minicpm-v"),
+        QStringLiteral("qwen2.5vl"),
+        QStringLiteral("llama3.2-vision")
+    };
+
+    for (const auto &cand : knownVision) {
+        for (const auto &avail : m_availableModels) {
+            if (avail.contains(cand, Qt::CaseInsensitive)) {
+                return avail;
+            }
+        }
+    }
+
+    return configured.isEmpty() ? QStringLiteral("moondream") : configured;
+}
+
+QString KiriApplet::fetchWebSearchContext(const QString &query) const
+{
+    static const QRegularExpression searchRegex(
+        QStringLiteral("(?:busca|buscar|averigua|qui[eé]n es|qu[eé] es)\\s+(.+)"),
+        QRegularExpression::CaseInsensitiveOption);
+    const auto match = searchRegex.match(query.trimmed());
+    if (!match.hasMatch()) {
+        return QString();
+    }
+
+    const QString searchTerm = match.captured(1).trimmed();
+    if (searchTerm.isEmpty()) {
+        return QString();
+    }
+
+    QUrl url(QStringLiteral("https://api.duckduckgo.com/"));
+    QUrlQuery q;
+    q.addQueryItem(QStringLiteral("q"), searchTerm);
+    q.addQueryItem(QStringLiteral("format"), QStringLiteral("json"));
+    q.addQueryItem(QStringLiteral("no_html"), QStringLiteral("1"));
+    q.addQueryItem(QStringLiteral("skip_disambig"), QStringLiteral("1"));
+    url.setQuery(q);
+
+    const QByteArray resp = httpGetSync(url, 2500);
+    if (resp.isEmpty()) {
+        return QString();
+    }
+
+    const QJsonDocument doc = QJsonDocument::fromJson(resp);
+    const QJsonObject obj = doc.object();
+    const QString abstractText = obj.value(QStringLiteral("AbstractText")).toString();
+    if (!abstractText.isEmpty()) {
+        return QStringLiteral("Web Search Summary for \"%1\": %2").arg(searchTerm, abstractText);
+    }
+
+    return QString();
+}
+
+// =========================================================================
+// KDE Connect D-Bus Integration
+// =========================================================================
+
+QList<KiriApplet::KdeConnectDevice> KiriApplet::getKdeConnectDevices() const
+{
+    QList<KdeConnectDevice> result;
+    QDBusInterface iface(QStringLiteral("org.kde.kdeconnect"),
+                         QStringLiteral("/modules/kdeconnect"),
+                         QStringLiteral("org.kde.kdeconnect.daemon"),
+                         QDBusConnection::sessionBus());
+    if (!iface.isValid()) return result;
+
+    QDBusReply<QStringList> reply = iface.call(QStringLiteral("devices"), true, true);
+    if (!reply.isValid()) {
+        reply = iface.call(QStringLiteral("devices"));
+    }
+
+    if (reply.isValid()) {
+        for (const QString &devId : reply.value()) {
+            QDBusInterface devIface(QStringLiteral("org.kde.kdeconnect"),
+                                    QStringLiteral("/modules/kdeconnect/devices/") + devId,
+                                    QStringLiteral("org.kde.kdeconnect.device"),
+                                    QDBusConnection::sessionBus());
+            QString devName = devId;
+            if (devIface.isValid()) {
+                const QVariant nameProp = devIface.property("name");
+                if (nameProp.isValid() && !nameProp.toString().isEmpty()) {
+                    devName = nameProp.toString();
+                }
+            }
+            result.append({devId, devName});
+        }
+    }
+    return result;
+}
+
+QString KiriApplet::getKdeConnectBattery(const QString &deviceId) const
+{
+    QDBusInterface iface(QStringLiteral("org.kde.kdeconnect"),
+                         QStringLiteral("/modules/kdeconnect/devices/") + deviceId + QStringLiteral("/battery"),
+                         QStringLiteral("org.kde.kdeconnect.device.battery"),
+                         QDBusConnection::sessionBus());
+    if (iface.isValid()) {
+        const QVariant charge = iface.property("charge");
+        const QVariant isCharging = iface.property("isCharging");
+        if (charge.isValid()) {
+            const int pct = charge.toInt();
+            const bool charging = isCharging.isValid() ? isCharging.toBool() : false;
+            return i18n("La batería de tu teléfono está al %1%%2.", pct, charging ? i18n(" (cargando)") : QString());
+        }
+    }
+    return QString();
+}
+
+bool KiriApplet::ringKdeConnectDevice(const QString &deviceId) const
+{
+    QDBusInterface iface(QStringLiteral("org.kde.kdeconnect"),
+                         QStringLiteral("/modules/kdeconnect/devices/") + deviceId + QStringLiteral("/findmyphone"),
+                         QStringLiteral("org.kde.kdeconnect.device.findmyphone"),
+                         QDBusConnection::sessionBus());
+    if (iface.isValid()) {
+        QDBusReply<void> reply = iface.call(QStringLiteral("ring"));
+        return reply.isValid();
+    }
+    return false;
+}
+
+bool KiriApplet::sendTextToKdeConnect(const QString &deviceId, const QString &phoneNumber, const QString &message) const
+{
+    if (isRestrictedPhoneNumber(phoneNumber)) return false;
+
+    QDBusInterface iface(QStringLiteral("org.kde.kdeconnect"),
+                         QStringLiteral("/modules/kdeconnect/devices/") + deviceId + QStringLiteral("/sms"),
+                         QStringLiteral("org.kde.kdeconnect.device.sms"),
+                         QDBusConnection::sessionBus());
+    if (iface.isValid()) {
+        QDBusReply<void> reply = iface.call(QStringLiteral("sendSms"), phoneNumber, message);
+        return reply.isValid();
+    }
+    return false;
+}
+
+bool KiriApplet::sendClipboardToKdeConnect(const QString &deviceId, const QString &text) const
+{
+    QDBusInterface iface(QStringLiteral("org.kde.kdeconnect"),
+                         QStringLiteral("/modules/kdeconnect/devices/") + deviceId + QStringLiteral("/clipboard"),
+                         QStringLiteral("org.kde.kdeconnect.device.clipboard"),
+                         QDBusConnection::sessionBus());
+    if (iface.isValid()) {
+        QDBusReply<void> reply = iface.call(QStringLiteral("sendClipboardMessage"), text);
+        return reply.isValid();
+    }
+    return false;
+}
+
+bool KiriApplet::initiatePhoneCall(const QString &deviceId, const QString &phoneNumber) const
+{
+    if (isRestrictedPhoneNumber(phoneNumber)) return false;
+    const QString cleanNum = sanitizePhoneForDial(phoneNumber);
+
+    QDBusInterface iface(QStringLiteral("org.kde.kdeconnect"),
+                         QStringLiteral("/modules/kdeconnect/devices/") + deviceId + QStringLiteral("/telephony"),
+                         QStringLiteral("org.kde.kdeconnect.device.telephony"),
+                         QDBusConnection::sessionBus());
+    if (iface.isValid()) {
+        QDBusReply<void> reply = iface.call(QStringLiteral("dial"), cleanNum);
+        return reply.isValid();
+    }
+    return false;
+}
+
+QString KiriApplet::normalizePhoneNumber(const QString &raw) const
+{
+    QString res = raw;
+    res.remove(QRegularExpression(QStringLiteral("[^0-9+]")));
+    return res;
+}
+
+QString KiriApplet::sanitizePhoneForDial(const QString &raw) const
+{
+    return normalizePhoneNumber(raw);
+}
+
+bool KiriApplet::isRestrictedPhoneNumber(const QString &phone) const
+{
+    const QString clean = normalizePhoneNumber(phone);
+    // Block accidental emergency or premium rate dials from automated AI prompts
+    return clean == QStringLiteral("112") || clean == QStringLiteral("911") || clean == QStringLiteral("999");
+}
+
+// =========================================================================
+// Calendar & Email Services
+// =========================================================================
+
+KiriApplet::ParsedCalendarEvent KiriApplet::parseCalendarEventPrompt(const QString &prompt, const QDateTime &now) const
+{
+    ParsedCalendarEvent ev;
+    ev.title = prompt.trimmed();
+    ev.startTime = now.addSecs(3600); // Default: 1 hour from now
+    ev.endTime = ev.startTime.addSecs(3600);
+
+    // Simple time matching: "a las 16:00" or "a las 4 pm"
+    static const QRegularExpression timeRegex(QStringLiteral("(?:a las|a la)\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?"), QRegularExpression::CaseInsensitiveOption);
+    const auto m = timeRegex.match(prompt);
+    if (m.hasMatch()) {
+        int hour = m.captured(1).toInt();
+        const int minute = m.captured(2).isEmpty() ? 0 : m.captured(2).toInt();
+        const QString ampm = m.captured(3).toLower();
+        if (ampm == QStringLiteral("pm") && hour < 12) hour += 12;
+        if (ampm == QStringLiteral("am") && hour == 12) hour = 0;
+
+        QDate d = now.date();
+        if (prompt.contains(QStringLiteral("mañana"), Qt::CaseInsensitive)) {
+            d = d.addDays(1);
+        }
+        ev.startTime = QDateTime(d, QTime(hour, minute));
+        ev.endTime = ev.startTime.addSecs(3600);
+    }
+    return ev;
+}
+
+int KiriApplet::monthNameToNumber(const QString &name) const
+{
+    const QString n = name.toLower();
+    if (n.startsWith(QStringLiteral("ene")) || n.startsWith(QStringLiteral("jan"))) return 1;
+    if (n.startsWith(QStringLiteral("feb"))) return 2;
+    if (n.startsWith(QStringLiteral("mar"))) return 3;
+    if (n.startsWith(QStringLiteral("abr")) || n.startsWith(QStringLiteral("apr"))) return 4;
+    if (n.startsWith(QStringLiteral("may"))) return 5;
+    if (n.startsWith(QStringLiteral("jun"))) return 6;
+    if (n.startsWith(QStringLiteral("jul"))) return 7;
+    if (n.startsWith(QStringLiteral("ago")) || n.startsWith(QStringLiteral("aug"))) return 8;
+    if (n.startsWith(QStringLiteral("sep"))) return 9;
+    if (n.startsWith(QStringLiteral("oct"))) return 10;
+    if (n.startsWith(QStringLiteral("nov"))) return 11;
+    if (n.startsWith(QStringLiteral("dic")) || n.startsWith(QStringLiteral("dec"))) return 12;
+    return 1;
+}
+
+bool KiriApplet::createCalendarEvent(const QString &title, const QString &datePrompt)
+{
+    const QString full = title + QStringLiteral(" ") + datePrompt;
+    const ParsedCalendarEvent ev = parseCalendarEventPrompt(full, QDateTime::currentDateTime());
+
+    ScheduledReminder r;
+    r.id = QStringLiteral("cal_%1").arg(QDateTime::currentMSecsSinceEpoch());
+    r.text = ev.title;
+    r.targetTime = ev.startTime;
+    r.notified = false;
+    m_scheduledReminders.append(r);
+    saveScheduledReminders();
+
+    openCalendarService(ev);
+    return true;
+}
+
+void KiriApplet::openCalendarService(const ParsedCalendarEvent &ev) const
+{
+    const QString client = readConfigString(QStringLiteral("defaultCalendarClient"), QStringLiteral("proton"));
+    if (client == QStringLiteral("google")) {
+        QDesktopServices::openUrl(buildGoogleCalendarTemplateUrl(ev));
+    } else {
+        // Proton Calendar or default system calendar
+        const QString protonApp = QStandardPaths::findExecutable(QStringLiteral("proton-mail"));
+        if (!protonApp.isEmpty()) {
+            QProcess::startDetached(protonApp, QStringList());
+        } else {
+            QDesktopServices::openUrl(QUrl(QStringLiteral("https://calendar.proton.me")));
+        }
+    }
+}
+
+QUrl KiriApplet::buildGoogleCalendarTemplateUrl(const ParsedCalendarEvent &ev) const
+{
+    QUrl url(QStringLiteral("https://calendar.google.com/calendar/render"));
+    QUrlQuery q;
+    q.addQueryItem(QStringLiteral("action"), QStringLiteral("TEMPLATE"));
+    q.addQueryItem(QStringLiteral("text"), ev.title);
+    const QString startFmt = ev.startTime.toUTC().toString(QStringLiteral("yyyyMMdd'T'hhmmss'Z'"));
+    const QString endFmt = ev.endTime.toUTC().toString(QStringLiteral("yyyyMMdd'T'hhmmss'Z'"));
+    q.addQueryItem(QStringLiteral("dates"), QStringLiteral("%1/%2").arg(startFmt, endFmt));
+    if (!ev.description.isEmpty()) {
+        q.addQueryItem(QStringLiteral("details"), ev.description);
+    }
+    url.setQuery(q);
+    return url;
+}
+
+void KiriApplet::composeEmail(const QString &to, const QString &subject, const QString &body, const QString &service) const
+{
+    if (service == QStringLiteral("proton")) {
+        const QString protonApp = QStandardPaths::findExecutable(QStringLiteral("proton-mail"));
+        if (!protonApp.isEmpty()) {
+            QProcess::startDetached(protonApp, QStringList());
+            return;
+        }
+    }
+
+    // Default mailto fallback
+    QUrl mailtoUrl(QStringLiteral("mailto:") + to);
+    QUrlQuery q;
+    if (!subject.isEmpty()) q.addQueryItem(QStringLiteral("subject"), subject);
+    if (!body.isEmpty()) q.addQueryItem(QStringLiteral("body"), body);
+    mailtoUrl.setQuery(q);
+    QDesktopServices::openUrl(mailtoUrl);
+}
+
+// =========================================================================
+// Contacts & Reminders Helpers
+// =========================================================================
+
+void KiriApplet::loadReminders()
+{
+    loadScheduledReminders();
+}
+
+void KiriApplet::saveReminders()
+{
+    saveScheduledReminders();
+}
+
+QString KiriApplet::remindersFilePath() const
+{
+    return scheduledRemindersFilePath();
+}
+
+KiriApplet::ContactEntry KiriApplet::findContactByName(const QString &query) const
+{
+    const QString q = normalizeForMatch(query);
+    for (const auto &c : m_contacts) {
+        if (normalizeForMatch(c.name).contains(q)) {
+            return c;
+        }
+    }
+    return ContactEntry();
+}
+
+void KiriApplet::importContactsFromVcf(const QString &vcfPath)
+{
+    QFile f(vcfPath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+
+    ContactEntry cur;
+    while (!f.atEnd()) {
+        const QString line = QString::fromUtf8(f.readLine()).trimmed();
+        if (line.startsWith(QStringLiteral("BEGIN:VCARD"))) {
+            cur = ContactEntry();
+        } else if (line.startsWith(QStringLiteral("FN:"))) {
+            cur.name = line.mid(3).trimmed();
+        } else if (line.startsWith(QStringLiteral("TEL;")) || line.startsWith(QStringLiteral("TEL:"))) {
+            cur.phone = line.section(QLatin1Char(':'), 1).trimmed();
+        } else if (line.startsWith(QStringLiteral("EMAIL;")) || line.startsWith(QStringLiteral("EMAIL:"))) {
+            cur.email = line.section(QLatin1Char(':'), 1).trimmed();
+        } else if (line.startsWith(QStringLiteral("END:VCARD"))) {
+            if (!cur.name.isEmpty()) {
+                m_contacts.append(cur);
+            }
+        }
+    }
+    saveContacts();
 }
 
 QString KiriApplet::normalizeForMatch(const QString &text) const
