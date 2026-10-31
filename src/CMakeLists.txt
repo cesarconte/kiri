@@ -25,12 +25,8 @@ plasma_add_applet(org.cesar.kiri
         res/org.cesar.kiri.svg
         res/kiri.svg
         res/kiri-symbolic.svg
-        res/kiri-light.svg
-        res/kiri-dark.svg
         res/kiri-listening.svg
         res/kiri-listening-symbolic.svg
-        res/kiri-listening-light.svg
-        res/kiri-listening-dark.svg
 )
 
 target_include_directories(org.cesar.kiri PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -56,11 +52,7 @@ target_link_libraries(org.cesar.kiri PRIVATE
 install(FILES res/org.cesar.kiri.svg
               res/kiri.svg
               res/kiri-symbolic.svg
-              res/kiri-light.svg
-              res/kiri-dark.svg
               res/kiri-listening.svg
               res/kiri-listening-symbolic.svg
-              res/kiri-listening-light.svg
-              res/kiri-listening-dark.svg
         DESTINATION ${KDE_INSTALL_ICONDIR}/hicolor/scalable/apps
 )
