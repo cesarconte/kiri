@@ -26,11 +26,16 @@ Kiri combina la fluidez visual de un orbe animado estilo Siri con modelos locale
 sudo pacman -S extra-cmake-modules plasma-workspace qt6-declarative qt6-base pipewire grim
 ```
 
-### Modelos locales (Whisper y Piper)
+### Herramientas de Audio y Modelos Locales
 
-Ejecuta el script incluido para descargar automáticamente los modelos de voz y reconocimiento:
+Kiri incluye scripts para configurar automáticamente el entorno de voz (Whisper.cpp, Piper TTS) y los modelos de IA:
 
 ```bash
+# 1. Instalar o compilar herramientas de audio (Piper TTS y Whisper.cpp)
+chmod +x scripts/install-audio-tools.sh
+./scripts/install-audio-tools.sh
+
+# 2. Descargar modelos locales (Whisper GGML, voz Piper y modelos Ollama)
 chmod +x scripts/setup-models.sh
 ./scripts/setup-models.sh
 ```
