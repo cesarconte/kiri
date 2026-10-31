@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+      http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+
+  <group name="General">
+    <entry name="ollamaUrl" type="String">
+      <label>Base URL of the local Ollama HTTP server</label>
+      <default>http://127.0.0.1:11434</default>
+    </entry>
+    <entry name="ollamaModel" type="String">
+      <label>Default Ollama model name used for chat completions</label>
+      <default>qwen2.5:7b</default>
+    </entry>
+    <entry name="ollamaTemperature" type="Double">
+      <label>Sampling temperature (lower values reduce hallucination and increase grounding)</label>
+      <default>0.2</default>
+    </entry>
+    <entry name="ollamaNumCtx" type="Int">
+      <label>Context window token limit</label>
+      <default>4096</default>
+    </entry>
+    <entry name="ollamaNumThread" type="Int">
+      <label>Number of CPU threads for inference (recommended: physical P-cores, e.g. 6)</label>
+      <default>6</default>
+    </entry>
+    <entry name="ollamaNumPredict" type="Int">
+      <label>Maximum tokens generated per turn</label>
+      <default>384</default>
+    </entry>
+    <entry name="ollamaKeepAlive" type="String">
+      <label>Duration to keep model loaded in RAM between requests</label>
+      <default>24h</default>
+    </entry>
+    <entry name="ollamaVisionModel" type="String">
+      <label>Ollama vision model name (e.g. moondream, llava, minicpm-v)</label>
+      <default>moondream</default>
+    </entry>
+    <entry name="systemPrompt" type="String">
+      <label>System instructions provided to the AI assistant</label>
+      <default>You are Kiri, a concise, helpful, and natural voice assistant integrated into KDE Plasma on CachyOS Linux. Keep answers clear, direct, and easy to read aloud. Reply in the same language the user speaks or writes to you.</default>
+    </entry>
+    <entry name="whisperModelPath" type="String">
+      <label>Path to the whisper.cpp GGML model file (.bin). Leave empty to auto-detect in ~/.local/share/kiri/models/</label>
+      <default></default>
+    </entry>
+    <entry name="whisperLanguage" type="String">
+      <label>Speech recognition language code (e.g. auto, es, en)</label>
+      <default>auto</default>
+    </entry>
+    <entry name="piperVoicePath" type="String">
+      <label>Path to the Piper TTS ONNX model file (.onnx). Leave empty to auto-detect in ~/.local/share/kiri/voices/</label>
+      <default>/home/cesar/.local/share/kiri/voices/es_ES-sharvard-medium.onnx</default>
+    </entry>
+    <entry name="panelIconStyle" type="String">
+      <label>Visual style of the panel icon: symbolic (monochrome) or color</label>
+      <default>symbolic</default>
+    </entry>
+    <entry name="speechOutputMode" type="String">
+      <label>When Kiri should read responses aloud: manual (only when clicking Speak), voice_only (when asked by voice), or always</label>
+      <default>always</default>
+    </entry>
+    <entry name="autoListenOnActivate" type="Bool">
+      <label>Automatically start listening via microphone when Kiri is activated with its shortcut</label>
+      <default>false</default>
+    </entry>
+    <entry name="vadEnabled" type="Bool">
+      <label>Automatically stop recording when speech finishes</label>
+      <default>true</default>
+    </entry>
+    <entry name="vadSilenceTimeoutMs" type="Int">
+      <label>Milliseconds of silence after speech before automatically ending recording</label>
+      <default>1300</default>
+    </entry>
+    <entry name="wakeWordEnabled" type="Bool">
+      <label>Listen for wake word in background (e.g. 'Oye Kiri' or 'Hey Kiri')</label>
+      <default>false</default>
+    </entry>
+    <entry name="defaultEmailClient" type="String">
+      <label>Default email service for composing emails: proton or gmail</label>
+      <default>proton</default>
+    </entry>
+    <entry name="defaultCalendarClient" type="String">
+      <label>Default calendar service: proton or google</label>
+      <default>proton</default>
+    </entry>
+    <entry name="pin" type="Bool">
+      <label>Keep the popup window open when focus moves to another window</label>
+      <default>false</default>
+    </entry>
+    <entry name="knowledgeBaseEnabled" type="Bool">
+      <label>Enable Retrieval-Augmented Generation (RAG) from local knowledge documents</label>
+      <default>true</default>
+    </entry>
+    <entry name="knowledgeBaseMaxSnippets" type="Int">
+      <label>Maximum number of document snippets to inject as context</label>
+      <default>3</default>
+    </entry>
+  </group>
+</kcfg>

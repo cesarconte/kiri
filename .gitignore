@@ -1,0 +1,24 @@
+# Build directories
+build/
+bin/
+.cache/
+
+# User config & local caches
+.directory
+*.user
+*.kdev4
+.vscode/
+.idea/
+
+# CMake temporary files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Generated moc/qrc/rcc
+*.moc
+moc_*.cpp
+qrc_*.cpp
+.rcc/
+.qt/

@@ -1,0 +1,26 @@
+{
+  "KPackageStructure": "Plasma/Applet",
+  "KPlugin": {
+    "Authors": [
+      {
+        "Name": "Kiri contributors"
+      }
+    ],
+    "Category": "Utilities",
+    "Description": "Siri-style local AI and voice assistant for KDE Plasma powered by Ollama, whisper.cpp, and Piper TTS",
+    "Description[es]": "Asistente local de IA y voz al estilo Siri para KDE Plasma impulsado por Ollama, whisper.cpp y Piper TTS",
+    "EnabledByDefault": true,
+    "FormFactors": [
+      "desktop"
+    ],
+    "Icon": "kiri",
+    "License": "GPL-3.0-or-later",
+    "Name": "Kiri",
+    "Name[es]": "Kiri",
+    "Version": "0.1.0",
+    "Website": "https://github.com/cesarconte/kiri"
+  },
+  "X-Plasma-API-Minimum-Version": "6.0",
+  "X-Plasma-NotificationArea": "true",
+  "X-Plasma-NotificationAreaCategory": "ApplicationStatus"
+}

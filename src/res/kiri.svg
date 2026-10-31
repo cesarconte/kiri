@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <defs>
+    <!-- Core Sphere Radial Gradient -->
+    <radialGradient id="coreGrad" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="25%" stop-color="#38bdf8" />
+      <stop offset="70%" stop-color="#1d99f3" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </radialGradient>
+
+    <!-- Ribbon 1 Gradient (Breeze Cyan to Azure) -->
+    <linearGradient id="ribbon1" x1="15%" y1="15%" x2="85%" y2="85%">
+      <stop offset="0%" stop-color="#00e5ff" />
+      <stop offset="100%" stop-color="#3b82f6" />
+    </linearGradient>
+
+    <!-- Ribbon 2 Gradient (Breeze Magenta to Violet) -->
+    <linearGradient id="ribbon2" x1="85%" y1="15%" x2="15%" y2="85%">
+      <stop offset="0%" stop-color="#ff4081" />
+      <stop offset="50%" stop-color="#d946ef" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+
+    <!-- Wave Arcs Gradient -->
+    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#818cf8" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Whispering Acoustic Waves (Left & Right Resonance Arcs) -->
+  <path fill="url(#waveGrad)" d="M 2.45 4.65 C 2.85 4.3 3.45 4.35 3.8 4.75 C 4.15 5.15 4.1 5.75 3.7 6.1 C 3.15 6.6 2.8 7.25 2.8 8 C 2.8 8.75 3.15 9.4 3.7 9.9 C 4.1 10.25 4.15 10.85 3.8 11.25 C 3.45 11.65 2.85 11.7 2.45 11.35 C 1.65 10.45 1.2 9.3 1.2 8 C 1.2 6.7 1.65 5.55 2.45 4.65 Z" />
+  <path fill="url(#waveGrad)" d="M 13.55 4.65 C 14.35 5.55 14.8 6.7 14.8 8 C 14.8 9.3 14.35 10.45 13.55 11.35 C 13.15 11.7 12.55 11.65 12.2 11.25 C 11.85 10.85 11.9 10.25 12.3 9.9 C 12.85 9.4 13.2 8.75 13.2 8 C 13.2 7.25 12.85 6.6 12.3 6.1 C 11.9 5.75 11.85 5.15 12.2 4.75 C 12.55 4.35 13.15 4.3 13.55 4.65 Z" />
+
+  <!-- Ribbon 1 (-28 deg): Vibrant Cyan-Azure -->
+  <path fill="url(#ribbon1)" 
+        d="M 8 2.2 C 11.0 2.2 13.2 4.8 13.2 8 C 13.2 11.2 11.0 13.8 8 13.8 C 5.0 13.8 2.8 11.2 2.8 8 C 2.8 4.8 5.0 2.2 8 2.2 Z M 8 3.4 C 5.7 3.4 4.0 5.5 4.0 8 C 4.0 10.5 5.7 12.6 8 12.6 C 10.3 12.6 12.0 10.5 12.0 8 C 12.0 5.5 10.3 3.4 8 3.4 Z"
+        transform="rotate(-28 8 8)" />
+
+  <!-- Ribbon 2 (+28 deg): Vibrant Magenta-Violet -->
+  <path fill="url(#ribbon2)" 
+        d="M 8 2.2 C 11.0 2.2 13.2 4.8 13.2 8 C 13.2 11.2 11.0 13.8 8 13.8 C 5.0 13.8 2.8 11.2 2.8 8 C 2.8 4.8 5.0 2.2 8 2.2 Z M 8 3.4 C 5.7 3.4 4.0 5.5 4.0 8 C 4.0 10.5 5.7 12.6 8 12.6 C 10.3 12.6 12.0 10.5 12.0 8 C 12.0 5.5 10.3 3.4 8 3.4 Z"
+        transform="rotate(28 8 8)" />
+
+  <!-- Center Radiant AI Voice Core -->
+  <circle cx="8" cy="8" r="2.5" fill="url(#coreGrad)" />
+  <!-- Center Specular Dot -->
+  <circle cx="7.2" cy="7.2" r="0.75" fill="#ffffff" opacity="0.8" />
+</svg>
