@@ -16,6 +16,12 @@ Item {
     property real audioLevel: 0.0
     signal clicked()
 
+    onAssistantStateChanged: {
+        if (assistantState !== "thinking" && assistantState !== "transcribing") {
+            iconItem.rotation = 0;
+        }
+    }
+
     implicitWidth: Kirigami.Units.gridUnit * 3.8
     implicitHeight: Kirigami.Units.gridUnit * 3.8
 
@@ -137,6 +143,7 @@ Item {
             height: width
             color: "#ffffff"
             isMask: true
+            rotation: 0
             source: {
                 if (orbRoot.assistantState === "listening") {
                     return "media-playback-stop-symbolic";
@@ -148,12 +155,20 @@ Item {
                 return "audio-input-microphone-symbolic";
             }
 
-            RotationAnimation on rotation {
+            RotationAnimation {
+                id: spinAnim
+                target: iconItem
+                property: "rotation"
                 running: orbRoot.assistantState === "thinking" || orbRoot.assistantState === "transcribing"
                 loops: Animation.Infinite
                 from: 0
                 to: 360
                 duration: 1200
+                onRunningChanged: {
+                    if (!running) {
+                        iconItem.rotation = 0;
+                    }
+                }
             }
         }
     }
