@@ -34,11 +34,13 @@ Item {
     }
 
     Component.onCompleted: {
+        Plasmoid.checkReadiness();
         Qt.callLater(() => focusInput());
     }
 
     onVisibleChanged: {
         if (visible) {
+            Plasmoid.checkReadiness();
             Qt.callLater(() => focusInput());
         }
     }
