@@ -139,6 +139,30 @@ private Q_SLOTS:
         QVERIFY2(output.contains(wwRegex) || output.contains(QStringLiteral("kiri")),
                  qPrintable(QStringLiteral("Whisper failed to recognize 'Hola Kiri' in output: %1").arg(output)));
     }
+
+    void testLaunchRegexMatching()
+    {
+        static const QRegularExpression launchRegex(
+            QStringLiteral("^(?:por\\s+favor\\s+)?(?:abre|inicia|lanza|ejecuta|arranca|abrir)\\s+(.+?)[.!?¿¡]*$"),
+            QRegularExpression::CaseInsensitiveOption);
+
+        const QStringList validInputs = {
+            QStringLiteral("abre la terminal"),
+            QStringLiteral("abre el navegador"),
+            QStringLiteral("abre la terminal."),
+            QStringLiteral("por favor abre el navegador!"),
+            QStringLiteral("lanza dolphin"),
+            QStringLiteral("ejecuta la calculadora"),
+            QStringLiteral("inicia kterminal")
+        };
+
+        for (const QString &in : validInputs) {
+            QRegularExpressionMatch m = launchRegex.match(in);
+            QVERIFY2(m.hasMatch(), qPrintable(QStringLiteral("Failed to match: %1").arg(in)));
+            const QString target = m.captured(1).trimmed();
+            QVERIFY(!target.isEmpty());
+        }
+    }
 };
 
 QTEST_MAIN(TestWakeWord)

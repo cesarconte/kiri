@@ -1095,8 +1095,10 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
 {
     const QString trimmed = input.trimmed();
 
-    // 1. App Launch: "abre/inicia/lanza <app>"
-    static const QRegularExpression launchRegex(QStringLiteral("^(?:abre|inicia|lanza|ejecuta)\\s+([a-zA-Z0-9_\\-\\s]+)$"), QRegularExpression::CaseInsensitiveOption);
+    // 1. App Launch: "abre/inicia/lanza/ejecuta/arranca <app>"
+    static const QRegularExpression launchRegex(
+        QStringLiteral("^(?:por\\s+favor\\s+)?(?:abre|inicia|lanza|ejecuta|arranca|abrir)\\s+(.+?)[.!?¿¡]*$"),
+        QRegularExpression::CaseInsensitiveOption);
     QRegularExpressionMatch lMatch = launchRegex.match(trimmed);
     if (lMatch.hasMatch()) {
         const QString appQuery = lMatch.captured(1).trimmed();
@@ -1109,8 +1111,10 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         }
     }
 
-    // 2. App Close: "cierra <app>"
-    static const QRegularExpression closeRegex(QStringLiteral("^(?:cierra|termina)\\s+([a-zA-Z0-9_\\-\\s]+)$"), QRegularExpression::CaseInsensitiveOption);
+    // 2. App Close: "cierra/termina/mata/cerrar <app>"
+    static const QRegularExpression closeRegex(
+        QStringLiteral("^(?:por\\s+favor\\s+)?(?:cierra|termina|mata|cerrar)\\s+(.+?)[.!?¿¡]*$"),
+        QRegularExpression::CaseInsensitiveOption);
     QRegularExpressionMatch cMatch = closeRegex.match(trimmed);
     if (cMatch.hasMatch()) {
         const QString appQuery = cMatch.captured(1).trimmed();
@@ -1123,7 +1127,101 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         }
     }
 
-    // 3. Power Profile: "modo ahorro/rendimiento/equilibrado"
+    // 3. Volume Control via PipeWire / WirePlumber (wpctl)
+    static const QRegularExpression volUpRegex(QStringLiteral("(?:sube|subir|aumenta|aumentar|sube el|subir el)\\s+(?:volumen|sonido|audio)"), QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(volUpRegex)) {
+        QProcess::execute(QStringLiteral("wpctl"), QStringList() << QStringLiteral("set-volume") << QStringLiteral("@DEFAULT_AUDIO_SINK@") << QStringLiteral("5%+"));
+        const QString resp = i18n("Subiendo el volumen.");
+        sendMessage(resp, false);
+        speakText(resp);
+        return true;
+    }
+
+    static const QRegularExpression volDownRegex(QStringLiteral("(?:baja|bajar|disminuye|disminuir|baja el|bajar el)\\s+(?:volumen|sonido|audio)"), QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(volDownRegex)) {
+        QProcess::execute(QStringLiteral("wpctl"), QStringList() << QStringLiteral("set-volume") << QStringLiteral("@DEFAULT_AUDIO_SINK@") << QStringLiteral("5%-"));
+        const QString resp = i18n("Bajando el volumen.");
+        sendMessage(resp, false);
+        speakText(resp);
+        return true;
+    }
+
+    static const QRegularExpression volMuteRegex(QStringLiteral("(?:silencia|silenciar|mutea|mutear|quitar)\\s+(?:el\\s+)?(?:volumen|sonido|audio)"), QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(volMuteRegex) || trimmed.compare(QStringLiteral("silencio"), Qt::CaseInsensitive) == 0) {
+        QProcess::execute(QStringLiteral("wpctl"), QStringList() << QStringLiteral("set-mute") << QStringLiteral("@DEFAULT_AUDIO_SINK@") << QStringLiteral("1"));
+        const QString resp = i18n("Audio silenciado.");
+        sendMessage(resp, false);
+        speakText(resp);
+        return true;
+    }
+
+    static const QRegularExpression volUnmuteRegex(QStringLiteral("(?:activa|activar|desactiva el silencio|reactiva)\\s+(?:el\\s+)?(?:volumen|sonido|audio)"), QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(volUnmuteRegex)) {
+        QProcess::execute(QStringLiteral("wpctl"), QStringList() << QStringLiteral("set-mute") << QStringLiteral("@DEFAULT_AUDIO_SINK@") << QStringLiteral("0"));
+        const QString resp = i18n("Audio reactivado.");
+        sendMessage(resp, false);
+        speakText(resp);
+        return true;
+    }
+
+    // 4. Media Playback Control via playerctl
+    static const QRegularExpression mediaPlayRegex(QStringLiteral("(?:reproduce|reanuda|play)\\s+(?:la\\s+)?(?:m[uú]sica|canci[oó]n|audio)"), QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(mediaPlayRegex) || trimmed.compare(QStringLiteral("reproducir"), Qt::CaseInsensitive) == 0) {
+        QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("play"));
+        const QString resp = i18n("Reanudando reproducción.");
+        sendMessage(resp, false);
+        speakText(resp);
+        return true;
+    }
+
+    static const QRegularExpression mediaPauseRegex(QStringLiteral("(?:pausa|pausar|para|parar)\\s+(?:la\\s+)?(?:m[uú]sica|canci[oó]n|audio)"), QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(mediaPauseRegex) || trimmed.compare(QStringLiteral("pausa"), Qt::CaseInsensitive) == 0) {
+        QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("pause"));
+        const QString resp = i18n("Pausando reproducción.");
+        sendMessage(resp, false);
+        speakText(resp);
+        return true;
+    }
+
+    static const QRegularExpression mediaNextRegex(QStringLiteral("(?:siguiente|pasa\\s+de)\\s+(?:canci[oó]n|pista)"), QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(mediaNextRegex)) {
+        QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("next"));
+        const QString resp = i18n("Siguiente pista.");
+        sendMessage(resp, false);
+        speakText(resp);
+        return true;
+    }
+
+    static const QRegularExpression mediaPrevRegex(QStringLiteral("(?:anterior|atr[aá]s)\\s+(?:canci[oó]n|pista)"), QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(mediaPrevRegex)) {
+        QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("previous"));
+        const QString resp = i18n("Pista anterior.");
+        sendMessage(resp, false);
+        speakText(resp);
+        return true;
+    }
+
+    // 5. Screen Lock
+    static const QRegularExpression lockScreenRegex(QStringLiteral("(?:bloquea|bloquear)\\s+(?:la\\s+)?(?:pantalla|sesi[oó]n|equipo)"), QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(lockScreenRegex)) {
+        QProcess::startDetached(QStringLiteral("qdbus6"), QStringList() << QStringLiteral("org.freedesktop.ScreenSaver") << QStringLiteral("/ScreenSaver") << QStringLiteral("Lock"));
+        const QString resp = i18n("Bloqueando la pantalla.");
+        sendMessage(resp, false);
+        speakText(resp);
+        return true;
+    }
+
+    // 6. Screenshot Tool (Spectacle)
+    static const QRegularExpression shotActionRegex(QStringLiteral("^(?:haz\\s+una\\s+|toma\\s+una\\s+)?(?:captura(?:\\s+de\\s+pantalla)?|pantallazo)[.!?¿¡]*$"), QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(shotActionRegex) && !trimmed.contains(QStringLiteral("analiza")) && !trimmed.contains(QStringLiteral("mira"))) {
+        QProcess::startDetached(QStringLiteral("spectacle"), QStringList());
+        const QString resp = i18n("Abriendo herramienta de captura de pantalla.");
+        sendMessage(resp, false);
+        speakText(resp);
+        return true;
+    }
+
+    // 7. Power Profile: "modo ahorro/rendimiento/equilibrado"
     static const QRegularExpression setPowerRegex(QStringLiteral("(?:pon|cambia a|activa el)?\\s*(?:modo)?\\s*(rendimiento|ahorro|equilibrado)"), QRegularExpression::CaseInsensitiveOption);
     QRegularExpressionMatch pMatch = setPowerRegex.match(trimmed);
     if (pMatch.hasMatch()) {
@@ -1140,7 +1238,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         }
     }
 
-    // 4. Do Not Disturb: "activa/desactiva no molestar"
+    // 8. Do Not Disturb: "activa/desactiva no molestar"
     static const QRegularExpression enableDndRegex(QStringLiteral("(?:activa|pon|habilita)\\s+(?:el\\s+modo\\s+)?no\\s+molestar"), QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(enableDndRegex)) {
         setDoNotDisturb(true);
@@ -1159,7 +1257,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         return true;
     }
 
-    // 5. Battery Status: "¿cuánta batería me queda?"
+    // 9. Battery Status: "¿cuánta batería me queda?"
     static const QRegularExpression batteryRegex(QStringLiteral("(bater[ií]a|nivel de carga)"), QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(batteryRegex) && trimmed.contains(QStringLiteral("?"))) {
         const QString bInfo = getLocalBatteryInfo();
@@ -1170,7 +1268,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         }
     }
 
-    // 6. Timers: "temporizador de X minutos/segundos"
+    // 10. Timers: "temporizador de X minutos/segundos"
     static const QRegularExpression timerRegex(QStringLiteral("(?:pon\\s+un\\s+)?temporizador\\s+de\\s+(\\d+)\\s*(segundos?|minutos?|horas?)"), QRegularExpression::CaseInsensitiveOption);
     QRegularExpressionMatch tMatch = timerRegex.match(trimmed);
     if (tMatch.hasMatch()) {
@@ -1193,7 +1291,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         return true;
     }
 
-    // 7. KDE Connect Find My Phone: "haz sonar mi móvil/teléfono"
+    // 11. KDE Connect Find My Phone: "haz sonar mi móvil/teléfono"
     static const QRegularExpression findPhoneRegex(QStringLiteral("(?:haz\\s+sonar|encuentra|busca|d[oó]nde\\s+est[aá])\\s+(?:mi\\s+)?(?:tel[eé]fono|m[oó]vil|dispositivo)"), QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(findPhoneRegex)) {
         const auto devices = getKdeConnectDevices();
@@ -1207,7 +1305,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         }
     }
 
-    // 8. KDE Connect Battery: "batería del móvil/teléfono"
+    // 12. KDE Connect Battery: "batería del móvil/teléfono"
     static const QRegularExpression phoneBatteryRegex(QStringLiteral("(?:bater[ií]a|carga)\\s+(?:de|del|en\\s+el)?\\s*(?:tel[eé]fono|m[oó]vil)"), QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(phoneBatteryRegex)) {
         const auto devices = getKdeConnectDevices();
@@ -1221,7 +1319,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         }
     }
 
-    // 9. Calendar Events: "crea/añade/pon evento ..."
+    // 13. Calendar Events: "crea/añade/pon evento ..."
     static const QRegularExpression calRegex(QStringLiteral("(?:crea|a[ñn]ade|pon)\\s+(?:un\\s+)?evento\\s+(.+)"), QRegularExpression::CaseInsensitiveOption);
     QRegularExpressionMatch calMatch = calRegex.match(trimmed);
     if (calMatch.hasMatch()) {
@@ -1234,7 +1332,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         }
     }
 
-    // 10. Email Composition: "envía correo a X diciendo Y"
+    // 14. Email Composition: "envía correo a X diciendo Y"
     static const QRegularExpression emailRegex(QStringLiteral("(?:env[ií]a|redacta|escribe)\\s+(?:un\\s+)?(?:correo|email|mensaje)\\s+a\\s+([^\\s]+)(?:\\s+(?:diciendo|con|asunto)\\s+(.+))?"), QRegularExpression::CaseInsensitiveOption);
     QRegularExpressionMatch emMatch = emailRegex.match(trimmed);
     if (emMatch.hasMatch()) {
@@ -1253,34 +1351,193 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
 
 bool KiriApplet::launchApplication(const QString &appQuery, QString *launchedNameOut)
 {
-    const auto services = KService::allServices();
-    const QString cleanQuery = normalizeForMatch(appQuery);
+    QString query = appQuery.trimmed();
+    query.remove(QRegularExpression(QStringLiteral("[.!?,;¿¡]+$")));
+    query = query.trimmed();
 
+    QString clean = normalizeForMatch(query);
+    clean.remove(QRegularExpression(QStringLiteral("^(?:el|la|los|las|un|una|unos|unas|the|a|an)\\s+")));
+    clean = clean.trimmed();
+
+    if (clean.isEmpty()) {
+        return false;
+    }
+
+    // 1. Semantic alias: Terminal Emulator
+    static const QRegularExpression termRegex(QStringLiteral("^(?:terminal|consola|kterminal|konsole|shell|linea\\s+de\\s+comandos)$"), QRegularExpression::CaseInsensitiveOption);
+    if (clean.contains(termRegex)) {
+        if (launchedNameOut) *launchedNameOut = QStringLiteral("la terminal");
+        if (QProcess::startDetached(QStringLiteral("konsole"), QStringList())) {
+            return true;
+        }
+        return QProcess::startDetached(QStringLiteral("gtk-launch"), QStringList() << QStringLiteral("org.kde.konsole"));
+    }
+
+    // 2. Semantic alias: Default Web Browser
+    static const QRegularExpression browserRegex(QStringLiteral("^(?:navegador|navegador\\s+web|internet|browser|web)$"), QRegularExpression::CaseInsensitiveOption);
+    if (clean.contains(browserRegex)) {
+        if (launchedNameOut) *launchedNameOut = QStringLiteral("el navegador web");
+        QProcess proc;
+        proc.start(QStringLiteral("xdg-settings"), QStringList() << QStringLiteral("get") << QStringLiteral("default-web-browser"));
+        if (proc.waitForFinished(1000) && proc.exitCode() == 0) {
+            QString desktop = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+            if (!desktop.isEmpty()) {
+                if (desktop.endsWith(QStringLiteral(".desktop"))) {
+                    desktop.chop(8);
+                }
+                if (QProcess::startDetached(QStringLiteral("gtk-launch"), QStringList() << desktop)) {
+                    return true;
+                }
+            }
+        }
+        return QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << QStringLiteral("https://"));
+    }
+
+    // 3. Semantic alias: File Manager
+    static const QRegularExpression fmRegex(QStringLiteral("^(?:archivos|mis\\s+archivos|gestor\\s+de\\s+archivos|carpetas|carpeta\\s+personal|dolphin)$"), QRegularExpression::CaseInsensitiveOption);
+    if (clean.contains(fmRegex)) {
+        if (launchedNameOut) *launchedNameOut = QStringLiteral("el gestor de archivos");
+        return QProcess::startDetached(QStringLiteral("dolphin"), QStringList());
+    }
+
+    // 4. Semantic alias: System Settings
+    static const QRegularExpression settingsRegex(QStringLiteral("^(?:ajustes|configuraci[oó]n|preferencias|preferencias\\s+del\\s+sistema|systemsettings)$"), QRegularExpression::CaseInsensitiveOption);
+    if (clean.contains(settingsRegex)) {
+        if (launchedNameOut) *launchedNameOut = QStringLiteral("las Preferencias del Sistema");
+        return QProcess::startDetached(QStringLiteral("systemsettings"), QStringList());
+    }
+
+    // 5. Semantic alias: Calculator
+    static const QRegularExpression calcRegex(QStringLiteral("^(?:calculadora|kcalc)$"), QRegularExpression::CaseInsensitiveOption);
+    if (clean.contains(calcRegex)) {
+        if (launchedNameOut) *launchedNameOut = QStringLiteral("la calculadora");
+        return QProcess::startDetached(QStringLiteral("kcalc"), QStringList());
+    }
+
+    // 6. Semantic alias: System Monitor
+    static const QRegularExpression monitorRegex(QStringLiteral("^(?:monitor\\s+del\\s+sistema|administrador\\s+de\\s+tareas|procesos|recursos)$"), QRegularExpression::CaseInsensitiveOption);
+    if (clean.contains(monitorRegex)) {
+        if (launchedNameOut) *launchedNameOut = QStringLiteral("el Monitor del Sistema");
+        if (QProcess::startDetached(QStringLiteral("plasma-systemmonitor"), QStringList())) {
+            return true;
+        }
+        return QProcess::startDetached(QStringLiteral("ksysguard"), QStringList());
+    }
+
+    // 7. Semantic alias: Text Editor
+    static const QRegularExpression editorRegex(QStringLiteral("^(?:editor|editor\\s+de\\s+texto|notas|kwrite|kate)$"), QRegularExpression::CaseInsensitiveOption);
+    if (clean.contains(editorRegex)) {
+        if (launchedNameOut) *launchedNameOut = QStringLiteral("el editor de texto");
+        if (QProcess::startDetached(QStringLiteral("kwrite"), QStringList())) {
+            return true;
+        }
+        return QProcess::startDetached(QStringLiteral("kate"), QStringList());
+    }
+
+    // 8. Semantic alias: Software Store / Discover
+    static const QRegularExpression discoverRegex(QStringLiteral("^(?:tienda|tienda\\s+de\\s+aplicaciones|software|descubrir|discover)$"), QRegularExpression::CaseInsensitiveOption);
+    if (clean.contains(discoverRegex)) {
+        if (launchedNameOut) *launchedNameOut = QStringLiteral("Discover");
+        return QProcess::startDetached(QStringLiteral("plasma-discover"), QStringList());
+    }
+
+    // 9. Semantic alias: Screenshot Tool
+    static const QRegularExpression shotRegex(QStringLiteral("^(?:captura|captura\\s+de\\s+pantalla|pantallazo|screenshot|spectacle)$"), QRegularExpression::CaseInsensitiveOption);
+    if (clean.contains(shotRegex)) {
+        if (launchedNameOut) *launchedNameOut = QStringLiteral("Spectacle");
+        return QProcess::startDetached(QStringLiteral("spectacle"), QStringList());
+    }
+
+    // 10. Search installed applications via KService
+    const auto services = KService::allServices();
     KService::Ptr bestMatch;
+
     for (const auto &svc : services) {
-        if (!svc->noDisplay() && (normalizeForMatch(svc->name()).contains(cleanQuery) ||
-                                  normalizeForMatch(svc->exec()).contains(cleanQuery))) {
+        if (svc->noDisplay()) continue;
+        const QString sName = normalizeForMatch(svc->name());
+        const QString sEntry = normalizeForMatch(svc->desktopEntryName());
+        if (sName == clean || sEntry == clean) {
             bestMatch = svc;
             break;
         }
     }
 
-    if (bestMatch) {
-        if (launchedNameOut) *launchedNameOut = bestMatch->name();
-        return QProcess::startDetached(bestMatch->exec(), QStringList());
+    if (!bestMatch) {
+        for (const auto &svc : services) {
+            if (svc->noDisplay()) continue;
+            const QString sName = normalizeForMatch(svc->name());
+            const QString sGeneric = normalizeForMatch(svc->genericName());
+            const QString sExec = normalizeForMatch(svc->exec());
+            if (sName.contains(clean) || sGeneric.contains(clean) || sExec.contains(clean)) {
+                bestMatch = svc;
+                break;
+            }
+        }
     }
 
-    // Fallback: start command directly
-    return QProcess::startDetached(appQuery, QStringList());
+    if (bestMatch) {
+        if (launchedNameOut) *launchedNameOut = bestMatch->name();
+
+        const QString entryName = bestMatch->desktopEntryName();
+        if (!entryName.isEmpty()) {
+            if (QProcess::startDetached(QStringLiteral("gtk-launch"), QStringList() << entryName)) {
+                return true;
+            }
+        }
+
+        QString cleanExec = bestMatch->exec();
+        cleanExec.remove(QRegularExpression(QStringLiteral("%[a-zA-Z]")));
+        cleanExec = cleanExec.trimmed();
+        QStringList parts = QProcess::splitCommand(cleanExec);
+        if (!parts.isEmpty()) {
+            const QString prog = parts.takeFirst();
+            return QProcess::startDetached(prog, parts);
+        }
+    }
+
+    // Fallback: execute clean command directly
+    QStringList directParts = QProcess::splitCommand(clean);
+    if (!directParts.isEmpty()) {
+        const QString prog = directParts.takeFirst();
+        if (QProcess::startDetached(prog, directParts)) {
+            if (launchedNameOut) *launchedNameOut = prog;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool KiriApplet::closeApplication(const QString &appQuery, QString *closedNameOut)
 {
-    const QString binName = extractExecBinaryName(appQuery);
-    if (binName.isEmpty()) return false;
+    QString query = appQuery.trimmed();
+    query.remove(QRegularExpression(QStringLiteral("[.!?,;¿¡]+$")));
+    query = query.trimmed();
 
-    if (closedNameOut) *closedNameOut = appQuery;
-    return QProcess::startDetached(QStringLiteral("pkill"), QStringList() << QStringLiteral("-f") << binName);
+    QString clean = normalizeForMatch(query);
+    clean.remove(QRegularExpression(QStringLiteral("^(?:el|la|los|las|un|una|the|a|an)\\s+")));
+    clean = clean.trimmed();
+
+    if (clean.isEmpty()) return false;
+
+    QString targetProc = clean;
+
+    if (clean.contains(QRegularExpression(QStringLiteral("^(?:terminal|consola|kterminal|konsole)$")))) {
+        targetProc = QStringLiteral("konsole");
+        if (closedNameOut) *closedNameOut = QStringLiteral("la terminal");
+    } else if (clean.contains(QRegularExpression(QStringLiteral("^(?:navegador|internet|browser)$")))) {
+        targetProc = QStringLiteral("brave");
+        if (closedNameOut) *closedNameOut = QStringLiteral("el navegador");
+        QProcess::execute(QStringLiteral("pkill"), QStringList() << QStringLiteral("-f") << QStringLiteral("brave-origin"));
+        QProcess::execute(QStringLiteral("pkill"), QStringList() << QStringLiteral("-f") << QStringLiteral("firefox"));
+    } else if (clean.contains(QRegularExpression(QStringLiteral("^(?:archivos|dolphin)$")))) {
+        targetProc = QStringLiteral("dolphin");
+        if (closedNameOut) *closedNameOut = QStringLiteral("Dolphin");
+    } else {
+        if (closedNameOut) *closedNameOut = query;
+    }
+
+    return QProcess::startDetached(QStringLiteral("pkill"), QStringList() << QStringLiteral("-f") << targetProc);
 }
 
 QString KiriApplet::extractExecBinaryName(const QString &execLine) const
