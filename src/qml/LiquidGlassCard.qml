@@ -13,44 +13,49 @@ Rectangle {
 
     property bool liquidGlass: true
     property bool isHighlighted: false
-    property real glassOpacity: 0.72
-    property color tintColor: isHighlighted
-        ? Kirigami.Theme.highlightColor
-        : Kirigami.Theme.alternateBackgroundColor
+    // "shell" (outer container), "recessed" (inner well), or "card" (floating bubble/bar)
+    property string glassStyle: "card"
+    property real glassOpacity: 0.86
 
-    radius: Kirigami.Units.mediumSpacing
+    radius: glassStyle === "shell" ? Kirigami.Units.largeSpacing : Kirigami.Units.mediumSpacing
 
-    // Base adaptive fill
+    // Base refractive fill matching KDropover's Liquid Glass aesthetic
     color: {
         if (!liquidGlass) {
             return isHighlighted
                 ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.22)
                 : Kirigami.Theme.alternateBackgroundColor;
         }
-        return isHighlighted
-            ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.20)
-            : Qt.rgba(Kirigami.Theme.alternateBackgroundColor.r,
-                      Kirigami.Theme.alternateBackgroundColor.g,
-                      Kirigami.Theme.alternateBackgroundColor.b,
-                      glassOpacity);
+        if (isHighlighted) {
+            return Qt.rgba(0.0, 0.58, 0.78, 0.28);
+        }
+        if (glassStyle === "shell") {
+            return Qt.rgba(0.08, 0.09, 0.13, glassOpacity);
+        }
+        if (glassStyle === "recessed") {
+            return Qt.rgba(0.02, 0.03, 0.05, 0.36);
+        }
+        return Qt.rgba(0.11, 0.13, 0.18, 0.78);
     }
 
-    // Outer translucent hairline border
-    border.width: 1
+    // Outer luminous refractive border
+    border.width: isHighlighted && glassStyle === "shell" ? 2 : 1
     border.color: {
         if (isHighlighted) {
-            return Qt.rgba(Kirigami.Theme.highlightColor.r,
-                           Kirigami.Theme.highlightColor.g,
-                           Kirigami.Theme.highlightColor.b,
-                           liquidGlass ? 0.55 : 0.45);
+            return liquidGlass
+                ? "#00e5ff"
+                : Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.45);
         }
-        return Qt.rgba(Kirigami.Theme.textColor.r,
-                       Kirigami.Theme.textColor.g,
-                       Kirigami.Theme.textColor.b,
-                       liquidGlass ? 0.16 : 0.12);
+        if (!liquidGlass) {
+            return Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.12);
+        }
+        if (glassStyle === "shell") {
+            return Qt.rgba(1.0, 1.0, 1.0, 0.24);
+        }
+        return Qt.rgba(1.0, 1.0, 1.0, 0.15);
     }
 
-    // Top-to-bottom subtle refractive luminance sheen (macOS Tahoe / Golden Gate Liquid Glass)
+    // Top-to-bottom refractive luminance sheen (macOS Tahoe / Golden Gate Liquid Glass)
     Rectangle {
         anchors.fill: parent
         anchors.margins: 1
@@ -59,7 +64,7 @@ Rectangle {
         gradient: Gradient {
             GradientStop {
                 position: 0.0
-                color: Qt.rgba(1.0, 1.0, 1.0, glassRoot.isHighlighted ? 0.16 : 0.10)
+                color: Qt.rgba(1.0, 1.0, 1.0, glassRoot.isHighlighted ? 0.20 : (glassRoot.glassStyle === "recessed" ? 0.08 : 0.15))
             }
             GradientStop {
                 position: 0.35
@@ -67,10 +72,10 @@ Rectangle {
             }
             GradientStop {
                 position: 1.0
-                color: Qt.rgba(0.0, 0.0, 0.0, 0.06)
+                color: Qt.rgba(0.0, 0.0, 0.0, glassRoot.glassStyle === "recessed" ? 0.20 : 0.14)
             }
         }
         border.width: 1
-        border.color: Qt.rgba(1.0, 1.0, 1.0, glassRoot.isHighlighted ? 0.22 : 0.12)
+        border.color: Qt.rgba(1.0, 1.0, 1.0, glassRoot.isHighlighted ? 0.26 : 0.10)
     }
 }

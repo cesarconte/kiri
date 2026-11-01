@@ -27,6 +27,9 @@ PlasmoidItem {
     }
 
     Plasmoid.status: PlasmaCore.Types.ActiveStatus
+    Plasmoid.backgroundHints: (Plasmoid.configuration.liquidGlassEnabled ?? true)
+        ? PlasmaCore.Types.TranslucentBackground
+        : PlasmaCore.Types.DefaultBackground
 
     toolTipMainText: i18n("Kiri")
     toolTipSubText: {

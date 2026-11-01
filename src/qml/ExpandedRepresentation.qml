@@ -78,9 +78,18 @@ Item {
         }
     }
 
+    LiquidGlassCard {
+        id: outerGlassShell
+        anchors.fill: parent
+        anchors.margins: 2
+        glassStyle: "shell"
+        liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
+        isHighlighted: Plasmoid.state === "listening" || Plasmoid.state === "speaking"
+    }
+
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Kirigami.Units.smallSpacing
+        anchors.margins: Kirigami.Units.mediumSpacing
         spacing: Kirigami.Units.smallSpacing
 
         // Assistant Status & Quick Controls Bar (Complements Plasma's top applet header without repeating title/pin)
@@ -402,15 +411,18 @@ Item {
             text: i18n("No se puede conectar con Ollama en %1. Ejecuta scripts/setup-models.sh o inicia ollama.service.", Plasmoid.configuration.ollamaUrl)
         }
 
-        // Conversation History or Empty Welcome State
-        Item {
+        // Conversation History or Empty Welcome State (Recessed Liquid Glass Stage)
+        LiquidGlassCard {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            glassStyle: "recessed"
+            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
+            isHighlighted: false
 
             // Welcome placeholder when conversation is empty
             ColumnLayout {
                 anchors.centerIn: parent
-                width: parent.width * 0.94
+                width: parent.width * 0.92
                 visible: Plasmoid.messages.length === 0
                 spacing: Kirigami.Units.largeSpacing
 
@@ -465,6 +477,7 @@ Item {
 
             QQC2.ScrollView {
                 anchors.fill: parent
+                anchors.margins: Kirigami.Units.smallSpacing
                 visible: Plasmoid.messages.length > 0
                 clip: true
 
@@ -703,76 +716,92 @@ Item {
             wrapMode: Text.WordWrap
         }
 
-        // Siri Orb Centered Interactive Voice Control
-        Item {
+        // Bottom Liquid Glass Dock (Siri Orb + Prompt Input Bar)
+        LiquidGlassCard {
             Layout.fillWidth: true
-            implicitHeight: Kirigami.Units.gridUnit * 4.0
-            clip: true
+            implicitHeight: dockCol.implicitHeight + Kirigami.Units.smallSpacing * 2
+            glassStyle: "recessed"
+            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
+            isHighlighted: Plasmoid.state === "listening"
 
-            SiriOrbAnimation {
-                id: siriOrb
-                anchors.centerIn: parent
-                assistantState: Plasmoid.state
-                audioLevel: Plasmoid.audioLevel
-                onClicked: {
-                    if (Plasmoid.isSpeaking) {
-                        Plasmoid.stopSpeaking();
-                    } else if (Plasmoid.state === "thinking") {
-                        Plasmoid.stopGeneration();
-                    } else {
-                        Plasmoid.toggleRecording();
-                    }
-                }
-            }
-        }
+            ColumnLayout {
+                id: dockCol
+                anchors.fill: parent
+                anchors.margins: Kirigami.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
 
-        // Bottom Text Input & Send Bar (Clean, without redundant mic button)
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
+                // Siri Orb Centered Interactive Voice Control
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: Kirigami.Units.gridUnit * 4.0
+                    clip: true
 
-            PlasmaComponents3.ScrollView {
-                id: promptScrollView
-                Layout.fillWidth: true
-                Layout.alignment: Qt.AlignBottom
-                Layout.maximumHeight: Kirigami.Units.gridUnit * 6
-                QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
-
-                PlasmaComponents3.TextArea {
-                    id: promptField
-                    focus: true
-                    placeholderText: Plasmoid.isRecording
-                        ? i18n("Escuchando tu voz…")
-                        : i18n("Pregúntale o pídele cualquier cosa a Kiri…")
-                    enabled: !Plasmoid.isRecording
-                    wrapMode: TextEdit.Wrap
-
-                    Keys.onPressed: event => {
-                        if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) {
-                            if (Plasmoid.state !== "thinking" && text.trim().length > 0) {
-                                Plasmoid.sendMessage(text, false);
-                                text = "";
+                    SiriOrbAnimation {
+                        id: siriOrb
+                        anchors.centerIn: parent
+                        assistantState: Plasmoid.state
+                        audioLevel: Plasmoid.audioLevel
+                        onClicked: {
+                            if (Plasmoid.isSpeaking) {
+                                Plasmoid.stopSpeaking();
+                            } else if (Plasmoid.state === "thinking") {
+                                Plasmoid.stopGeneration();
+                            } else {
+                                Plasmoid.toggleRecording();
                             }
-                            event.accepted = true;
                         }
                     }
                 }
-            }
 
-            PlasmaComponents3.Button {
-                Layout.alignment: Qt.AlignBottom
-                icon.name: Plasmoid.state === "thinking" ? "process-stop-symbolic" : "document-send-symbolic"
-                enabled: Plasmoid.state === "thinking" || promptField.text.trim().length > 0
-                onClicked: {
-                    if (Plasmoid.state === "thinking") {
-                        Plasmoid.stopGeneration();
-                    } else if (promptField.text.trim().length > 0) {
-                        Plasmoid.sendMessage(promptField.text, false);
-                        promptField.text = "";
+                // Bottom Text Input & Send Bar (Clean, without redundant mic button)
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+
+                    PlasmaComponents3.ScrollView {
+                        id: promptScrollView
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignBottom
+                        Layout.maximumHeight: Kirigami.Units.gridUnit * 6
+                        QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
+
+                        PlasmaComponents3.TextArea {
+                            id: promptField
+                            focus: true
+                            placeholderText: Plasmoid.isRecording
+                                ? i18n("Escuchando tu voz…")
+                                : i18n("Pregúntale o pídele cualquier cosa a Kiri…")
+                            enabled: !Plasmoid.isRecording
+                            wrapMode: TextEdit.Wrap
+
+                            Keys.onPressed: event => {
+                                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) {
+                                    if (Plasmoid.state !== "thinking" && text.trim().length > 0) {
+                                        Plasmoid.sendMessage(text, false);
+                                        text = "";
+                                    }
+                                    event.accepted = true;
+                                }
+                            }
+                        }
+                    }
+
+                    PlasmaComponents3.Button {
+                        Layout.alignment: Qt.AlignBottom
+                        icon.name: Plasmoid.state === "thinking" ? "process-stop-symbolic" : "document-send-symbolic"
+                        enabled: Plasmoid.state === "thinking" || promptField.text.trim().length > 0
+                        onClicked: {
+                            if (Plasmoid.state === "thinking") {
+                                Plasmoid.stopGeneration();
+                            } else if (promptField.text.trim().length > 0) {
+                                Plasmoid.sendMessage(promptField.text, false);
+                                promptField.text = "";
+                            }
+                        }
+                        QQC2.ToolTip.visible: hovered
+                        QQC2.ToolTip.text: Plasmoid.state === "thinking" ? i18n("Detener generación") : i18n("Enviar mensaje")
                     }
                 }
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: Plasmoid.state === "thinking" ? i18n("Detener generación") : i18n("Enviar mensaje")
             }
         }
     }
