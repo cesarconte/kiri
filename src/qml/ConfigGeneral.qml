@@ -21,10 +21,21 @@ KCMUtils.SimpleKCM {
     // KConfigXT Properties Bindings (cfg_<entryName>)
     // =========================================================================
 
+    // Voice & Audio (PipeWire, whisper.cpp, Piper TTS)
+    property alias cfg_wakeWordEnabled: wakeWordCheck.checked
+    property string cfg_speechOutputMode: "always"
+    property alias cfg_earconsEnabled: earconsCheck.checked
+    property alias cfg_vadEnabled: vadEnabledCheck.checked
+    property alias cfg_vadSilenceTimeoutMs: vadSilenceSpinBox.value
+    property alias cfg_autoListenOnActivate: autoListenCheck.checked
+    property string cfg_whisperLanguage: "es"
+    property alias cfg_whisperModelPath: whisperModelField.text
+    property alias cfg_piperVoicePath: piperVoiceField.text
+
     // Ollama AI Engine
     property alias cfg_ollamaUrl: ollamaUrlField.text
     property string cfg_ollamaModel: "qwen2.5:7b"
-    property alias cfg_ollamaVisionModel: ollamaVisionModelField.text
+    property string cfg_ollamaVisionModel: "moondream"
     property double cfg_ollamaTemperature: 0.2
     property alias cfg_ollamaNumCtx: ollamaCtxSpinBox.value
     property alias cfg_ollamaNumThread: ollamaThreadSpinBox.value
@@ -36,23 +47,9 @@ KCMUtils.SimpleKCM {
     property alias cfg_knowledgeBaseEnabled: kbEnabledCheck.checked
     property alias cfg_knowledgeBaseMaxSnippets: kbSnippetsSpinBox.value
 
-    // Appearance & Behavior
+    // Appearance & Services
     property string cfg_panelIconStyle: "symbolic"
     property alias cfg_pin: pinWindowCheck.checked
-
-    // Speech-to-Text Input (PipeWire + whisper.cpp)
-    property alias cfg_autoListenOnActivate: autoListenCheck.checked
-    property alias cfg_vadEnabled: vadEnabledCheck.checked
-    property alias cfg_vadSilenceTimeoutMs: vadSilenceSpinBox.value
-    property alias cfg_wakeWordEnabled: wakeWordCheck.checked
-    property alias cfg_whisperLanguage: whisperLangField.text
-    property alias cfg_whisperModelPath: whisperModelField.text
-
-    // Text-to-Speech Output (PipeWire + Piper TTS)
-    property string cfg_speechOutputMode: "always"
-    property alias cfg_piperVoicePath: piperVoiceField.text
-
-    // Communications
     property string cfg_defaultEmailClient: "proton"
     property string cfg_defaultCalendarClient: "proton"
 
@@ -61,6 +58,8 @@ KCMUtils.SimpleKCM {
     // =========================================================================
 
     property var detectedModels: ["qwen2.5:7b"]
+    property bool showAdvancedEngine: false
+    readonly property string defaultSpanishPrompt: "Eres Kiri, un asistente de voz e inteligencia artificial nativo para KDE Plasma en CachyOS Linux. Responde SIEMPRE en español de España (castellano), de forma concisa, clara, directa y natural, optimizada para síntesis de voz (TTS)."
 
     function fetchOllamaModels() {
         const baseUrl = (ollamaUrlField.text.trim() || "http://127.0.0.1:11434");
@@ -75,13 +74,17 @@ KCMUtils.SimpleKCM {
                     const list = [];
                     if (data.models && Array.isArray(data.models)) {
                         for (let i = 0; i < data.models.length; ++i) {
-                            if (data.models[i].name) {
-                                list.push(data.models[i].name);
+                            const name = data.models[i].name || "";
+                            // Exclude vision-only auxiliary models from main chat LLM selector
+                            if (name.length > 0 && name.toLowerCase().indexOf("moondream") === -1) {
+                                list.push(name);
                             }
                         }
                     }
                     if (list.length > 0) {
-                        if (configRoot.cfg_ollamaModel && list.indexOf(configRoot.cfg_ollamaModel) === -1) {
+                        if (configRoot.cfg_ollamaModel
+                            && configRoot.cfg_ollamaModel.toLowerCase().indexOf("moondream") === -1
+                            && list.indexOf(configRoot.cfg_ollamaModel) === -1) {
                             list.unshift(configRoot.cfg_ollamaModel);
                         }
                         configRoot.detectedModels = list;
@@ -101,51 +104,55 @@ KCMUtils.SimpleKCM {
     // Option Models
     // =========================================================================
 
+    readonly property var speechModeModel: [
+        {
+            "value": "always",
+            "text": i18n("Hablar siempre en voz alta (Recomendado)")
+        },
+        {
+            "value": "voice_only",
+            "text": i18n("Solo cuando preguntes con la voz")
+        },
+        {
+            "value": "manual",
+            "text": i18n("Solo manual (al pulsar el altavoz en un mensaje)")
+        }
+    ]
+
     readonly property var panelIconStyleModel: [
         {
             "value": "symbolic",
-            "text": i18n("Symbolic monochrome (Breeze, recommended)")
+            "text": i18n("Simbólico monocromo (Breeze, recomendado)")
         },
         {
             "value": "color",
-            "text": i18n("Full color (Breeze gradient)")
+            "text": i18n("Color completo (Degradado Breeze)")
         }
     ]
 
     readonly property var emailClientModel: [
         {
             "value": "proton",
-            "text": i18n("Proton Mail (Desktop App)")
+            "text": i18n("Proton Mail (Aplicación de escritorio)")
         },
         {
             "value": "gmail",
-            "text": i18n("Google Gmail (Web Browser)")
+            "text": i18n("Google Gmail (Navegador web)")
+        },
+        {
+            "value": "system",
+            "text": i18n("Cliente de correo predeterminado del sistema")
         }
     ]
 
     readonly property var calendarClientModel: [
         {
             "value": "proton",
-            "text": i18n("Proton Calendar (Desktop App)")
+            "text": i18n("Proton Calendar (Aplicación / Web)")
         },
         {
             "value": "google",
-            "text": i18n("Google Calendar (Web Browser)")
-        }
-    ]
-
-    readonly property var speechModeModel: [
-        {
-            "value": "voice_only",
-            "text": i18nc("@item:inlistbox Speech output mode", "When asked by voice (Recommended)")
-        },
-        {
-            "value": "always",
-            "text": i18nc("@item:inlistbox Speech output mode", "Always speak every response aloud")
-        },
-        {
-            "value": "manual",
-            "text": i18nc("@item:inlistbox Speech output mode", "Manual only (when clicking Read Aloud)")
+            "text": i18n("Google Calendar (Navegador web)")
         }
     ]
 
@@ -155,8 +162,8 @@ KCMUtils.SimpleKCM {
 
     QtDialogs.FileDialog {
         id: whisperFileDialog
-        title: i18n("Select Whisper GGML Model (.bin)")
-        nameFilters: [i18n("Whisper GGML models (*.bin)"), i18n("All files (*)")]
+        title: i18n("Seleccionar modelo Whisper GGML (.bin)")
+        nameFilters: [i18n("Modelos Whisper GGML (*.bin)"), i18n("Todos los archivos (*)")]
         currentFolder: StandardPaths.writableLocation(StandardPaths.GenericDataLocation) + "/kiri/models"
         onAccepted: {
             whisperModelField.text = selectedFile.toString().replace(/^file:\/\//, "");
@@ -165,8 +172,8 @@ KCMUtils.SimpleKCM {
 
     QtDialogs.FileDialog {
         id: piperFileDialog
-        title: i18n("Select Piper Voice Model (.onnx)")
-        nameFilters: [i18n("Piper ONNX models (*.onnx)"), i18n("All files (*)")]
+        title: i18n("Seleccionar modelo de voz Piper (.onnx)")
+        nameFilters: [i18n("Modelos Piper ONNX (*.onnx)"), i18n("Todos los archivos (*)")]
         currentFolder: StandardPaths.writableLocation(StandardPaths.GenericDataLocation) + "/kiri/voices"
         onAccepted: {
             piperVoiceField.text = selectedFile.toString().replace(/^file:\/\//, "");
@@ -179,21 +186,129 @@ KCMUtils.SimpleKCM {
 
     Kirigami.FormLayout {
         // ---------------------------------------------------------------------
-        // 1. Ollama AI Engine Section
+        // 1. Voice & Hands-Free Wake Word ("¡Hola Kiri!")
         // ---------------------------------------------------------------------
         Kirigami.Separator {
             Kirigami.FormData.isSection: true
-            Kirigami.FormData.label: i18n("Ollama AI Engine")
+            Kirigami.FormData.label: i18n("Voz y Escucha Activa («¡Hola Kiri!»)")
         }
 
-        QQC2.TextField {
-            id: ollamaUrlField
-            Kirigami.FormData.label: i18n("Ollama Server URL:")
-            placeholderText: "http://127.0.0.1:11434"
+        QQC2.CheckBox {
+            id: wakeWordCheck
+            Kirigami.FormData.label: i18n("Activación por voz:")
+            text: i18n("Escuchar «¡Hola Kiri!» u «Oye Kiri» en segundo plano")
+            QQC2.ToolTip.text: i18n("Permite invocar a Kiri con la voz en cualquier momento sin usar el ratón ni el teclado")
+            QQC2.ToolTip.visible: hovered
+        }
+
+        QQC2.ComboBox {
+            id: speechModeCombo
+            Kirigami.FormData.label: i18n("Respuestas habladas:")
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: 0
+            model: configRoot.speechModeModel
+            textRole: "text"
+            valueRole: "value"
+            currentIndex: {
+                for (let i = 0; i < configRoot.speechModeModel.length; ++i) {
+                    if (configRoot.speechModeModel[i].value === configRoot.cfg_speechOutputMode) {
+                        return i;
+                    }
+                }
+                return 0;
+            }
+            onActivated: index => {
+                configRoot.cfg_speechOutputMode = configRoot.speechModeModel[index].value;
+            }
+        }
+
+        QQC2.CheckBox {
+            id: earconsCheck
+            Kirigami.FormData.label: i18n("Avisos acústicos:")
+            text: i18n("Reproducir tono armónico al activar o finalizar el micrófono")
+            QQC2.ToolTip.text: i18n("Emite un sonido sutil al estilo Siri cuando Kiri empieza o termina de escucharte")
+            QQC2.ToolTip.visible: hovered
+        }
+
+        QQC2.CheckBox {
+            id: vadEnabledCheck
+            Kirigami.FormData.label: i18n("Detección de silencio:")
+            text: i18n("Detener grabación automáticamente cuando termines de hablar")
+        }
+
+        QQC2.SpinBox {
+            id: vadSilenceSpinBox
+            Kirigami.FormData.label: i18n("Tiempo de silencio (ms):")
+            from: 400
+            to: 4000
+            stepSize: 100
+            editable: true
+            enabled: vadEnabledCheck.checked
+            QQC2.ToolTip.text: i18n("Milisegundos de pausa tras hablar antes de procesar automáticamente tu petición")
+            QQC2.ToolTip.visible: hovered
+        }
+
+        QQC2.CheckBox {
+            id: autoListenCheck
+            Kirigami.FormData.label: i18n("Al abrir el popup:")
+            text: i18n("Empezar a escuchar por micrófono inmediatamente al abrir Kiri")
         }
 
         RowLayout {
-            Kirigami.FormData.label: i18n("Default Model:")
+            Kirigami.FormData.label: i18n("Modelo Whisper (.bin):")
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+
+            QQC2.TextField {
+                id: whisperModelField
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 0
+                placeholderText: i18n("Detección automática en ~/.local/share/kiri/models/")
+            }
+
+            QQC2.Button {
+                icon.name: "document-open"
+                text: i18n("Examinar…")
+                QQC2.ToolTip.text: i18n("Seleccionar archivo de modelo Whisper GGML (.bin)")
+                QQC2.ToolTip.visible: hovered
+                onClicked: whisperFileDialog.open()
+            }
+        }
+
+        RowLayout {
+            Kirigami.FormData.label: i18n("Voz Piper TTS (.onnx):")
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+
+            QQC2.TextField {
+                id: piperVoiceField
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 0
+                placeholderText: i18n("Detección automática en ~/.local/share/kiri/voices/")
+            }
+
+            QQC2.Button {
+                icon.name: "document-open"
+                text: i18n("Examinar…")
+                QQC2.ToolTip.text: i18n("Seleccionar archivo de voz neuronal Piper (.onnx)")
+                QQC2.ToolTip.visible: hovered
+                onClicked: piperFileDialog.open()
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // 2. Ollama AI Engine Section
+        // ---------------------------------------------------------------------
+        Kirigami.Separator {
+            Kirigami.FormData.isSection: true
+            Kirigami.FormData.label: i18n("Motor de Inteligencia Artificial (Ollama)")
+        }
+
+        RowLayout {
+            Kirigami.FormData.label: i18n("Modelo principal:")
             Layout.fillWidth: true
             Layout.minimumWidth: 0
 
@@ -217,29 +332,21 @@ KCMUtils.SimpleKCM {
                         configRoot.cfg_ollamaModel = editText.trim();
                     }
                 }
-                QQC2.ToolTip.text: i18n("Select or type the model name to use for chat inference")
+                QQC2.ToolTip.text: i18n("Modelo de lenguaje en Ollama utilizado para razonar y conversar en español")
                 QQC2.ToolTip.visible: hovered
             }
 
             QQC2.Button {
                 icon.name: "view-refresh-symbolic"
-                text: i18n("Detect")
-                QQC2.ToolTip.text: i18n("Refresh installed models from Ollama server")
+                text: i18n("Detectar")
+                QQC2.ToolTip.text: i18n("Actualizar lista de modelos instalados en el servidor Ollama")
                 QQC2.ToolTip.visible: hovered
                 onClicked: configRoot.fetchOllamaModels()
             }
         }
 
-        QQC2.TextField {
-            id: ollamaVisionModelField
-            Kirigami.FormData.label: i18n("Vision Model:")
-            placeholderText: "moondream"
-            QQC2.ToolTip.text: i18n("Model used for analyzing screenshot captures (e.g. moondream, llava, minicpm-v)")
-            QQC2.ToolTip.visible: hovered
-        }
-
         RowLayout {
-            Kirigami.FormData.label: i18n("Temperature (%1):", configRoot.cfg_ollamaTemperature.toFixed(2))
+            Kirigami.FormData.label: i18n("Temperatura (%1):", configRoot.cfg_ollamaTemperature.toFixed(2))
             Layout.fillWidth: true
             Layout.minimumWidth: 0
 
@@ -255,84 +362,115 @@ KCMUtils.SimpleKCM {
                 onMoved: configRoot.cfg_ollamaTemperature = value / 100.0
             }
             QQC2.Label {
-                text: configRoot.cfg_ollamaTemperature <= 0.3 ? i18n("Factual (less hallucinations)") : i18n("Creative")
+                text: configRoot.cfg_ollamaTemperature <= 0.3 ? i18n("Preciso") : i18n("Creativo")
                 color: Kirigami.Theme.neutralTextColor
             }
         }
 
+        ColumnLayout {
+            Kirigami.FormData.label: i18n("Instrucción base:")
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            spacing: Kirigami.Units.smallSpacing
+
+            QQC2.TextArea {
+                id: systemPromptArea
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 0
+                implicitHeight: Kirigami.Units.gridUnit * 4.5
+                wrapMode: TextEdit.Wrap
+                QQC2.ToolTip.text: i18n("Personalidad, idioma y reglas principales del asistente")
+                QQC2.ToolTip.visible: hovered
+            }
+
+            QQC2.Button {
+                icon.name: "edit-reset"
+                text: i18n("Restaurar instrucción por defecto (Español de España)")
+                onClicked: {
+                    systemPromptArea.text = configRoot.defaultSpanishPrompt;
+                }
+            }
+        }
+
+        QQC2.CheckBox {
+            id: advancedEngineCheck
+            Kirigami.FormData.label: i18n("Opciones técnicas:")
+            text: i18n("Mostrar parámetros avanzados de rendimiento de Ollama")
+            checked: configRoot.showAdvancedEngine
+            onToggled: configRoot.showAdvancedEngine = checked
+        }
+
+        QQC2.TextField {
+            id: ollamaUrlField
+            visible: configRoot.showAdvancedEngine
+            Kirigami.FormData.label: i18n("URL de Ollama:")
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: 0
+            placeholderText: "http://127.0.0.1:11434"
+        }
+
         QQC2.SpinBox {
             id: ollamaCtxSpinBox
-            Kirigami.FormData.label: i18n("Context Window (tokens):")
+            visible: configRoot.showAdvancedEngine
+            Kirigami.FormData.label: i18n("Ventana de contexto (tokens):")
             from: 1024
             to: 65536
             stepSize: 1024
             editable: true
-            QQC2.ToolTip.text: i18n("Maximum context memory window size passed to the model")
-            QQC2.ToolTip.visible: hovered
         }
 
         QQC2.SpinBox {
             id: ollamaThreadSpinBox
-            Kirigami.FormData.label: i18n("CPU Inference Threads:")
+            visible: configRoot.showAdvancedEngine
+            Kirigami.FormData.label: i18n("Hilos de CPU:")
             from: 1
             to: 64
             stepSize: 1
             editable: true
-            QQC2.ToolTip.text: i18n("Recommended: number of physical performance CPU cores")
-            QQC2.ToolTip.visible: hovered
         }
 
         QQC2.SpinBox {
             id: ollamaPredictSpinBox
-            Kirigami.FormData.label: i18n("Max Generated Tokens:")
+            visible: configRoot.showAdvancedEngine
+            Kirigami.FormData.label: i18n("Máximo de tokens por respuesta:")
             from: 64
             to: 4096
             stepSize: 64
             editable: true
-            QQC2.ToolTip.text: i18n("Maximum number of tokens generated per response turn")
-            QQC2.ToolTip.visible: hovered
         }
 
         QQC2.TextField {
             id: ollamaKeepAliveField
-            Kirigami.FormData.label: i18n("RAM Keep-Alive:")
-            placeholderText: "24h"
-            QQC2.ToolTip.text: i18n("How long the model stays resident in GPU/VRAM between turns (e.g. 5m, 1h, 24h)")
-            QQC2.ToolTip.visible: hovered
-        }
-
-        QQC2.TextArea {
-            id: systemPromptArea
-            Kirigami.FormData.label: i18n("System Prompt:")
+            visible: configRoot.showAdvancedEngine
+            Kirigami.FormData.label: i18n("Permanencia en RAM/VRAM:")
             Layout.fillWidth: true
             Layout.minimumWidth: 0
             Layout.preferredWidth: 0
-            implicitHeight: Kirigami.Units.gridUnit * 5
-            wrapMode: TextEdit.Wrap
-            QQC2.ToolTip.text: i18n("Base personality and instructions passed to the assistant")
-            QQC2.ToolTip.visible: hovered
+            placeholderText: "24h"
         }
 
         // ---------------------------------------------------------------------
-        // 2. Local Knowledge Base (RAG)
+        // 3. Local Knowledge Base (RAG)
         // ---------------------------------------------------------------------
         Kirigami.Separator {
             Kirigami.FormData.isSection: true
-            Kirigami.FormData.label: i18n("Local Knowledge Base (RAG)")
+            Kirigami.FormData.label: i18n("Base de Conocimiento Local (RAG)")
         }
 
         QQC2.CheckBox {
             id: kbEnabledCheck
-            Kirigami.FormData.label: i18n("Local RAG:")
-            text: i18n("Search local documents to augment answers")
+            Kirigami.FormData.label: i18n("Documentos locales:")
+            text: i18n("Buscar en mis notas locales (.txt / .md) para enriquecer respuestas")
             checked: true
-            QQC2.ToolTip.text: i18n("Place personal .txt or .md notes in ~/.local/share/kiri/knowledge/ to allow Kiri to securely search them offline")
+            QQC2.ToolTip.text: i18n("Guarda apuntes o documentos en ~/.local/share/kiri/knowledge/ para que Kiri los consulte de forma privada")
             QQC2.ToolTip.visible: hovered
         }
 
         QQC2.SpinBox {
             id: kbSnippetsSpinBox
-            Kirigami.FormData.label: i18n("Max Snippets:")
+            Kirigami.FormData.label: i18n("Máximo de fragmentos:")
             from: 1
             to: 10
             stepSize: 1
@@ -342,7 +480,7 @@ KCMUtils.SimpleKCM {
         }
 
         RowLayout {
-            Kirigami.FormData.label: i18n("Documents Folder:")
+            Kirigami.FormData.label: i18n("Carpeta de notas:")
             Layout.fillWidth: true
             Layout.minimumWidth: 0
             enabled: kbEnabledCheck.checked
@@ -357,8 +495,8 @@ KCMUtils.SimpleKCM {
 
             QQC2.Button {
                 icon.name: "document-open-folder"
-                text: i18n("Open in Dolphin")
-                QQC2.ToolTip.text: i18n("Open knowledge directory in Dolphin to add Markdown or text notes")
+                text: i18n("Abrir en Dolphin")
+                QQC2.ToolTip.text: i18n("Abrir la carpeta de conocimiento local en el gestor de archivos Dolphin")
                 QQC2.ToolTip.visible: hovered
                 onClicked: {
                     const path = StandardPaths.writableLocation(StandardPaths.GenericDataLocation) + "/kiri/knowledge";
@@ -368,16 +506,19 @@ KCMUtils.SimpleKCM {
         }
 
         // ---------------------------------------------------------------------
-        // 3. Appearance & Behavior Section
+        // 4. Appearance & Services
         // ---------------------------------------------------------------------
         Kirigami.Separator {
             Kirigami.FormData.isSection: true
-            Kirigami.FormData.label: i18n("Appearance & Behavior")
+            Kirigami.FormData.label: i18n("Apariencia y Servicios")
         }
 
         QQC2.ComboBox {
             id: panelIconStyleCombo
-            Kirigami.FormData.label: i18n("Panel Icon Style:")
+            Kirigami.FormData.label: i18n("Icono en el panel:")
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: 0
             model: configRoot.panelIconStyleModel
             textRole: "text"
             valueRole: "value"
@@ -396,136 +537,16 @@ KCMUtils.SimpleKCM {
 
         QQC2.CheckBox {
             id: pinWindowCheck
-            Kirigami.FormData.label: i18n("Window Behavior:")
-            text: i18n("Keep popup open when focus moves to another window (Pin)")
-        }
-
-        // ---------------------------------------------------------------------
-        // 4. Voice Input (PipeWire & whisper.cpp)
-        // ---------------------------------------------------------------------
-        Kirigami.Separator {
-            Kirigami.FormData.isSection: true
-            Kirigami.FormData.label: i18n("Voice Input (PipeWire & whisper.cpp)")
-        }
-
-        QQC2.CheckBox {
-            id: autoListenCheck
-            Kirigami.FormData.label: i18n("Shortcut Behavior:")
-            text: i18n("Automatically start listening when summoned via shortcut")
-        }
-
-        QQC2.CheckBox {
-            id: vadEnabledCheck
-            Kirigami.FormData.label: i18n("Voice Detection (VAD):")
-            text: i18n("Automatically stop recording when speech finishes")
-        }
-
-        QQC2.SpinBox {
-            id: vadSilenceSpinBox
-            Kirigami.FormData.label: i18n("Silence Timeout (ms):")
-            from: 400
-            to: 4000
-            stepSize: 100
-            editable: true
-            enabled: vadEnabledCheck.checked
-            QQC2.ToolTip.text: i18n("Milliseconds of silence after speech before automatically ending recording")
-            QQC2.ToolTip.visible: hovered
-        }
-
-        QQC2.CheckBox {
-            id: wakeWordCheck
-            Kirigami.FormData.label: i18n("Wake Word:")
-            text: i18n("Listen for 'Oye Kiri' or 'Hey Kiri' in background")
-        }
-
-        QQC2.TextField {
-            id: whisperLangField
-            Kirigami.FormData.label: i18n("Recognition Language:")
-            placeholderText: i18n("es (predeterminado), en, auto")
-        }
-
-        RowLayout {
-            Kirigami.FormData.label: i18n("Whisper Model Path:")
-            Layout.fillWidth: true
-            Layout.minimumWidth: 0
-
-            QQC2.TextField {
-                id: whisperModelField
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                Layout.preferredWidth: 0
-                placeholderText: i18n("Auto-detected in ~/.local/share/kiri/models/")
-            }
-
-            QQC2.Button {
-                icon.name: "document-open"
-                text: i18n("Browse…")
-                QQC2.ToolTip.text: i18n("Select Whisper GGML model (.bin)")
-                QQC2.ToolTip.visible: hovered
-                onClicked: whisperFileDialog.open()
-            }
-        }
-
-        // ---------------------------------------------------------------------
-        // 5. Voice Output (PipeWire & Piper TTS)
-        // ---------------------------------------------------------------------
-        Kirigami.Separator {
-            Kirigami.FormData.isSection: true
-            Kirigami.FormData.label: i18n("Voice Output (Piper TTS)")
-        }
-
-        QQC2.ComboBox {
-            id: speechModeCombo
-            Kirigami.FormData.label: i18n("Spoken Responses:")
-            model: configRoot.speechModeModel
-            textRole: "text"
-            valueRole: "value"
-            currentIndex: {
-                for (let i = 0; i < configRoot.speechModeModel.length; ++i) {
-                    if (configRoot.speechModeModel[i].value === configRoot.cfg_speechOutputMode) {
-                        return i;
-                    }
-                }
-                return 0;
-            }
-            onActivated: index => {
-                configRoot.cfg_speechOutputMode = configRoot.speechModeModel[index].value;
-            }
-        }
-
-        RowLayout {
-            Kirigami.FormData.label: i18n("Piper Voice Model (.onnx):")
-            Layout.fillWidth: true
-            Layout.minimumWidth: 0
-
-            QQC2.TextField {
-                id: piperVoiceField
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                Layout.preferredWidth: 0
-                placeholderText: i18n("Auto-detected in ~/.local/share/kiri/voices/")
-            }
-
-            QQC2.Button {
-                icon.name: "document-open"
-                text: i18n("Browse…")
-                QQC2.ToolTip.text: i18n("Select Piper neural voice model (.onnx)")
-                QQC2.ToolTip.visible: hovered
-                onClicked: piperFileDialog.open()
-            }
-        }
-
-        // ---------------------------------------------------------------------
-        // 6. Communications & Calendar
-        // ---------------------------------------------------------------------
-        Kirigami.Separator {
-            Kirigami.FormData.isSection: true
-            Kirigami.FormData.label: i18n("Communications & Calendar")
+            Kirigami.FormData.label: i18n("Comportamiento:")
+            text: i18n("Mantener ventana abierta al cambiar a otra aplicación (Pin)")
         }
 
         QQC2.ComboBox {
             id: defaultEmailCombo
-            Kirigami.FormData.label: i18n("Default Email Client:")
+            Kirigami.FormData.label: i18n("Cliente de correo:")
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: 0
             model: configRoot.emailClientModel
             textRole: "text"
             valueRole: "value"
@@ -544,7 +565,10 @@ KCMUtils.SimpleKCM {
 
         QQC2.ComboBox {
             id: defaultCalendarCombo
-            Kirigami.FormData.label: i18n("Default Calendar:")
+            Kirigami.FormData.label: i18n("Calendario:")
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: 0
             model: configRoot.calendarClientModel
             textRole: "text"
             valueRole: "value"

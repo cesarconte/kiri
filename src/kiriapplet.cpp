@@ -77,7 +77,7 @@ void KiriApplet::init()
     checkReadiness();
     refreshModels();
 
-    m_wakeWordEnabled = readConfigBool(QStringLiteral("wakeWordEnabled"), false);
+    m_wakeWordEnabled = readConfigBool(QStringLiteral("wakeWordEnabled"), true);
     if (m_wakeWordEnabled) {
         startWakeWordListener();
     }
@@ -88,7 +88,7 @@ void KiriApplet::configChanged()
     Plasma::Applet::configChanged();
 
     // 1. Sync wake word listener state with updated configuration
-    const bool wakeEnabled = readConfigBool(QStringLiteral("wakeWordEnabled"), false);
+    const bool wakeEnabled = readConfigBool(QStringLiteral("wakeWordEnabled"), true);
     setWakeWordEnabled(wakeEnabled);
 
     // 2. Re-evaluate models and audio stack readiness
@@ -2078,6 +2078,10 @@ bool KiriApplet::setDoNotDisturb(bool active) const
 
 void KiriApplet::playSiriEarcon(bool activating) const
 {
+    if (!readConfigBool(QStringLiteral("earconsEnabled"), true)) {
+        return;
+    }
+
     const QString pwPlay = QStandardPaths::findExecutable(QStringLiteral("pw-play"));
     if (pwPlay.isEmpty()) {
         return;
@@ -3077,6 +3081,17 @@ void KiriApplet::composeEmail(const QString &to, const QString &subject, const Q
             QProcess::startDetached(protonApp, QStringList());
             return;
         }
+    } else if (service == QStringLiteral("gmail")) {
+        QUrl gmailUrl(QStringLiteral("https://mail.google.com/mail/"));
+        QUrlQuery gq;
+        gq.addQueryItem(QStringLiteral("view"), QStringLiteral("cm"));
+        gq.addQueryItem(QStringLiteral("fs"), QStringLiteral("1"));
+        if (!to.isEmpty()) gq.addQueryItem(QStringLiteral("to"), to);
+        if (!subject.isEmpty()) gq.addQueryItem(QStringLiteral("su"), subject);
+        if (!body.isEmpty()) gq.addQueryItem(QStringLiteral("body"), body);
+        gmailUrl.setQuery(gq);
+        QDesktopServices::openUrl(gmailUrl);
+        return;
     }
 
     // Default mailto fallback

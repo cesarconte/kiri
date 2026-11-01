@@ -75,8 +75,12 @@
       <default>1300</default>
     </entry>
     <entry name="wakeWordEnabled" type="Bool">
-      <label>Listen for wake word in background (e.g. 'Oye Kiri' or 'Hey Kiri')</label>
-      <default>false</default>
+      <label>Listen for wake word in background (e.g. 'Hola Kiri' or 'Oye Kiri')</label>
+      <default>true</default>
+    </entry>
+    <entry name="earconsEnabled" type="Bool">
+      <label>Play Siri-style acoustic confirmation tones when starting and stopping voice listening</label>
+      <default>true</default>
     </entry>
     <entry name="defaultEmailClient" type="String">
       <label>Default email service for composing emails: proton or gmail</label>
