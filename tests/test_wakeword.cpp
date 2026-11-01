@@ -9,6 +9,8 @@
 #include <QStandardPaths>
 #include <QFile>
 #include <QDir>
+#include <QTimer>
+#include <QElapsedTimer>
 
 class TestWakeWord : public QObject
 {
@@ -174,7 +176,26 @@ private Q_SLOTS:
             const QString tmpShot = QDir::tempPath() + QStringLiteral("/test_kiri_spectacle_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
             QProcess proc;
             proc.start(spectacle, {QStringLiteral("-f"), QStringLiteral("-b"), QStringLiteral("-n"), QStringLiteral("-o"), tmpShot});
-            QVERIFY(proc.waitForFinished(5000));
+
+            QEventLoop loop;
+            QTimer pollTimer;
+            QElapsedTimer deadline;
+            deadline.start();
+            connect(&pollTimer, &QTimer::timeout, &loop, [&]() {
+                if (QFileInfo::exists(tmpShot) && QFileInfo(tmpShot).size() > 1024) {
+                    loop.quit();
+                    return;
+                }
+                if (deadline.elapsed() > 4500) {
+                    loop.quit();
+                }
+            });
+            pollTimer.start(50);
+            loop.exec();
+
+            if (proc.state() != QProcess::NotRunning) {
+                proc.waitForFinished(500);
+            }
             QVERIFY2(QFileInfo::exists(tmpShot) && QFileInfo(tmpShot).size() > 0, "spectacle -f -b -n -o failed to produce a valid PNG screenshot.");
             QFile::remove(tmpShot);
         }

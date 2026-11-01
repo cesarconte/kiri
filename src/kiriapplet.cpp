@@ -2377,9 +2377,37 @@ QString KiriApplet::captureScreenToPng(const QString &destPath) const
 {
     const QString spectacle = QStandardPaths::findExecutable(QStringLiteral("spectacle"));
     if (!spectacle.isEmpty()) {
+        QFile::remove(destPath);
         QProcess proc;
         proc.start(spectacle, {QStringLiteral("-f"), QStringLiteral("-b"), QStringLiteral("-n"), QStringLiteral("-o"), destPath});
-        if (proc.waitForFinished(5000) && QFileInfo::exists(destPath) && QFileInfo(destPath).size() > 0) {
+
+        // Use a non-blocking QEventLoop so plasmashell's D-Bus loop remains responsive
+        // and wait until the Spectacle daemon (--dbus) finishes flushing the PNG to disk.
+        QEventLoop loop;
+        QTimer pollTimer;
+        QElapsedTimer deadline;
+        deadline.start();
+
+        connect(&pollTimer, &QTimer::timeout, &loop, [&]() {
+            if (QFileInfo::exists(destPath) && QFileInfo(destPath).size() > 1024) {
+                QImage testImg(destPath);
+                if (!testImg.isNull()) {
+                    loop.quit();
+                    return;
+                }
+            }
+            if (deadline.elapsed() > 4500) {
+                loop.quit();
+            }
+        });
+        pollTimer.start(50);
+        loop.exec();
+
+        if (proc.state() != QProcess::NotRunning) {
+            proc.waitForFinished(500);
+        }
+
+        if (QFileInfo::exists(destPath) && QFileInfo(destPath).size() > 0) {
             return destPath;
         }
     }
