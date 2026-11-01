@@ -277,6 +277,18 @@ private Q_SLOTS:
         QCOMPARE(urlRx.match(ocrSample).captured(0), QStringLiteral("https://wiki.cachyos.org/es/home"));
         QCOMPARE(emailRx.match(ocrSample).captured(0), QStringLiteral("soporte@cachyos.org"));
     }
+
+    void testSpotlightKRunnerQueryPatterns()
+    {
+        static const QRegularExpression prefixRx(QStringLiteral("^(?:kiri|ia)\\s+(.+)$"), QRegularExpression::CaseInsensitiveOption);
+        const auto m1 = prefixRx.match(QStringLiteral("kiri qué tiempo hace hoy"));
+        QVERIFY(m1.hasMatch());
+        QCOMPARE(m1.captured(1), QStringLiteral("qué tiempo hace hoy"));
+
+        const auto m2 = prefixRx.match(QStringLiteral("ia resume mis notas"));
+        QVERIFY(m2.hasMatch());
+        QCOMPARE(m2.captured(1), QStringLiteral("resume mis notas"));
+    }
 };
 
 QTEST_MAIN(TestWakeWord)

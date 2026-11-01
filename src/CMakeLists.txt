@@ -55,3 +55,20 @@ install(FILES res/org.cesar.kiri.svg
               res/kiri-listening-symbolic.svg
         DESTINATION ${KDE_INSTALL_ICONDIR}/hicolor/scalable/apps
 )
+
+# Spotlight / KRunner Plugin (Phase 4)
+kcoreaddons_add_plugin(krunner_kiri
+    INSTALL_NAMESPACE "kf6/krunner"
+    SOURCES
+        runner/kirirunner.cpp
+        runner/kirirunner.h
+)
+
+target_link_libraries(krunner_kiri PRIVATE
+    Qt6::Core
+    Qt6::DBus
+    Qt6::Gui
+    KF6::CoreAddons
+    KF6::I18n
+    KF6::Runner
+)

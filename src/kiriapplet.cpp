@@ -81,6 +81,13 @@ void KiriApplet::init()
     if (m_wakeWordEnabled) {
         startWakeWordListener();
     }
+
+    // Register Kiri on session D-Bus for Spotlight / KRunner integration (Phase 4)
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    bus.registerService(QStringLiteral("org.cesar.kiri"));
+    bus.registerObject(QStringLiteral("/Kiri"),
+                       this,
+                       QDBusConnection::ExportAllInvokables | QDBusConnection::ExportAllProperties | QDBusConnection::ExportAllSignals);
 }
 
 void KiriApplet::configChanged()
