@@ -30,11 +30,14 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocale>
 #include <QNetworkRequest>
 #include <QOperatingSystemVersion>
 #include <QProcess>
 #include <QScreen>
 #include <QStandardPaths>
+#include <QStorageInfo>
+#include <QSysInfo>
 #include <QUrlQuery>
 
 K_PLUGIN_CLASS_WITH_JSON(KiriApplet, "metadata.json")
@@ -434,6 +437,21 @@ void KiriApplet::sendMessage(const QString &text, bool fromVoice)
         }
     }
 
+    // 2b. Check clipboard context (Wayland clipboard inspection when user mentions copied text)
+    static const QRegularExpression clipRegex(
+        QStringLiteral("(portapapeles|clipboard|copiado|he copiado|acabo de copiar|texto copiado)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(clipRegex)) {
+        if (auto clip = QGuiApplication::clipboard()) {
+            const QString clipText = clip->text().trimmed();
+            if (!clipText.isEmpty()) {
+                context.append(QStringLiteral("[Current User Clipboard Content:\n%1]\n\n").arg(clipText.left(4000)));
+            } else {
+                context.append(QStringLiteral("[Current User Clipboard Content: (Empty)]\n\n"));
+            }
+        }
+    }
+
     // 3. Check vision action (screen vision request)
     QString base64Image;
     static const QRegularExpression screenRegex(QStringLiteral("(pantalla|screen|captura|mira lo que|analiza mi pantalla|qu[eé] hay en|qu[eé] ves en)"), QRegularExpression::CaseInsensitiveOption);
@@ -653,6 +671,7 @@ void KiriApplet::startRecording()
 
     stopWakeWordListener();
     stopSpeaking();
+    playSiriEarcon(true);
 
     m_currentRecordingPath = QDir::tempPath() + QStringLiteral("/kiri_rec_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
 
@@ -691,6 +710,7 @@ void KiriApplet::stopRecording()
     }
 
     if (m_state == QLatin1String("listening")) {
+        playSiriEarcon(false);
         setState(QStringLiteral("transcribing"), i18n("Transcribiendo voz…"));
         runWhisperTranscription();
     }
@@ -1394,6 +1414,223 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         return true;
     }
 
+    // 15. Exact Volume Percentage: "pon el volumen al 50%" / "volumen al 80 por ciento"
+    static const QRegularExpression volExactRegex(
+        QStringLiteral("(?:pon\\s+el\\s+|ajusta\\s+el\\s+)?(?:volumen|sonido|audio)\\s+(?:a|al)\\s*(\\d{1,3})\\s*(?:%|por\\s+ciento)?"),
+        QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch volExactMatch = volExactRegex.match(trimmed);
+    if (volExactMatch.hasMatch()) {
+        const int pct = qBound(0, volExactMatch.captured(1).toInt(), 100);
+        QProcess::execute(QStringLiteral("wpctl"),
+                          {QStringLiteral("set-volume"), QStringLiteral("@DEFAULT_AUDIO_SINK@"), QStringLiteral("%1%").arg(pct)});
+        const QString resp = i18n("Volumen ajustado al %1%.", pct);
+        appendAssistantMessage(resp);
+        return true;
+    }
+
+    // 16. KDE Plasma 6 Dark / Light Theme Switching
+    static const QRegularExpression darkThemeRegex(
+        QStringLiteral("(?:activa|pon|cambia\\s+a|habilita)\\s+(?:el\\s+)?(?:modo|tema)\\s+(?:oscuro|noche|dark)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(darkThemeRegex)) {
+        QProcess::startDetached(QStringLiteral("plasma-apply-colorscheme"), {QStringLiteral("BreezeDark")});
+        const QString resp = i18n("Modo oscuro activado.");
+        appendAssistantMessage(resp);
+        return true;
+    }
+
+    static const QRegularExpression lightThemeRegex(
+        QStringLiteral("(?:activa|pon|cambia\\s+a|habilita|desactiva\\s+el\\s+modo\\s+oscuro)\\s*(?:el\\s+)?(?:modo|tema)?\\s*(?:claro|d[ií]a|light)?"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(QRegularExpression(QStringLiteral("(?:modo|tema)\\s+(?:claro|d[ií]a|light)|desactiva(?:r)?\\s+(?:el\\s+)?modo\\s+oscuro"), QRegularExpression::CaseInsensitiveOption))) {
+        QProcess::startDetached(QStringLiteral("plasma-apply-colorscheme"), {QStringLiteral("BreezeLight")});
+        const QString resp = i18n("Modo claro activado.");
+        appendAssistantMessage(resp);
+        return true;
+    }
+
+    // 17. Screen Brightness Control (KDE Solid PowerManagement D-Bus)
+    static const QRegularExpression brightExactRegex(
+        QStringLiteral("(?:pon\\s+el\\s+|ajusta\\s+el\\s+)?brillo\\s+(?:a|al)\\s*(\\d{1,3})\\s*(?:%|por\\s+ciento)?"),
+        QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch bExactMatch = brightExactRegex.match(trimmed);
+    if (bExactMatch.hasMatch()) {
+        const int pct = qBound(5, bExactMatch.captured(1).toInt(), 100);
+        if (adjustScreenBrightness(0, pct)) {
+            appendAssistantMessage(i18n("Brillo de pantalla ajustado al %1%.", pct));
+        } else {
+            appendAssistantMessage(i18n("El control de brillo por software no está disponible para este monitor."));
+        }
+        return true;
+    }
+
+    static const QRegularExpression brightUpRegex(
+        QStringLiteral("(?:sube|subir|aumenta|aumentar)\\s+(?:el\\s+)?brillo"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(brightUpRegex)) {
+        if (adjustScreenBrightness(+15, -1)) {
+            appendAssistantMessage(i18n("Subiendo el brillo de la pantalla."));
+        } else {
+            appendAssistantMessage(i18n("El control de brillo no está soportado en este monitor externo."));
+        }
+        return true;
+    }
+
+    static const QRegularExpression brightDownRegex(
+        QStringLiteral("(?:baja|bajar|disminuye|disminuir|reduce)\\s+(?:el\\s+)?brillo"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(brightDownRegex)) {
+        if (adjustScreenBrightness(-15, -1)) {
+            appendAssistantMessage(i18n("Bajando el brillo de la pantalla."));
+        } else {
+            appendAssistantMessage(i18n("El control de brillo no está soportado en este monitor externo."));
+        }
+        return true;
+    }
+
+    // 18. Wi-Fi & Bluetooth Connectivity Control
+    static const QRegularExpression wifiOnRegex(
+        QStringLiteral("(?:activa|activar|enciende|encender|conecta|habilita)\\s+(?:el\\s+|la\\s+)?(?:wifi|wi-fi|red\\s+inal[aá]mbrica)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(wifiOnRegex)) {
+        QProcess::startDetached(QStringLiteral("nmcli"), {QStringLiteral("radio"), QStringLiteral("wifi"), QStringLiteral("on")});
+        appendAssistantMessage(i18n("Wi-Fi activado."));
+        return true;
+    }
+
+    static const QRegularExpression wifiOffRegex(
+        QStringLiteral("(?:desactiva|desactivar|apaga|apagar|desconecta|deshabilita)\\s+(?:el\\s+|la\\s+)?(?:wifi|wi-fi|red\\s+inal[aá]mbrica)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(wifiOffRegex)) {
+        QProcess::startDetached(QStringLiteral("nmcli"), {QStringLiteral("radio"), QStringLiteral("wifi"), QStringLiteral("off")});
+        appendAssistantMessage(i18n("Wi-Fi desactivado."));
+        return true;
+    }
+
+    static const QRegularExpression btOnRegex(
+        QStringLiteral("(?:activa|activar|enciende|encender|habilita)\\s+(?:el\\s+)?bluetooth"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(btOnRegex)) {
+        QProcess::execute(QStringLiteral("rfkill"), {QStringLiteral("unblock"), QStringLiteral("bluetooth")});
+        QProcess::startDetached(QStringLiteral("bluetoothctl"), {QStringLiteral("power"), QStringLiteral("on")});
+        appendAssistantMessage(i18n("Bluetooth activado."));
+        return true;
+    }
+
+    static const QRegularExpression btOffRegex(
+        QStringLiteral("(?:desactiva|desactivar|apaga|apagar|deshabilita)\\s+(?:el\\s+)?bluetooth"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(btOffRegex)) {
+        QProcess::startDetached(QStringLiteral("bluetoothctl"), {QStringLiteral("power"), QStringLiteral("off")});
+        QProcess::execute(QStringLiteral("rfkill"), {QStringLiteral("block"), QStringLiteral("bluetooth")});
+        appendAssistantMessage(i18n("Bluetooth desactivado."));
+        return true;
+    }
+
+    // 19. Session & Power Management (Suspend, Reboot, Shutdown, Logout)
+    static const QRegularExpression suspendRegex(
+        QStringLiteral("^(?:por\\s+favor\\s+)?(?:suspende|suspender|pon\\s+en\\s+suspensi[oó]n)\\s*(?:el\\s+equipo|el\\s+ordenador|el\\s+pc|el\\s+sistema)?[.!?¿¡]*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(suspendRegex)) {
+        appendAssistantMessage(i18n("Suspendiendo el equipo…"));
+        QTimer::singleShot(800, this, []() {
+            QProcess::startDetached(QStringLiteral("systemctl"), {QStringLiteral("suspend")});
+        });
+        return true;
+    }
+
+    static const QRegularExpression rebootRegex(
+        QStringLiteral("^(?:por\\s+favor\\s+)?(?:reinicia|reiniciar)\\s+(?:el\\s+equipo|el\\s+ordenador|el\\s+pc|el\\s+sistema)[.!?¿¡]*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(rebootRegex)) {
+        QProcess::startDetached(QStringLiteral("qdbus6"),
+                                {QStringLiteral("org.kde.LogoutPrompt"), QStringLiteral("/LogoutPrompt"), QStringLiteral("promptReboot")});
+        appendAssistantMessage(i18n("Mostrando confirmación de reinicio del sistema."));
+        return true;
+    }
+
+    static const QRegularExpression shutdownRegex(
+        QStringLiteral("^(?:por\\s+favor\\s+)?(?:apaga|apagar)\\s+(?:el\\s+equipo|el\\s+ordenador|el\\s+pc|el\\s+sistema)[.!?¿¡]*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(shutdownRegex)) {
+        QProcess::startDetached(QStringLiteral("qdbus6"),
+                                {QStringLiteral("org.kde.LogoutPrompt"), QStringLiteral("/LogoutPrompt"), QStringLiteral("promptShutDown")});
+        appendAssistantMessage(i18n("Mostrando confirmación para apagar el equipo."));
+        return true;
+    }
+
+    static const QRegularExpression logoutRegex(
+        QStringLiteral("^(?:por\\s+favor\\s+)?(?:cierra|cerrar)\\s+(?:la\\s+)?sesi[oó]n[.!?¿¡]*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(logoutRegex)) {
+        QProcess::startDetached(QStringLiteral("qdbus6"),
+                                {QStringLiteral("org.kde.LogoutPrompt"), QStringLiteral("/LogoutPrompt"), QStringLiteral("promptLogout")});
+        appendAssistantMessage(i18n("Mostrando confirmación para cerrar la sesión."));
+        return true;
+    }
+
+    // 20. MPRIS2 Now Playing Query ("¿qué canción está sonando?" / "¿qué suena?")
+    static const QRegularExpression nowPlayingRegex(
+        QStringLiteral("(?:qu[eé]\\s+(?:canci[oó]n|m[uú]sica|pista|tema)\\s+(?:est[aá]\\s+sonando|suena|escucho)|qu[eé]\\s+est[aá]\\s+sonando|qu[eé]\\s+estoy\\s+escuchando)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(nowPlayingRegex)) {
+        appendAssistantMessage(getNowPlayingMetadata());
+        return true;
+    }
+
+    // 21. Zero-Latency Instant Time & Date Queries
+    static const QRegularExpression timeQueryRegex(
+        QStringLiteral("^[¿¡]*(?:qu[eé]\\s+hora\\s+es|dime\\s+la\\s+hora|qu[eé]\\s+hora\\s+tienes)(?:\\s+ahora)?[.!?¿¡]*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(timeQueryRegex)) {
+        const QString timeStr = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm"));
+        appendAssistantMessage(i18n("Son las %1.", timeStr));
+        return true;
+    }
+
+    static const QRegularExpression dateQueryRegex(
+        QStringLiteral("^[¿¡]*(?:qu[eé]\\s+d[ií]a\\s+es\\s+hoy|a\\s+qu[eé]\\s+(?:d[ií]a|fecha)\\s+estamos|cu[aá]l\\s+es\\s+la\\s+fecha\\s+de\\s+hoy|dime\\s+la\\s+fecha)[.!?¿¡]*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(dateQueryRegex)) {
+        const QLocale esLocale(QLocale::Spanish, QLocale::Spain);
+        const QString dateStr = esLocale.toString(QDate::currentDate(), QStringLiteral("dddd, d 'de' MMMM 'de' yyyy"));
+        appendAssistantMessage(i18n("Hoy es %1.", dateStr));
+        return true;
+    }
+
+    // 22. Zero-Latency System Resource Queries (RAM, Disk, IP, System Status)
+    static const QRegularExpression ramQueryRegex(
+        QStringLiteral("(?:cu[aá]nta\\s+(?:memoria\\s+)?ram|uso\\s+de\\s+(?:la\\s+)?(?:memoria\\s+)?ram|memoria\\s+libre)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(ramQueryRegex)) {
+        appendAssistantMessage(getSystemResourceSummary(QStringLiteral("ram")));
+        return true;
+    }
+
+    static const QRegularExpression diskQueryRegex(
+        QStringLiteral("(?:cu[aá]nto\\s+espacio\\s+(?:libre\\s+)?(?:tengo|queda)|espacio\\s+en\\s+disco|almacenamiento\\s+disponible)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(diskQueryRegex)) {
+        appendAssistantMessage(getSystemResourceSummary(QStringLiteral("disk")));
+        return true;
+    }
+
+    static const QRegularExpression ipQueryRegex(
+        QStringLiteral("(?:cu[aá]l\\s+es\\s+mi\\s+(?:direcci[oó]n\\s+)?ip|dime\\s+mi\\s+ip|mi\\s+ip\\s+local)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(ipQueryRegex)) {
+        appendAssistantMessage(getSystemResourceSummary(QStringLiteral("ip")));
+        return true;
+    }
+
+    static const QRegularExpression sysStatusRegex(
+        QStringLiteral("^(?:por\\s+favor\\s+)?(?:estado\\s+del\\s+sistema|resumen\\s+del\\s+sistema|diagn[oó]stico\\s+del\\s+sistema)[.!?¿¡]*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(sysStatusRegex)) {
+        appendAssistantMessage(getSystemResourceSummary(QStringLiteral("all")));
+        return true;
+    }
+
     return false;
 }
 
@@ -1800,6 +2037,187 @@ bool KiriApplet::setDoNotDisturb(bool active) const
     return false;
 }
 
+void KiriApplet::playSiriEarcon(bool activating) const
+{
+    const QString pwPlay = QStandardPaths::findExecutable(QStringLiteral("pw-play"));
+    if (pwPlay.isEmpty()) {
+        return;
+    }
+
+    const QString earconPath = QDir::tempPath() + (activating ? QStringLiteral("/kiri_earcon_on.wav") : QStringLiteral("/kiri_earcon_off.wav"));
+    if (!QFileInfo::exists(earconPath)) {
+        // Synthesize a crystalline dual-tone harmonic Siri earcon (110ms, 16kHz mono PCM)
+        const int sampleRate = 16000;
+        const int durationSamples = static_cast<int>(sampleRate * 0.11);
+        QByteArray pcm(durationSamples * static_cast<int>(sizeof(qint16)), 0);
+        qint16 *samples = reinterpret_cast<qint16 *>(pcm.data());
+
+        const double freq1 = activating ? 528.0 : 792.0;
+        const double freq2 = activating ? 792.0 : 528.0;
+        const double twoPi = 6.283185307179586;
+
+        for (int i = 0; i < durationSamples; ++i) {
+            const double progress = static_cast<double>(i) / durationSamples;
+            const double freq = (progress < 0.45) ? freq1 : freq2;
+            // Smooth Hann window envelope to prevent clicks
+            const double envelope = std::sin(3.141592653589793 * progress);
+            const double val = std::sin(twoPi * freq * i / sampleRate) * envelope * 0.14;
+            samples[i] = static_cast<qint16>(val * 32767.0);
+        }
+
+        QFile f(earconPath);
+        if (f.open(QIODevice::WriteOnly)) {
+            f.write(createWavHeader(pcm.size(), sampleRate, 1, 16));
+            f.write(pcm);
+            f.close();
+        }
+    }
+
+    if (QFileInfo::exists(earconPath)) {
+        QProcess::startDetached(pwPlay, {earconPath});
+    }
+}
+
+bool KiriApplet::adjustScreenBrightness(int deltaPercent, int exactPercent) const
+{
+    QDBusInterface iface(QStringLiteral("org.kde.Solid.PowerManagement"),
+                         QStringLiteral("/org/kde/Solid/PowerManagement/Actions/BrightnessControl"),
+                         QStringLiteral("org.kde.Solid.PowerManagement.Actions.BrightnessControl"),
+                         QDBusConnection::sessionBus());
+    if (!iface.isValid()) {
+        return false;
+    }
+
+    QDBusReply<int> maxReply = iface.call(QStringLiteral("brightnessMax"));
+    QDBusReply<int> curReply = iface.call(QStringLiteral("brightness"));
+    if (!maxReply.isValid() || maxReply.value() <= 0) {
+        return false;
+    }
+
+    const int maxVal = maxReply.value();
+    const int curVal = curReply.isValid() ? curReply.value() : (maxVal / 2);
+    int targetVal = curVal;
+
+    if (exactPercent >= 0) {
+        targetVal = qBound(1, (maxVal * exactPercent) / 100, maxVal);
+    } else {
+        targetVal = qBound(1, curVal + (maxVal * deltaPercent) / 100, maxVal);
+    }
+
+    iface.call(QStringLiteral("setBrightness"), targetVal);
+    return true;
+}
+
+QString KiriApplet::getNowPlayingMetadata() const
+{
+    const QString playerctl = QStandardPaths::findExecutable(QStringLiteral("playerctl"));
+    if (!playerctl.isEmpty()) {
+        QProcess proc;
+        proc.start(playerctl, {QStringLiteral("metadata"), QStringLiteral("--format"), QStringLiteral("{{title}}|||{{artist}}|||{{album}}")});
+        if (proc.waitForFinished(1200) && proc.exitCode() == 0) {
+            const QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+            if (!out.isEmpty()) {
+                const QStringList parts = out.split(QStringLiteral("|||"));
+                const QString title = parts.value(0).trimmed();
+                const QString artist = parts.value(1).trimmed();
+                const QString album = parts.value(2).trimmed();
+
+                if (!title.isEmpty() && !artist.isEmpty()) {
+                    if (!album.isEmpty()) {
+                        return i18n("Está sonando «%1» de %2 (álbum: %3).", title, artist, album);
+                    }
+                    return i18n("Está sonando «%1» de %2.", title, artist);
+                } else if (!title.isEmpty()) {
+                    return i18n("Está reproduciéndose «%1».", title);
+                }
+            }
+        }
+    }
+    return i18n("No hay ninguna canción ni pista multimedia reproduciéndose en este momento.");
+}
+
+QString KiriApplet::getSystemResourceSummary(const QString &aspect) const
+{
+    // Parse /proc/meminfo for RAM
+    double totalGiB = 0.0;
+    double usedGiB = 0.0;
+    double availGiB = 0.0;
+    int ramPct = 0;
+
+    QFile memFile(QStringLiteral("/proc/meminfo"));
+    if (memFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qint64 memTotalKb = 0;
+        qint64 memAvailKb = 0;
+        const QString content = QString::fromUtf8(memFile.readAll());
+        const QStringList lines = content.split(QLatin1Char('\n'));
+        for (const QString &line : lines) {
+            if (line.startsWith(QStringLiteral("MemTotal:"))) {
+                memTotalKb = line.simplified().section(QLatin1Char(' '), 1, 1).toLongLong();
+            } else if (line.startsWith(QStringLiteral("MemAvailable:"))) {
+                memAvailKb = line.simplified().section(QLatin1Char(' '), 1, 1).toLongLong();
+            }
+        }
+        if (memTotalKb > 0) {
+            totalGiB = memTotalKb / (1024.0 * 1024.0);
+            availGiB = memAvailKb / (1024.0 * 1024.0);
+            usedGiB = totalGiB - availGiB;
+            ramPct = qRound((usedGiB / totalGiB) * 100.0);
+        }
+    }
+
+    if (aspect == QStringLiteral("ram")) {
+        return i18n("Estás usando %1 GiB de %2 GiB de memoria RAM (%3% en uso, %4 GiB disponibles).",
+                    QString::number(usedGiB, 'f', 1),
+                    QString::number(totalGiB, 'f', 1),
+                    ramPct,
+                    QString::number(availGiB, 'f', 1));
+    }
+
+    // Disk info via QStorageInfo
+    const QStorageInfo rootStorage = QStorageInfo::root();
+    const double diskTotalGiB = rootStorage.bytesTotal() / (1024.0 * 1024.0 * 1024.0);
+    const double diskFreeGiB = rootStorage.bytesAvailable() / (1024.0 * 1024.0 * 1024.0);
+    const double diskUsedGiB = diskTotalGiB - diskFreeGiB;
+
+    if (aspect == QStringLiteral("disk")) {
+        return i18n("Tienes %1 GiB libres de un total de %2 GiB en la partición principal (%3 GiB ocupados).",
+                    QString::number(diskFreeGiB, 'f', 1),
+                    QString::number(diskTotalGiB, 'f', 1),
+                    QString::number(diskUsedGiB, 'f', 1));
+    }
+
+    // Local IP address
+    QString localIp = i18n("No conectada");
+    QProcess ipProc;
+    ipProc.start(QStringLiteral("hostname"), {QStringLiteral("-i")});
+    if (ipProc.waitForFinished(800) && ipProc.exitCode() == 0) {
+        const QString rawIp = QString::fromUtf8(ipProc.readAllStandardOutput()).trimmed();
+        if (!rawIp.isEmpty()) {
+            localIp = rawIp.section(QLatin1Char(' '), 0, 0);
+        }
+    }
+
+    if (aspect == QStringLiteral("ip")) {
+        return i18n("Tu dirección IP local es %1.", localIp);
+    }
+
+    const QString kernel = QSysInfo::kernelVersion();
+    const QString distro = QSysInfo::prettyProductName();
+    return i18n("**Estado del sistema (%1):**\n"
+                "- **Kernel:** Linux `%2`\n"
+                "- **Memoria RAM:** %3 GiB / %4 GiB (%5% en uso)\n"
+                "- **Disco principal:** %6 GiB libres de %7 GiB\n"
+                "- **IP local:** `%8`",
+                distro,
+                kernel,
+                QString::number(usedGiB, 'f', 1),
+                QString::number(totalGiB, 'f', 1),
+                ramPct,
+                QString::number(diskFreeGiB, 'f', 1),
+                QString::number(diskTotalGiB, 'f', 1),
+                localIp);
+}
+
 QString KiriApplet::fetchWeatherContext(const QString &query) const
 {
     static const QRegularExpression weatherRegex(QStringLiteral("(tiempo|clima|temperatura|llueve|pron[oó]stico)"), QRegularExpression::CaseInsensitiveOption);
@@ -1817,11 +2235,14 @@ QString KiriApplet::fetchWeatherContext(const QString &query) const
 QString KiriApplet::fetchDynamicLocalContext(const QString &query, const QString &intent) const
 {
     Q_UNUSED(intent)
-    static const QRegularExpression pkgRegex(QStringLiteral("(instalar|paquete|versi[oó]n de|cachyos)"), QRegularExpression::CaseInsensitiveOption);
+    QStringList ctx;
+    static const QRegularExpression pkgRegex(QStringLiteral("(instalar|paquete|versi[oó]n de|cachyos|kernel|sistema|ordenador|pc|hardware|cpu|gpu)"), QRegularExpression::CaseInsensitiveOption);
     if (query.contains(pkgRegex)) {
-        return QStringLiteral("Linux Distribution: CachyOS (Arch-based rolling release, pacman package manager, Linux CachyOS Kernel).");
+        ctx << QStringLiteral("Linux Distribution: %1 (Arch-based rolling release, pacman package manager, Kernel %2, KDE Plasma 6.8 on Wayland).")
+                   .arg(QSysInfo::prettyProductName(), QSysInfo::kernelVersion());
+        ctx << getSystemResourceSummary(QStringLiteral("all"));
     }
-    return QString();
+    return ctx.join(QStringLiteral("\n"));
 }
 
 void KiriApplet::ensureKnowledgeBaseReady()

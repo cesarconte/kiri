@@ -162,7 +162,7 @@ Item {
             // Welcome placeholder when conversation is empty
             ColumnLayout {
                 anchors.centerIn: parent
-                width: parent.width * 0.85
+                width: parent.width * 0.90
                 visible: Plasmoid.messages.length === 0
                 spacing: Kirigami.Units.largeSpacing
 
@@ -170,7 +170,7 @@ Item {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
                     level: 2
-                    text: i18n("How can I help you?")
+                    text: i18n("¿En qué puedo ayudarte?")
                     wrapMode: Text.WordWrap
                 }
 
@@ -179,7 +179,31 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     opacity: 0.75
                     wrapMode: Text.WordWrap
-                    text: i18n("Click the glowing orb below to speak with your voice, or type your question in the box.")
+                    text: i18n("Pulsa la esfera inferior o di «¡Hola Kiri!» para hablar, o elige una acción rápida:")
+                }
+
+                Flow {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignHCenter
+                    spacing: Kirigami.Units.smallSpacing
+
+                    Repeater {
+                        model: [
+                            { label: "🖥️ Analizar mi pantalla", prompt: "Analiza qué hay en mi pantalla" },
+                            { label: "📋 Resumir portapapeles", prompt: "Resume lo que he copiado en el portapapeles" },
+                            { label: "⚡ Estado del sistema", prompt: "Estado del sistema" },
+                            { label: "🎵 ¿Qué canción suena?", prompt: "¿Qué canción está sonando?" },
+                            { label: "🌙 Modo oscuro", prompt: "Activa el modo oscuro" },
+                            { label: "🌐 Abrir navegador", prompt: "Abre el navegador" }
+                        ]
+
+                        PlasmaComponents3.Button {
+                            required property var modelData
+                            text: modelData.label
+                            flat: false
+                            onClicked: Plasmoid.sendMessage(modelData.prompt, false)
+                        }
+                    }
                 }
             }
 
@@ -202,6 +226,41 @@ Item {
                         target: Plasmoid
                         function onStreamingTextChanged() {
                             chatListView.positionViewAtEnd();
+                        }
+                    }
+
+                    footer: Item {
+                        width: chatListView.width
+                        visible: Plasmoid.streamingText.length > 0
+                        height: visible ? streamBubble.height + Kirigami.Units.mediumSpacing : 0
+
+                        Rectangle {
+                            id: streamBubble
+                            width: parent.width * 0.92
+                            height: streamText.implicitHeight + Kirigami.Units.mediumSpacing * 2
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.topMargin: Kirigami.Units.smallSpacing
+                            radius: Kirigami.Units.mediumSpacing
+                            color: Kirigami.Theme.alternateBackgroundColor
+                            border.width: 1
+                            border.color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.35)
+
+                            TextEdit {
+                                id: streamText
+                                x: Kirigami.Units.mediumSpacing
+                                y: Kirigami.Units.mediumSpacing
+                                width: streamBubble.width - Kirigami.Units.mediumSpacing * 2
+                                readOnly: true
+                                selectByMouse: true
+                                cursorVisible: false
+                                activeFocusOnPress: false
+                                wrapMode: TextEdit.Wrap
+                                color: Kirigami.Theme.textColor
+                                font: Kirigami.Theme.defaultFont
+                                textFormat: TextEdit.PlainText
+                                text: Plasmoid.streamingText
+                            }
                         }
                     }
 

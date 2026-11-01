@@ -170,6 +170,28 @@ private Q_SLOTS:
         const QString grim = QStandardPaths::findExecutable(QStringLiteral("grim"));
         QVERIFY2(!spectacle.isEmpty() || !grim.isEmpty(), "Neither spectacle nor grim found on system for Wayland screen capture.");
     }
+
+    void testSiriSystemControlPatterns()
+    {
+        static const QRegularExpression volExactRegex(
+            QStringLiteral("(?:pon\\s+el\\s+|ajusta\\s+el\\s+)?(?:volumen|sonido|audio)\\s+(?:a|al)\\s*(\\d{1,3})\\s*(?:%|por\\s+ciento)?"),
+            QRegularExpression::CaseInsensitiveOption);
+        QRegularExpressionMatch vm = volExactRegex.match(QStringLiteral("pon el volumen al 65%"));
+        QVERIFY(vm.hasMatch());
+        QCOMPARE(vm.captured(1).toInt(), 65);
+
+        static const QRegularExpression darkThemeRegex(
+            QStringLiteral("(?:activa|pon|cambia\\s+a|habilita)\\s+(?:el\\s+)?(?:modo|tema)\\s+(?:oscuro|noche|dark)"),
+            QRegularExpression::CaseInsensitiveOption);
+        QVERIFY(QStringLiteral("activa el modo oscuro").contains(darkThemeRegex));
+        QVERIFY(QStringLiteral("pon modo oscuro").contains(darkThemeRegex));
+
+        static const QRegularExpression nowPlayingRegex(
+            QStringLiteral("(?:qu[eé]\\s+(?:canci[oó]n|m[uú]sica|pista|tema)\\s+(?:est[aá]\\s+sonando|suena|escucho)|qu[eé]\\s+est[aá]\\s+sonando|qu[eé]\\s+estoy\\s+escuchando)"),
+            QRegularExpression::CaseInsensitiveOption);
+        QVERIFY(QStringLiteral("¿qué canción está sonando?").contains(nowPlayingRegex));
+        QVERIFY(QStringLiteral("qué estoy escuchando").contains(nowPlayingRegex));
+    }
 };
 
 QTEST_MAIN(TestWakeWord)
