@@ -108,6 +108,11 @@ public:
     Q_INVOKABLE void openKnowledgeFolder() const;
     Q_INVOKABLE int knowledgeDocumentCount() const;
 
+    // Apple Intelligence Writing Tools (Phase 2)
+    Q_INVOKABLE QString readWaylandSelectionOrClipboard() const;
+    Q_INVOKABLE void applyWritingTool(const QString &action, const QString &customSourceText = QString());
+    Q_INVOKABLE static QString buildWritingToolPrompt(const QString &action, const QString &sourceText);
+
 Q_SIGNALS:
     void stateChanged();
     void statusMessageChanged();

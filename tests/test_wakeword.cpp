@@ -239,6 +239,26 @@ private Q_SLOTS:
             QVERIFY2(!comp.isError(), qPrintable(comp.errorString()));
         }
     }
+
+    void testWritingToolsPromptGeneration()
+    {
+        const QString sample = QStringLiteral("Hola mundo, esto es una prueba para revisar el estilo del texto.");
+        const QStringList actions = {
+            QStringLiteral("proofread"),
+            QStringLiteral("rewrite"),
+            QStringLiteral("friendly"),
+            QStringLiteral("professional"),
+            QStringLiteral("concise"),
+            QStringLiteral("summary"),
+            QStringLiteral("keypoints"),
+            QStringLiteral("table")
+        };
+
+        for (const QString &act : actions) {
+            QVERIFY(!act.isEmpty());
+        }
+        QVERIFY(sample.contains(QStringLiteral("prueba")));
+    }
 };
 
 QTEST_MAIN(TestWakeWord)

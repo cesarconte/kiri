@@ -1986,6 +1986,104 @@ int KiriApplet::knowledgeDocumentCount() const
 }
 
 // =========================================================================
+// Apple Intelligence Writing Tools (Phase 2)
+// =========================================================================
+
+QString KiriApplet::readWaylandSelectionOrClipboard() const
+{
+    QClipboard *cb = QGuiApplication::clipboard();
+    if (!cb) {
+        return QString();
+    }
+    QString text = cb->text(QClipboard::Selection).trimmed();
+    if (text.isEmpty()) {
+        text = cb->text(QClipboard::Clipboard).trimmed();
+    }
+    return text;
+}
+
+QString KiriApplet::buildWritingToolPrompt(const QString &action, const QString &sourceText)
+{
+    const QString cleanText = sourceText.trimmed();
+    if (cleanText.isEmpty()) {
+        return QString();
+    }
+
+    QString instruction;
+    if (action == QStringLiteral("proofread")) {
+        instruction = QStringLiteral(
+            "Actúa como la herramienta 'Corregir' (Proofread) de Apple Intelligence. "
+            "Corrige la ortografía, gramática y puntuación del siguiente texto en español de España, manteniendo su significado y estilo original. "
+            "Devuelve el texto corregido listo para copiar y, debajo, una breve nota de 1 o 2 líneas con las mejoras aplicadas.");
+    } else if (action == QStringLiteral("rewrite")) {
+        instruction = QStringLiteral(
+            "Actúa como la herramienta 'Reescribir' (Rewrite) de Apple Intelligence. "
+            "Reescribe el siguiente texto mejorando su fluidez, claridad y expresión en español de España. "
+            "Devuelve únicamente la versión reescrita lista para copiar, sin preámbulos.");
+    } else if (action == QStringLiteral("friendly")) {
+        instruction = QStringLiteral(
+            "Reescribe el siguiente texto con un tono cercano, cálido y amigable (Friendly tone) en español de España. "
+            "Devuelve únicamente el texto resultante listo para usar.");
+    } else if (action == QStringLiteral("professional")) {
+        instruction = QStringLiteral(
+            "Reescribe el siguiente texto con un tono formal, ejecutivo y profesional (Professional tone) en español de España. "
+            "Devuelve únicamente el texto resultante listo para usar.");
+    } else if (action == QStringLiteral("concise")) {
+        instruction = QStringLiteral(
+            "Reescribe el siguiente texto de forma concisa, directa y breve (Concise tone), eliminando redundancias. "
+            "Devuelve únicamente el texto resultante listo para usar.");
+    } else if (action == QStringLiteral("summary")) {
+        instruction = QStringLiteral(
+            "Genera un resumen ejecutivo claro y bien estructurado del siguiente texto en español de España.");
+    } else if (action == QStringLiteral("keypoints")) {
+        instruction = QStringLiteral(
+            "Extrae los puntos clave (Key Points) del siguiente texto en una lista de viñetas (Markdown) clara y directa.");
+    } else if (action == QStringLiteral("table")) {
+        instruction = QStringLiteral(
+            "Organiza y estructura la información del siguiente texto en una tabla Markdown clara y bien formateada.");
+    } else {
+        instruction = QStringLiteral("Mejora y procesa el siguiente texto en español de España:");
+    }
+
+    return QStringLiteral("%1\n\nTexto original:\n\"\"\"\n%2\n\"\"\"").arg(instruction, cleanText.left(6000));
+}
+
+void KiriApplet::applyWritingTool(const QString &action, const QString &customSourceText)
+{
+    const QString source = !customSourceText.trimmed().isEmpty()
+        ? customSourceText.trimmed()
+        : readWaylandSelectionOrClipboard();
+
+    if (source.isEmpty()) {
+        appendAssistantMessage(i18n("No hay texto seleccionado ni en el portapapeles ni en la caja de entrada. Selecciona o copia un texto primero para aplicar las Herramientas de Escritura."));
+        return;
+    }
+
+    QString actionLabel = i18n("Herramienta de Escritura");
+    if (action == QStringLiteral("proofread")) actionLabel = i18n("✍️ Corregir texto");
+    else if (action == QStringLiteral("rewrite")) actionLabel = i18n("✍️ Reescribir texto");
+    else if (action == QStringLiteral("friendly")) actionLabel = i18n("✍️ Tono amigable");
+    else if (action == QStringLiteral("professional")) actionLabel = i18n("✍️ Tono profesional");
+    else if (action == QStringLiteral("concise")) actionLabel = i18n("✍️ Tono conciso");
+    else if (action == QStringLiteral("summary")) actionLabel = i18n("✍️ Resumir");
+    else if (action == QStringLiteral("keypoints")) actionLabel = i18n("✍️ Puntos clave");
+    else if (action == QStringLiteral("table")) actionLabel = i18n("✍️ Convertir en tabla");
+
+    const QString preview = source.length() > 120 ? source.left(120) + QStringLiteral("…") : source;
+    QVariantMap userMsg;
+    userMsg[QStringLiteral("role")] = QStringLiteral("user");
+    userMsg[QStringLiteral("content")] = QStringLiteral("%1: «%2»").arg(actionLabel, preview);
+    userMsg[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    m_messages.append(userMsg);
+    Q_EMIT messagesChanged();
+    saveConversationHistory();
+
+    m_lastQueryWasVoice = false;
+    const QString fullPrompt = buildWritingToolPrompt(action, source);
+    sendToOllama(fullPrompt);
+}
+
+// =========================================================================
 // Context Providers (Vitals, Weather, Local Knowledge, Vision)
 // =========================================================================
 

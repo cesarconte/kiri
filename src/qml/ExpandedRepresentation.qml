@@ -17,6 +17,7 @@ import org.kde.plasma.plasmoid
 Item {
     id: expandedRoot
     property var widget: null
+    property bool showWritingTools: false
 
     implicitWidth: Kirigami.Units.gridUnit * 24
     implicitHeight: Kirigami.Units.gridUnit * 30
@@ -185,6 +186,17 @@ Item {
                 }
             }
 
+            // Apple Intelligence Writing Tools Toggle Button
+            PlasmaComponents3.ToolButton {
+                id: writingToolsButton
+                icon.name: "document-edit-symbolic"
+                checkable: true
+                checked: expandedRoot.showWritingTools
+                onClicked: expandedRoot.showWritingTools = !expandedRoot.showWritingTools
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.text: i18n("Herramientas de Escritura (Corregir, Reescribir, Tono y Resumen sobre texto seleccionado o escrito)")
+            }
+
             // Clear Conversation Button
             PlasmaComponents3.ToolButton {
                 icon.name: "edit-clear-history-symbolic"
@@ -197,6 +209,81 @@ Item {
 
         Kirigami.Separator {
             Layout.fillWidth: true
+        }
+
+        // Apple Intelligence Writing Tools Panel (Phase 2)
+        LiquidGlassCard {
+            id: writingToolsBar
+            Layout.fillWidth: true
+            visible: expandedRoot.showWritingTools
+            implicitHeight: wtCol.implicitHeight + Kirigami.Units.smallSpacing * 2
+            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
+            isHighlighted: false
+
+            ColumnLayout {
+                id: wtCol
+                anchors.fill: parent
+                anchors.margins: Kirigami.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+
+                    Kirigami.Icon {
+                        source: "document-edit-symbolic"
+                        implicitWidth: Kirigami.Units.iconSizes.small
+                        implicitHeight: Kirigami.Units.iconSizes.small
+                        color: Kirigami.Theme.highlightColor
+                    }
+
+                    PlasmaComponents3.Label {
+                        Layout.fillWidth: true
+                        font.bold: true
+                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                        text: promptField.text.trim().length > 0
+                            ? i18n("Herramientas de Escritura (usando caja de texto)")
+                            : i18n("Herramientas de Escritura (usando selección / portapapeles Wayland)")
+                        elide: Text.ElideRight
+                    }
+                }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 4
+                    columnSpacing: Kirigami.Units.smallSpacing
+                    rowSpacing: Kirigami.Units.smallSpacing
+                    uniformCellWidths: true
+
+                    Repeater {
+                        model: [
+                            { action: "proofread", label: i18n("✓ Corregir") },
+                            { action: "rewrite", label: i18n("↻ Reescribir") },
+                            { action: "friendly", label: i18n("😊 Amigable") },
+                            { action: "professional", label: i18n("💼 Profesional") },
+                            { action: "concise", label: i18n("⚡ Conciso") },
+                            { action: "summary", label: i18n("📝 Resumir") },
+                            { action: "keypoints", label: i18n("• Puntos clave") },
+                            { action: "table", label: i18n("⊞ Tabla") }
+                        ]
+
+                        PlasmaComponents3.Button {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            text: modelData.label
+                            font: Kirigami.Theme.smallFont
+                            enabled: !Plasmoid.isBusy
+                            onClicked: {
+                                const customText = promptField.text.trim();
+                                Plasmoid.applyWritingTool(modelData.action, customText);
+                                if (customText.length > 0) {
+                                    promptField.text = "";
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Status / Readiness Inline Message
@@ -244,19 +331,25 @@ Item {
 
                     Repeater {
                         model: [
-                            { label: "🖥️ Analizar pantalla", prompt: "Analiza qué hay en mi pantalla" },
-                            { label: "📋 Resumir copiado", prompt: "Resume lo que he copiado en el portapapeles" },
-                            { label: "⚡ Estado del sistema", prompt: "Estado del sistema" },
-                            { label: "🎵 ¿Qué canción suena?", prompt: "¿Qué canción está sonando?" },
-                            { label: "🌙 Modo oscuro", prompt: "Activa el modo oscuro" },
-                            { label: "🌐 Abrir navegador", prompt: "Abre el navegador" }
+                            { label: "🖥️ Analizar pantalla", prompt: "Analiza qué hay en mi pantalla", isWritingTool: false },
+                            { label: "✍️ Herramientas de escritura", prompt: "", isWritingTool: true },
+                            { label: "📋 Resumir copiado", prompt: "Resume lo que he copiado en el portapapeles", isWritingTool: false },
+                            { label: "⚡ Estado del sistema", prompt: "Estado del sistema", isWritingTool: false },
+                            { label: "🎵 ¿Qué canción suena?", prompt: "¿Qué canción está sonando?", isWritingTool: false },
+                            { label: "🌙 Modo oscuro", prompt: "Activa el modo oscuro", isWritingTool: false }
                         ]
 
                         PlasmaComponents3.Button {
                             required property var modelData
                             Layout.fillWidth: true
                             text: modelData.label
-                            onClicked: Plasmoid.sendMessage(modelData.prompt, false)
+                            onClicked: {
+                                if (modelData.isWritingTool) {
+                                    expandedRoot.showWritingTools = true;
+                                } else {
+                                    Plasmoid.sendMessage(modelData.prompt, false);
+                                }
+                            }
                         }
                     }
                 }
