@@ -216,7 +216,7 @@ Item {
             // Visual Intelligence & Live Text Toggle Button (Phase 3 - Spectacle Wayland + OCR)
             PlasmaComponents3.ToolButton {
                 id: visualIntelButton
-                icon.name: "rectangular-snip-symbolic"
+                icon.name: "camera-photo-symbolic"
                 checkable: true
                 checked: expandedRoot.showVisualIntelligence
                 onClicked: {
@@ -338,7 +338,7 @@ Item {
                     spacing: Kirigami.Units.smallSpacing
 
                     Kirigami.Icon {
-                        source: "rectangular-snip-symbolic"
+                        source: "camera-photo-symbolic"
                         implicitWidth: Kirigami.Units.iconSizes.small
                         implicitHeight: Kirigami.Units.iconSizes.small
                         color: Kirigami.Theme.highlightColor
