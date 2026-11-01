@@ -461,38 +461,52 @@ void KiriApplet::sendMessage(const QString &text, bool fromVoice)
     // 3. Check vision action (screen vision request)
     QString base64Image;
     static const QRegularExpression screenRegex(
-        QStringLiteral("(pantalla|screen|captura|mira lo que|analiza(?:r)?\\s+(?:mi\\s+|la\\s+)?pantalla|qu[eé] hay en|qu[eé] ves en)"),
+        QStringLiteral("(pantalla|screen|captura|escritorio|mira lo que|analiza(?:r)?\\s+(?:mi\\s+|la\\s+)?pantalla|qu[eé] hay en|qu[eé] ves en|qu[eé]\\s+aplicaci[oó]n\\s+se\\s+muestra)"),
         QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(screenRegex)) {
-        setState(QStringLiteral("thinking"), i18n("Capturando y analizando tu pantalla…"));
+        setState(QStringLiteral("thinking"), i18n("Analizando las ventanas y el contenido de tu pantalla…"));
         QCoreApplication::processEvents();
 
+        // Layer 1: Query KWin Wayland compositor for exact open applications and active windows
+        const QString kwinWindows = collectKWinWindowsInfo();
+
+        // Layer 2: Capture screen via Spectacle and extract visible UI text via Tesseract OCR
         const QString tmpShot = QDir::tempPath() + QStringLiteral("/kiri_vision_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
         captureScreenToPng(tmpShot);
+        const QString ocrText = extractScreenOcrText(tmpShot);
         base64Image = encodeImageToBase64(tmpShot);
         QFile::remove(tmpShot);
 
-        if (base64Image.isEmpty()) {
-            appendAssistantMessage(i18n("No se pudo capturar la imagen de la pantalla a través de Spectacle en Wayland."));
+        if (kwinWindows.isEmpty() && ocrText.isEmpty() && base64Image.isEmpty()) {
+            appendAssistantMessage(i18n("No se pudo inspeccionar la pantalla en este momento."));
             return;
         }
 
-        const QString visionModel = detectAvailableVisionModel();
-        if (visionModel.contains(QStringLiteral("moondream"), Qt::CaseInsensitive)) {
+        QStringList screenFacts;
+        if (!kwinWindows.isEmpty()) {
+            screenFacts << QStringLiteral("1. APLICACIONES Y VENTANAS REALES DETECTADAS EN KWIN WAYLAND:\n%1").arg(kwinWindows);
+        }
+        if (!ocrText.isEmpty()) {
+            screenFacts << QStringLiteral("2. TEXTO VISIBLE EXTRAÍDO DE LA PANTALLA (OCR):\n\"\"\"\n%1\n\"\"\"").arg(ocrText);
+        }
+
+        // Only query moondream if neither KWin nor OCR returned meaningful desktop content
+        if (screenFacts.isEmpty() && !base64Image.isEmpty()) {
             const QString visualDesc = analyzeImageWithVisionModel(base64Image);
-            base64Image.clear();
             if (!visualDesc.isEmpty()) {
-                effectivePrompt = QStringLiteral(
-                    "El sistema de visión de Kiri acaba de capturar la pantalla del usuario y ha detectado exactamente lo siguiente en ella:\n"
-                    "\"\"\"\n%1\n\"\"\"\n\n"
-                    "Actúa como Kiri, el asistente visual del sistema: traduce, interpreta y explica de forma directa y natural en español de España qué hay en la pantalla del usuario respondiendo a: \"%2\". "
-                    "IMPORTANTE: Ya tienes la descripción visual arriba, por lo que NUNCA digas que no puedes ver la pantalla ni pidas al usuario que te la describa.")
-                    .arg(visualDesc, trimmed);
-            } else {
-                appendAssistantMessage(i18n("No se pudo obtener el análisis visual desde el modelo de visión (%1) en Ollama.", visionModel));
-                return;
+                screenFacts << QStringLiteral("Descripción visual general:\n%1").arg(visualDesc);
             }
         }
+        base64Image.clear();
+
+        effectivePrompt = QStringLiteral(
+            "El motor de inspección de escritorio de Kiri en KDE Plasma 6.8 (Wayland) acaba de analizar la pantalla actual del usuario y ha obtenido estos datos reales y exactos:\n\n"
+            "%1\n\n"
+            "Instrucciones estrictas para Kiri:\n"
+            "- Responde en español de España a la petición del usuario: \"%2\".\n"
+            "- Indica con total claridad qué aplicación o aplicaciones se están ejecutando y mostrando en pantalla ahora mismo (por ejemplo, si la ventana activa es Antigravity, menciona explícitamente Antigravity y el título/proyecto que tiene abierto), qué contenido o conversación se lee en la interfaz según el texto extraído, y si hay otras ventanas abiertas o minimizadas.\n"
+            "- PROHIBIDO inventar o alucinar objetos que no estén en los datos anteriores (nunca digas que ves un teclado, un ratón, ni digas que no puedes ver la pantalla).")
+            .arg(screenFacts.join(QStringLiteral("\n\n")), trimmed);
     }
 
     sendToOllama(effectivePrompt, context, base64Image);
@@ -2435,6 +2449,153 @@ QString KiriApplet::encodeImageToBase64(const QString &imagePath, int maxDimensi
     buffer.open(QIODevice::WriteOnly);
     img.save(&buffer, "JPEG", 85);
     return QString::fromLatin1(bytes.toBase64());
+}
+
+QString KiriApplet::collectKWinWindowsInfo() const
+{
+    const qint64 token = QDateTime::currentMSecsSinceEpoch();
+    const QString marker = QStringLiteral("KIRI_WIN_%1:").arg(token);
+    const QString scriptName = QStringLiteral("kiri_win_probe_%1").arg(token);
+    const QString scriptPath = QDir::tempPath() + QStringLiteral("/%1.js").arg(scriptName);
+
+    QFile scriptFile(scriptPath);
+    if (!scriptFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return QString();
+    }
+
+    const QString jsCode = QStringLiteral(
+        "const wins = workspace.windowList();\n"
+        "for (let i = 0; i < wins.length; ++i) {\n"
+        "    const w = wins[i];\n"
+        "    if (w.normalWindow && !w.skipTaskbar) {\n"
+        "        print(\"%1\" + w.resourceClass + \"|||\" + w.caption + \"|||\" + (w.active ? \"1\" : \"0\") + \"|||\" + (w.minimized ? \"1\" : \"0\"));\n"
+        "    }\n"
+        "}\n").arg(marker);
+    scriptFile.write(jsCode.toUtf8());
+    scriptFile.close();
+
+    QDBusInterface scriptingIface(QStringLiteral("org.kde.KWin"),
+                                  QStringLiteral("/Scripting"),
+                                  QStringLiteral("org.kde.kwin.Scripting"),
+                                  QDBusConnection::sessionBus());
+    if (!scriptingIface.isValid()) {
+        QFile::remove(scriptPath);
+        return QString();
+    }
+
+    QDBusReply<int> loadReply = scriptingIface.call(QStringLiteral("loadScript"), scriptPath, scriptName);
+    if (loadReply.isValid()) {
+        const int scriptId = loadReply.value();
+        QDBusInterface scriptObj(QStringLiteral("org.kde.KWin"),
+                                 QStringLiteral("/Scripting/Script%1").arg(scriptId),
+                                 QStringLiteral("org.kde.kwin.Script"),
+                                 QDBusConnection::sessionBus());
+        if (scriptObj.isValid()) {
+            scriptObj.call(QStringLiteral("run"));
+        } else {
+            scriptingIface.call(QStringLiteral("start"));
+        }
+        scriptingIface.call(QStringLiteral("unloadScript"), scriptName);
+    }
+    QFile::remove(scriptPath);
+
+    // Give journald ~80ms to flush kwin_wayland's print() output
+    QEventLoop waitLoop;
+    QTimer::singleShot(80, &waitLoop, &QEventLoop::quit);
+    waitLoop.exec();
+
+    QProcess jProc;
+    jProc.start(QStringLiteral("journalctl"),
+                {QStringLiteral("--user"), QStringLiteral("-u"), QStringLiteral("plasma-kwin_wayland.service"),
+                 QStringLiteral("-n"), QStringLiteral("60"), QStringLiteral("--no-pager")});
+    jProc.waitForFinished(1000);
+    const QString logOutput = QString::fromUtf8(jProc.readAllStandardOutput());
+
+    QStringList visibleWindows;
+    QStringList minimizedWindows;
+    QString activeWindowSummary;
+
+    const QStringList lines = logOutput.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        const int idx = line.indexOf(marker);
+        if (idx < 0) continue;
+
+        const QString payload = line.mid(idx + marker.length()).trimmed();
+        const QStringList parts = payload.split(QStringLiteral("|||"));
+        if (parts.size() < 4) continue;
+
+        const QString appClass = parts.at(0).trimmed();
+        const QString caption = parts.at(1).trimmed();
+        const bool isActive = (parts.at(2) == QStringLiteral("1"));
+        const bool isMinimized = (parts.at(3) == QStringLiteral("1"));
+
+        // Ignore plasmashell itself
+        if (appClass.contains(QStringLiteral("plasmashell"), Qt::CaseInsensitive)) {
+            continue;
+        }
+
+        const QString formatted = QStringLiteral("Aplicación: `%1` — Título de ventana: \"%2\"").arg(appClass, caption);
+        if (isMinimized) {
+            minimizedWindows << formatted;
+        } else {
+            if (isActive) {
+                activeWindowSummary = formatted + QStringLiteral(" (VENTANA PRINCIPAL ACTIVA Y EN PRIMER PLANO)");
+                visibleWindows.prepend(activeWindowSummary);
+            } else {
+                visibleWindows.append(formatted);
+            }
+        }
+    }
+
+    QStringList result;
+    if (!visibleWindows.isEmpty()) {
+        result << QStringLiteral("Ventanas visibles actualmente en pantalla:\n- ") + visibleWindows.join(QStringLiteral("\n- "));
+    }
+    if (!minimizedWindows.isEmpty()) {
+        result << QStringLiteral("Ventanas minimizadas en segundo plano (ocultas):\n- ") + minimizedWindows.join(QStringLiteral("\n- "));
+    }
+    return result.join(QStringLiteral("\n\n"));
+}
+
+QString KiriApplet::extractScreenOcrText(const QString &imagePath) const
+{
+    if (imagePath.isEmpty() || !QFileInfo::exists(imagePath)) {
+        return QString();
+    }
+
+    const QString tesseract = QStandardPaths::findExecutable(QStringLiteral("tesseract"));
+    if (tesseract.isEmpty()) {
+        return QString();
+    }
+
+    QProcess proc;
+    QEventLoop loop;
+    QTimer timeoutTimer;
+    timeoutTimer.setSingleShot(true);
+    connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    connect(&proc, &QProcess::finished, &loop, &QEventLoop::quit);
+
+    proc.start(tesseract, {imagePath, QStringLiteral("stdout"), QStringLiteral("--psm"), QStringLiteral("3")});
+    timeoutTimer.start(3500);
+    loop.exec();
+
+    if (proc.state() != QProcess::NotRunning) {
+        proc.kill();
+        proc.waitForFinished(200);
+    }
+
+    const QString rawOcr = QString::fromUtf8(proc.readAllStandardOutput());
+    QStringList cleanLines;
+    const QStringList lines = rawOcr.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        const QString t = line.trimmed();
+        // Keep lines with meaningful text (at least 4 characters and contains letters)
+        if (t.length() >= 4 && t.contains(QRegularExpression(QStringLiteral("[a-zA-ZáéíóúÁÉÍÓÚñÑ]{3,}")))) {
+            cleanLines << t;
+        }
+    }
+
+    return cleanLines.join(QLatin1Char('\n')).left(2400).trimmed();
 }
 
 // =========================================================================
