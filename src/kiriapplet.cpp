@@ -4,6 +4,9 @@
 */
 
 #include "kiriapplet.h"
+#include "mathnotes.h"
+
+#include <QHash>
 #include "debug.h"
 
 #include <cmath>
@@ -2017,7 +2020,12 @@ QString KiriApplet::buildWritingToolPrompt(const QString &action, const QString 
     }
 
     QString instruction;
-    if (action == QStringLiteral("proofread")) {
+    if (action.startsWith(QStringLiteral("translate:"))) {
+        const QString target = languageDisplayName(action.mid(10));
+        instruction = QStringLiteral(
+            "Actúa como la app Traducir de Apple. Traduce el siguiente texto a %1 de forma natural y fiel, "
+            "detectando automáticamente el idioma de origen. Devuelve únicamente la traducción, sin comentarios.").arg(target);
+    } else if (action == QStringLiteral("proofread")) {
         instruction = QStringLiteral(
             "Actúa como la herramienta 'Corregir' (Proofread) de Apple Intelligence. "
             "Corrige la ortografía, gramática y puntuación del siguiente texto en español de España, manteniendo su significado y estilo original. "
@@ -2075,6 +2083,7 @@ void KiriApplet::applyWritingTool(const QString &action, const QString &customSo
     else if (action == QStringLiteral("summary")) actionLabel = i18n("✍️ Resumir");
     else if (action == QStringLiteral("keypoints")) actionLabel = i18n("✍️ Puntos clave");
     else if (action == QStringLiteral("table")) actionLabel = i18n("✍️ Convertir en tabla");
+    else if (action.startsWith(QStringLiteral("translate:"))) actionLabel = i18n("🌐 Traducir a %1", languageDisplayName(action.mid(10)));
 
     const QString preview = source.length() > 120 ? source.left(120) + QStringLiteral("…") : source;
     QVariantMap userMsg;
@@ -2088,6 +2097,29 @@ void KiriApplet::applyWritingTool(const QString &action, const QString &customSo
     m_lastQueryWasVoice = false;
     const QString fullPrompt = buildWritingToolPrompt(action, source);
     sendToOllama(fullPrompt);
+}
+
+QString KiriApplet::languageDisplayName(const QString &code)
+{
+    static const QHash<QString, QString> names = {
+        {QStringLiteral("es"), QStringLiteral("español de España")}, {QStringLiteral("en"), QStringLiteral("inglés")},
+        {QStringLiteral("fr"), QStringLiteral("francés")},           {QStringLiteral("de"), QStringLiteral("alemán")},
+        {QStringLiteral("it"), QStringLiteral("italiano")},          {QStringLiteral("pt"), QStringLiteral("portugués")},
+        {QStringLiteral("ca"), QStringLiteral("catalán")},           {QStringLiteral("ja"), QStringLiteral("japonés")},
+        {QStringLiteral("zh"), QStringLiteral("chino simplificado")},
+    };
+    const QString c = code.trimmed().toLower();
+    return names.value(c, c.isEmpty() ? QStringLiteral("español de España") : c);
+}
+
+void KiriApplet::translateSelection(const QString &targetLanguage)
+{
+    applyWritingTool(QStringLiteral("translate:") + (targetLanguage.isEmpty() ? QStringLiteral("es") : targetLanguage));
+}
+
+QStringList KiriApplet::evaluateMathNotes(const QString &text) const
+{
+    return MathNotes::evaluateLines(text);
 }
 
 // =========================================================================

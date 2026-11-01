@@ -13,6 +13,8 @@ ecm_qt_declare_logging_category(kiri_SRCS
 plasma_add_applet(org.cesar.kiri
     CPP_SOURCES
         kiriapplet.cpp
+        mathnotes.cpp
+        mathnotes.h
         ${kiri_SRCS}
     QML_SOURCES
         qml/main.qml

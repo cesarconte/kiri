@@ -19,6 +19,8 @@ Item {
     property var widget: null
     property bool showWritingTools: false
     property bool showVisualIntelligence: false
+    property bool showMathNotes: false
+    property var mathResults: []
     property string visualCaptureScope: "region"
 
     implicitWidth: Kirigami.Units.gridUnit * 24
@@ -207,6 +209,7 @@ Item {
                     expandedRoot.showWritingTools = !expandedRoot.showWritingTools;
                     if (expandedRoot.showWritingTools) {
                         expandedRoot.showVisualIntelligence = false;
+                        expandedRoot.showMathNotes = false;
                     }
                 }
                 QQC2.ToolTip.visible: hovered
@@ -223,10 +226,29 @@ Item {
                     expandedRoot.showVisualIntelligence = !expandedRoot.showVisualIntelligence;
                     if (expandedRoot.showVisualIntelligence) {
                         expandedRoot.showWritingTools = false;
+                        expandedRoot.showMathNotes = false;
                     }
                 }
                 QQC2.ToolTip.visible: hovered
                 QQC2.ToolTip.text: i18n("Inteligencia Visual y Live Text (Capturar región o ventana con Spectacle + OCR + IA)")
+            }
+
+            // Math Notes Toggle Button (macOS Math Notes: live multi-line calculator with variables)
+            PlasmaComponents3.ToolButton {
+                id: mathNotesButton
+                icon.name: "view-time-schedule-calculus-symbolic"
+                checkable: true
+                checked: expandedRoot.showMathNotes
+                onClicked: {
+                    expandedRoot.showMathNotes = !expandedRoot.showMathNotes;
+                    if (expandedRoot.showMathNotes) {
+                        expandedRoot.showWritingTools = false;
+                        expandedRoot.showVisualIntelligence = false;
+                        Qt.callLater(() => mathInput.forceActiveFocus());
+                    }
+                }
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.text: i18n("Notas matemáticas (cálculo en vivo con variables, unidades y divisas)")
             }
 
             // Clear Conversation Button
@@ -296,7 +318,9 @@ Item {
                             { action: "concise", label: i18n("⚡ Conciso") },
                             { action: "summary", label: i18n("📝 Resumir") },
                             { action: "keypoints", label: i18n("• Puntos clave") },
-                            { action: "table", label: i18n("⊞ Tabla") }
+                            { action: "table", label: i18n("⊞ Tabla") },
+                            { action: "translate:en", label: i18n("🌐 → Inglés") },
+                            { action: "translate:es", label: i18n("🌐 → Español") }
                         ]
 
                         PlasmaComponents3.Button {
@@ -312,6 +336,67 @@ Item {
                                     promptField.text = "";
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Math Notes Panel (macOS Math Notes): each line is evaluated live, variables persist across lines
+        LiquidGlassCard {
+            id: mathNotesBar
+            Layout.fillWidth: true
+            Layout.preferredHeight: Kirigami.Units.gridUnit * 9
+            visible: expandedRoot.showMathNotes
+            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
+            isHighlighted: false
+
+            Timer {
+                id: mathDebounce
+                interval: 350
+                onTriggered: expandedRoot.mathResults = Plasmoid.evaluateMathNotes(mathInput.text)
+            }
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: Kirigami.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
+
+                QQC2.ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.preferredWidth: parent.width * 0.58
+
+                    PlasmaComponents3.TextArea {
+                        id: mathInput
+                        font.family: "monospace"
+                        wrapMode: TextEdit.NoWrap
+                        placeholderText: i18n("precio = 12,5\ncantidad = 8\ntotal = precio * cantidad\n15% de total\n5 km to miles")
+                        onTextChanged: mathDebounce.restart()
+                    }
+                }
+
+                Kirigami.Separator { Layout.fillHeight: true }
+
+                Column {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.preferredWidth: parent.width * 0.38
+                    spacing: 0
+
+                    Repeater {
+                        model: expandedRoot.mathResults
+
+                        PlasmaComponents3.Label {
+                            required property var modelData
+                            width: parent.width
+                            height: mathInput.font.pixelSize > 0 ? Math.round(mathInput.font.pixelSize * 1.5) : Kirigami.Units.gridUnit
+                            verticalAlignment: Text.AlignVCenter
+                            horizontalAlignment: Text.AlignRight
+                            elide: Text.ElideRight
+                            font.family: "monospace"
+                            color: Kirigami.Theme.highlightColor
+                            text: modelData.length > 0 ? ("= " + modelData) : ""
                         }
                     }
                 }

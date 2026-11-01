@@ -31,6 +31,8 @@ void KiriRunner::init()
               i18n("Pregunta a Kiri, ejecuta acciones del sistema o busca en tu base de conocimiento local (RAG)"));
     addSyntax(QStringLiteral("escribe :q:"),
               i18n("Aplica las Herramientas de Escritura de Kiri sobre el portapapeles o texto indicado"));
+    addSyntax(QStringList{QStringLiteral("traduce :q:"), QStringLiteral("translate :q:")},
+              i18n("Traduce el texto indicado (o tu selección / portapapeles) con Kiri"));
     addSyntax(QStringLiteral("ocr"),
               i18n("Extrae texto de una región de la pantalla (Live Text con Spectacle Wayland)"));
 }
@@ -141,6 +143,35 @@ void KiriRunner::match(KRunner::RunnerContext &context)
         return;
     }
 
+    // 2b. System-wide translation ("traduce [texto]", "translate [text]"): selection/clipboard when no text given
+    static const QRegularExpression translateRx(QStringLiteral("^(?:kiri\\s+)?(?:traduce|traducir|translate)\\b\\s*(.*)$"),
+                                                QRegularExpression::CaseInsensitiveOption);
+    const auto tm = translateRx.match(rawQuery);
+    if (tm.hasMatch()) {
+        const QString inlineText = tm.captured(1).trimmed();
+        const QString what = inlineText.isEmpty() ? i18n("tu selección o portapapeles") : i18n("«%1»", inlineText.left(60));
+        const QList<QPair<QString, QString>> targets = {{QStringLiteral("en"), i18n("inglés")}, {QStringLiteral("es"), i18n("español")},
+                                                        {QStringLiteral("fr"), i18n("francés")}, {QStringLiteral("de"), i18n("alemán")}};
+        qreal rel = 0.96;
+        for (const auto &t : targets) {
+            KRunner::QueryMatch m(this);
+            m.setId(QStringLiteral("kiri_tr_") + t.first);
+            m.setCategoryRelevance(KRunner::QueryMatch::CategoryRelevance::High);
+            m.setRelevance(rel);
+            rel -= 0.04;
+            m.setIconName(QStringLiteral("translate-symbolic"));
+            m.setText(i18n("🌐 Kiri: Traducir al %1", t.second));
+            m.setSubtext(i18n("Traduce %1 con IA local (Ollama)", what));
+            QVariantMap payload;
+            payload[QStringLiteral("type")] = QStringLiteral("writing_tool");
+            payload[QStringLiteral("action")] = QStringLiteral("translate:") + t.first;
+            payload[QStringLiteral("text")] = inlineText;
+            m.setData(payload);
+            context.addMatch(m);
+        }
+        return;
+    }
+
     // 3. Direct Kiri AI / System Intent query ("kiri ...", "ia ...", or natural question ending with "?")
     static const QRegularExpression prefixRx(QStringLiteral("^(?:kiri|ia)\\s+(.+)$"), QRegularExpression::CaseInsensitiveOption);
     const auto pm = prefixRx.match(rawQuery);
@@ -209,7 +240,7 @@ void KiriRunner::run(const KRunner::RunnerContext &context, const KRunner::Query
     } else if (type == QStringLiteral("writing_tool")) {
         genericIface.asyncCall(QStringLiteral("applyWritingTool"),
                                payload.value(QStringLiteral("action")).toString(),
-                               QString());
+                               payload.value(QStringLiteral("text")).toString());
     } else if (type == QStringLiteral("ask")) {
         genericIface.asyncCall(QStringLiteral("sendMessage"),
                                payload.value(QStringLiteral("prompt")).toString(),

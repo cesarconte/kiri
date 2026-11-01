@@ -113,6 +113,13 @@ public:
     Q_INVOKABLE void applyWritingTool(const QString &action, const QString &customSourceText = QString());
     Q_INVOKABLE static QString buildWritingToolPrompt(const QString &action, const QString &sourceText);
 
+    // System-wide translation of the Wayland selection/clipboard (macOS Translate), callable over D-Bus
+    Q_INVOKABLE void translateSelection(const QString &targetLanguage = QStringLiteral("es"));
+    Q_INVOKABLE static QString languageDisplayName(const QString &code);
+
+    // macOS Math Notes: live evaluation of a multi-line scratchpad with persistent variables
+    Q_INVOKABLE QStringList evaluateMathNotes(const QString &text) const;
+
     // Visual Intelligence & Live Text (Phase 3 - KDE Spectacle Wayland + Tesseract OCR)
     Q_INVOKABLE void runVisualIntelligence(const QString &captureMode, const QString &action = QStringLiteral("ocr"), const QString &customQuestion = QString());
     Q_INVOKABLE static QVariantMap parseLiveTextEntities(const QString &ocrText);
