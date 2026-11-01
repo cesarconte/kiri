@@ -106,8 +106,8 @@ Item {
                     spacing: Kirigami.Units.smallSpacing / 2
 
                     Rectangle {
-                        width: 7
-                        height: 7
+                        implicitWidth: 7
+                        implicitHeight: 7
                         radius: 3.5
                         color: {
                             if (!Plasmoid.ollamaReachable) {
