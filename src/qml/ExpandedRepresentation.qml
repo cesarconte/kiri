@@ -12,7 +12,6 @@ import QtQuick.Layouts
 
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PlasmaComponents3
-import org.kde.plasma.extras as PlasmaExtras
 import org.kde.plasma.plasmoid
 
 Item {
@@ -33,6 +32,17 @@ Item {
         promptField.forceActiveFocus();
     }
 
+    function formatTimestamp(raw: string): string {
+        if (!raw || raw.length === 0) {
+            return "";
+        }
+        const tIdx = raw.indexOf("T");
+        if (tIdx >= 0 && raw.length >= tIdx + 6) {
+            return raw.substring(tIdx + 1, tIdx + 6);
+        }
+        return raw;
+    }
+
     Component.onCompleted: {
         Plasmoid.checkReadiness();
         Qt.callLater(() => focusInput());
@@ -41,6 +51,7 @@ Item {
     onVisibleChanged: {
         if (visible) {
             Plasmoid.checkReadiness();
+            Plasmoid.refreshModels();
             Qt.callLater(() => focusInput());
         }
     }
@@ -69,35 +80,97 @@ Item {
         anchors.margins: Kirigami.Units.smallSpacing
         spacing: Kirigami.Units.smallSpacing
 
-        // Main Plasma Navigation Bar
+        // Assistant Header Bar
         RowLayout {
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
 
-            QQC2.ComboBox {
-                id: modelCombo
+            Kirigami.Icon {
+                source: Plasmoid.state === "listening" ? "kiri-listening-symbolic" : "kiri-symbolic"
+                implicitWidth: Kirigami.Units.iconSizes.smallMedium
+                implicitHeight: Kirigami.Units.iconSizes.smallMedium
+            }
+
+            ColumnLayout {
                 Layout.fillWidth: true
-                model: Plasmoid.availableModels.length > 0
-                    ? Plasmoid.availableModels
-                    : [Plasmoid.configuration.ollamaModel]
-                currentIndex: {
-                    const idx = model.indexOf(Plasmoid.configuration.ollamaModel);
-                    return idx >= 0 ? idx : 0;
+                spacing: 0
+
+                Kirigami.Heading {
+                    level: 4
+                    text: i18n("Kiri")
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
                 }
-                onActivated: index => {
-                    Plasmoid.configuration.ollamaModel = textAt(index);
+
+                RowLayout {
+                    spacing: Kirigami.Units.smallSpacing / 2
+
+                    Rectangle {
+                        width: 7
+                        height: 7
+                        radius: 3.5
+                        color: {
+                            if (!Plasmoid.ollamaReachable) {
+                                return Kirigami.Theme.negativeTextColor;
+                            }
+                            if (Plasmoid.state === "listening") {
+                                return "#00e5ff";
+                            }
+                            if (Plasmoid.wakeWordEnabled) {
+                                return Kirigami.Theme.positiveTextColor;
+                            }
+                            return Kirigami.Theme.disabledTextColor;
+                        }
+                    }
+
+                    PlasmaComponents3.Label {
+                        font: Kirigami.Theme.smallFont
+                        opacity: 0.75
+                        elide: Text.ElideRight
+                        text: {
+                            if (!Plasmoid.ollamaReachable) {
+                                return i18n("Sin conexión con Ollama");
+                            }
+                            if (Plasmoid.state === "listening") {
+                                return i18n("Escuchando…");
+                            }
+                            if (Plasmoid.state === "transcribing") {
+                                return i18n("Transcribiendo…");
+                            }
+                            if (Plasmoid.state === "thinking") {
+                                return i18n("Pensando…");
+                            }
+                            if (Plasmoid.state === "speaking") {
+                                return i18n("Hablando…");
+                            }
+                            if (Plasmoid.wakeWordEnabled) {
+                                return i18n("«¡Hola Kiri!» activo");
+                            }
+                            return i18n("Listo");
+                        }
+                    }
                 }
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: i18n("Active Ollama model")
             }
 
+            // Quick Toggle for "¡Hola Kiri!" Wake Word
             PlasmaComponents3.ToolButton {
-                icon.name: "view-refresh-symbolic"
-                onClicked: Plasmoid.refreshModels()
+                id: wakeWordButton
+                visible: Plasmoid.whisperAvailable
+                icon.name: Plasmoid.wakeWordEnabled ? "mic-on" : "mic-off"
+                checkable: true
+                checked: Plasmoid.wakeWordEnabled
+                onClicked: {
+                    const nextState = !Plasmoid.wakeWordEnabled;
+                    Plasmoid.configuration.wakeWordEnabled = nextState;
+                    Plasmoid.wakeWordEnabled = nextState;
+                }
                 QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: i18n("Refresh Ollama models")
+                QQC2.ToolTip.text: Plasmoid.wakeWordEnabled
+                    ? i18n("Escucha activa «¡Hola Kiri!» activada (clic para desactivar)")
+                    : i18n("Activar escucha manos libres «¡Hola Kiri!»")
             }
 
+            // Speech Output Mode Selector Button
             PlasmaComponents3.ToolButton {
                 id: speechModeButton
                 icon.name: {
@@ -125,20 +198,33 @@ Item {
                 QQC2.ToolTip.text: {
                     const mode = Plasmoid.configuration.speechOutputMode;
                     if (mode === "always") {
-                        return i18n("Voice responses: Always speak answers aloud");
+                        return i18n("Respuestas por voz: Hablar siempre en voz alta");
                     } else if (mode === "voice_only") {
-                        return i18n("Voice responses: Speak when asked by voice");
+                        return i18n("Respuestas por voz: Hablar cuando preguntes con la voz");
                     }
-                    return i18n("Voice responses: Manual only (click Speak on a message)");
+                    return i18n("Respuestas por voz: Solo manual (al pulsar el altavoz en un mensaje)");
                 }
             }
 
+            // Clear Conversation Button
             PlasmaComponents3.ToolButton {
                 icon.name: "edit-clear-history-symbolic"
-                enabled: Plasmoid.messages.length > 0
+                visible: Plasmoid.messages.length > 0
                 onClicked: Plasmoid.clearHistory()
                 QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: i18n("Clear conversation")
+                QQC2.ToolTip.text: i18n("Limpiar conversación")
+            }
+
+            // Pin Popup Window Button
+            PlasmaComponents3.ToolButton {
+                icon.name: "window-pin-symbolic"
+                checkable: true
+                checked: Plasmoid.configuration.pin
+                onToggled: {
+                    Plasmoid.configuration.pin = checked;
+                }
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.text: i18n("Mantener ventana fija al cambiar de aplicación")
             }
         }
 
@@ -151,7 +237,7 @@ Item {
             Layout.fillWidth: true
             visible: !Plasmoid.ollamaReachable
             type: Kirigami.MessageType.Warning
-            text: i18n("Ollama is not reachable at %1. Run scripts/setup-models.sh or start ollama.service.", Plasmoid.configuration.ollamaUrl)
+            text: i18n("No se puede conectar con Ollama en %1. Ejecuta scripts/setup-models.sh o inicia ollama.service.", Plasmoid.configuration.ollamaUrl)
         }
 
         // Conversation History or Empty Welcome State
@@ -162,7 +248,7 @@ Item {
             // Welcome placeholder when conversation is empty
             ColumnLayout {
                 anchors.centerIn: parent
-                width: parent.width * 0.90
+                width: parent.width * 0.94
                 visible: Plasmoid.messages.length === 0
                 spacing: Kirigami.Units.largeSpacing
 
@@ -182,15 +268,17 @@ Item {
                     text: i18n("Pulsa la esfera inferior o di «¡Hola Kiri!» para hablar, o elige una acción rápida:")
                 }
 
-                Flow {
+                GridLayout {
                     Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignHCenter
-                    spacing: Kirigami.Units.smallSpacing
+                    columns: 2
+                    columnSpacing: Kirigami.Units.smallSpacing
+                    rowSpacing: Kirigami.Units.smallSpacing
+                    uniformCellWidths: true
 
                     Repeater {
                         model: [
-                            { label: "🖥️ Analizar mi pantalla", prompt: "Analiza qué hay en mi pantalla" },
-                            { label: "📋 Resumir portapapeles", prompt: "Resume lo que he copiado en el portapapeles" },
+                            { label: "🖥️ Analizar pantalla", prompt: "Analiza qué hay en mi pantalla" },
+                            { label: "📋 Resumir copiado", prompt: "Resume lo que he copiado en el portapapeles" },
                             { label: "⚡ Estado del sistema", prompt: "Estado del sistema" },
                             { label: "🎵 ¿Qué canción suena?", prompt: "¿Qué canción está sonando?" },
                             { label: "🌙 Modo oscuro", prompt: "Activa el modo oscuro" },
@@ -199,8 +287,8 @@ Item {
 
                         PlasmaComponents3.Button {
                             required property var modelData
+                            Layout.fillWidth: true
                             text: modelData.label
-                            flat: false
                             onClicked: Plasmoid.sendMessage(modelData.prompt, false)
                         }
                     }
@@ -258,8 +346,8 @@ Item {
                                 wrapMode: TextEdit.Wrap
                                 color: Kirigami.Theme.textColor
                                 font: Kirigami.Theme.defaultFont
-                                textFormat: TextEdit.PlainText
-                                text: Plasmoid.streamingText
+                                textFormat: TextEdit.RichText
+                                text: Plasmoid.renderMarkdown(Plasmoid.streamingText)
                             }
                         }
                     }
@@ -273,14 +361,14 @@ Item {
                         implicitHeight: bubbleRect.height
 
                         readonly property bool isUser: modelData.role === "user"
-                        readonly property var detectedCmds: (!isUser && !modelData.streaming)
+                        readonly property var detectedCmds: !isUser
                             ? Plasmoid.extractTerminalCommands(modelData.content)
                             : []
 
                         Rectangle {
                             id: bubbleRect
                             width: msgDelegate.isUser
-                                ? Math.min(parent.width * 0.88, Math.max(Kirigami.Units.gridUnit * 8, msgColumn.implicitWidth + Kirigami.Units.mediumSpacing * 2))
+                                ? Math.min(parent.width * 0.88, Math.max(Kirigami.Units.gridUnit * 6, msgColumn.implicitWidth + Kirigami.Units.mediumSpacing * 2))
                                 : parent.width * 0.92
                             height: msgColumn.implicitHeight + Kirigami.Units.mediumSpacing * 2
                             anchors.right: msgDelegate.isUser ? parent.right : undefined
@@ -311,22 +399,11 @@ Item {
                                     wrapMode: TextEdit.Wrap
                                     color: Kirigami.Theme.textColor
                                     font: Kirigami.Theme.defaultFont
-                                    textFormat: {
-                                        if (msgDelegate.isUser || msgDelegate.modelData.streaming) {
-                                            return TextEdit.PlainText;
-                                        }
-                                        return TextEdit.RichText;
-                                    }
+                                    textFormat: msgDelegate.isUser ? TextEdit.PlainText : TextEdit.RichText
                                     onLinkActivated: link => Qt.openUrlExternally(link)
-                                    text: {
-                                        if (msgDelegate.modelData.streaming) {
-                                            return Plasmoid.streamingText.length > 0 ? Plasmoid.streamingText : "…"
-                                        }
-                                        if (msgDelegate.isUser) {
-                                            return msgDelegate.modelData.content;
-                                        }
-                                        return Plasmoid.renderMarkdown(msgDelegate.modelData.content);
-                                    }
+                                    text: msgDelegate.isUser
+                                        ? msgDelegate.modelData.content
+                                        : Plasmoid.renderMarkdown(msgDelegate.modelData.content)
 
                                     HoverHandler {
                                         cursorShape: parent.hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor
@@ -408,16 +485,16 @@ Item {
                                     spacing: Kirigami.Units.smallSpacing
 
                                     PlasmaComponents3.Label {
-                                        text: msgDelegate.modelData.timestamp ?? ""
+                                        text: expandedRoot.formatTimestamp(msgDelegate.modelData.timestamp ?? "")
                                         font: Kirigami.Theme.smallFont
-                                        opacity: 0.6
+                                        opacity: 0.55
                                     }
 
                                     Item { Layout.fillWidth: true }
 
                                     // Speak / Stop button on Assistant responses
                                     PlasmaComponents3.ToolButton {
-                                        visible: !msgDelegate.isUser && !msgDelegate.modelData.streaming && msgDelegate.modelData.content.length > 0
+                                        visible: !msgDelegate.isUser && msgDelegate.modelData.content.length > 0
                                         icon.name: Plasmoid.isSpeaking ? "media-playback-stop-symbolic" : "audio-volume-high-symbolic"
                                         flat: true
                                         implicitWidth: Kirigami.Units.iconSizes.smallMedium
@@ -430,23 +507,21 @@ Item {
                                             }
                                         }
                                         QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: Plasmoid.isSpeaking ? i18n("Stop speaking") : i18n("Read aloud")
+                                        QQC2.ToolTip.text: Plasmoid.isSpeaking ? i18n("Detener lectura") : i18n("Leer en voz alta")
                                     }
 
                                     // Copy message button
                                     PlasmaComponents3.ToolButton {
-                                        visible: !msgDelegate.modelData.streaming && msgDelegate.modelData.content.length > 0
+                                        visible: msgDelegate.modelData.content.length > 0
                                         icon.name: "edit-copy-symbolic"
                                         flat: true
                                         implicitWidth: Kirigami.Units.iconSizes.smallMedium
                                         implicitHeight: Kirigami.Units.iconSizes.smallMedium
                                         onClicked: {
-                                            msgText.selectAll();
-                                            msgText.copy();
-                                            msgText.deselect();
+                                            Plasmoid.copyToClipboard(msgDelegate.modelData.content);
                                         }
                                         QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: i18n("Copy text")
+                                        QQC2.ToolTip.text: i18n("Copiar texto")
                                     }
                                 }
                             }
@@ -456,27 +531,22 @@ Item {
             }
         }
 
-        // Dynamic status bar when recording, transcribing, thinking, or speaking
+        // Dynamic status bar when recording, transcribing, thinking, or speaking (collapses when empty)
         PlasmaComponents3.Label {
             Layout.fillWidth: true
-            Layout.preferredHeight: Kirigami.Units.gridUnit * 1.2
+            visible: Plasmoid.statusMessage.length > 0
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             text: Plasmoid.statusMessage
             font: Kirigami.Theme.smallFont
             color: Plasmoid.state === "error" ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.highlightColor
-            opacity: Plasmoid.statusMessage.length > 0 ? 1.0 : 0.0
             wrapMode: Text.WordWrap
-
-            Behavior on opacity {
-                NumberAnimation { duration: 150 }
-            }
         }
 
-        // Siri Orb Centered Interactive Control
+        // Siri Orb Centered Interactive Voice Control
         Item {
             Layout.fillWidth: true
-            implicitHeight: Kirigami.Units.gridUnit * 4.2
+            implicitHeight: Kirigami.Units.gridUnit * 4.0
             clip: true
 
             SiriOrbAnimation {
@@ -496,23 +566,10 @@ Item {
             }
         }
 
-        // Bottom Text Input & Send Bar
+        // Bottom Text Input & Send Bar (Clean, without redundant mic button)
         RowLayout {
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
-
-            PlasmaComponents3.ToolButton {
-                id: inputMicButton
-                Layout.alignment: Qt.AlignBottom
-                visible: Plasmoid.whisperAvailable
-                icon.name: Plasmoid.isRecording ? "media-playback-stop-symbolic" : "audio-input-microphone-symbolic"
-                flat: true
-                onClicked: Plasmoid.toggleRecording()
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: Plasmoid.isRecording
-                    ? i18n("Stop listening (Ctrl+M)")
-                    : i18n("Listen by voice (Ctrl+M)")
-            }
 
             PlasmaComponents3.ScrollView {
                 id: promptScrollView
@@ -525,8 +582,8 @@ Item {
                     id: promptField
                     focus: true
                     placeholderText: Plasmoid.isRecording
-                        ? i18n("Listening to your voice…")
-                        : i18n("Ask Kiri anything…")
+                        ? i18n("Escuchando tu voz…")
+                        : i18n("Pregúntale o pídele cualquier cosa a Kiri…")
                     enabled: !Plasmoid.isRecording
                     wrapMode: TextEdit.Wrap
 
@@ -555,7 +612,7 @@ Item {
                     }
                 }
                 QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: Plasmoid.state === "thinking" ? i18n("Stop generation") : i18n("Send message")
+                QQC2.ToolTip.text: Plasmoid.state === "thinking" ? i18n("Detener generación") : i18n("Enviar mensaje")
             }
         }
     }

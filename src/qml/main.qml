@@ -31,15 +31,15 @@ PlasmoidItem {
     toolTipMainText: i18n("Kiri")
     toolTipSubText: {
         if (Plasmoid.state === "listening") {
-            return i18n("Listening to your voice…");
+            return i18n("Escuchando tu voz…");
         } else if (Plasmoid.state === "transcribing") {
-            return i18n("Transcribing speech…");
+            return i18n("Transcribiendo voz…");
         } else if (Plasmoid.state === "thinking") {
-            return i18n("Thinking…");
+            return i18n("Pensando…");
         } else if (Plasmoid.state === "speaking") {
-            return i18n("Speaking response…");
+            return i18n("Reproduciendo respuesta…");
         }
-        return i18n("Click to open Kiri or middle-click to speak immediately");
+        return i18n("Haz clic para abrir Kiri o clic central para hablar de inmediato");
     }
 
     onExpandedChanged: {
@@ -63,7 +63,7 @@ PlasmoidItem {
 
     Plasmoid.contextualActions: [
         PlasmaCore.Action {
-            text: Plasmoid.isRecording ? i18n("Stop Listening") : i18n("Listen by Voice")
+            text: Plasmoid.isRecording ? i18n("Detener escucha") : i18n("Hablar por voz")
             icon.name: "kiri-symbolic"
             onTriggered: {
                 root.expanded = true;
@@ -71,13 +71,13 @@ PlasmoidItem {
             }
         },
         PlasmaCore.Action {
-            text: i18n("Stop Speaking")
+            text: i18n("Detener lectura en voz alta")
             icon.name: "media-playback-stop-symbolic"
             visible: Plasmoid.isSpeaking
             onTriggered: Plasmoid.stopSpeaking()
         },
         PlasmaCore.Action {
-            text: i18n("Clear Conversation")
+            text: i18n("Limpiar conversación")
             icon.name: "edit-clear-history-symbolic"
             enabled: Plasmoid.messages.length > 0
             onTriggered: Plasmoid.clearHistory()
