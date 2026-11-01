@@ -141,9 +141,15 @@ void KiriApplet::setState(const QString &newState, const QString &newStatus)
     }
 
     if (newState == QLatin1String("idle") && m_wakeWordEnabled) {
-        QTimer::singleShot(500, this, [this]() {
+        QTimer::singleShot(450, this, [this]() {
             if (m_state == QLatin1String("idle") && m_wakeWordEnabled) {
                 startWakeWordListener();
+            }
+        });
+    } else if (newState == QLatin1String("error") && m_wakeWordEnabled) {
+        QTimer::singleShot(3500, this, [this]() {
+            if (m_state == QLatin1String("error") && m_wakeWordEnabled) {
+                setState(QStringLiteral("idle"), QString());
             }
         });
     }
@@ -329,6 +335,57 @@ void KiriApplet::refreshModels()
 // Conversation & Ollama LLM Interaction
 // =========================================================================
 
+void KiriApplet::appendAssistantMessage(const QString &text, bool speakIfAppropriate)
+{
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty()) {
+        return;
+    }
+
+    QVariantMap assistantMsg;
+    assistantMsg[QStringLiteral("role")] = QStringLiteral("assistant");
+    assistantMsg[QStringLiteral("content")] = trimmed;
+    assistantMsg[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    m_messages.append(assistantMsg);
+    Q_EMIT messagesChanged();
+    saveConversationHistory();
+
+    if (speakIfAppropriate) {
+        const QString speechMode = resolveSpeechOutputMode();
+        if (speechMode == QLatin1String("always") || (speechMode == QLatin1String("voice_only") && m_lastQueryWasVoice)) {
+            speakText(trimmed);
+            return;
+        }
+    }
+
+    setState(QStringLiteral("idle"), QString());
+}
+
+QString KiriApplet::analyzeImageWithVisionModel(const QString &base64Image) const
+{
+    if (base64Image.isEmpty()) {
+        return QString();
+    }
+
+    QJsonObject reqPayload;
+    reqPayload[QStringLiteral("model")] = resolveVisionModel();
+    reqPayload[QStringLiteral("prompt")] = QStringLiteral("Describe accurately and concisely everything visible on this computer screen, including active window titles, visible text, and UI elements.");
+    reqPayload[QStringLiteral("stream")] = false;
+
+    QJsonArray imgs;
+    imgs.append(base64Image);
+    reqPayload[QStringLiteral("images")] = imgs;
+
+    const QUrl genUrl(resolveOllamaUrl() + QStringLiteral("/api/generate"));
+    const QByteArray rawResp = httpPostJsonSync(genUrl, reqPayload, 12000);
+    if (rawResp.isEmpty()) {
+        return QString();
+    }
+
+    const QJsonDocument doc = QJsonDocument::fromJson(rawResp);
+    return doc.object().value(QStringLiteral("response")).toString().trimmed();
+}
+
 void KiriApplet::sendMessage(const QString &text, bool fromVoice)
 {
     const QString trimmed = text.trimmed();
@@ -379,12 +436,24 @@ void KiriApplet::sendMessage(const QString &text, bool fromVoice)
 
     // 3. Check vision action (screen vision request)
     QString base64Image;
-    static const QRegularExpression screenRegex(QStringLiteral("(pantalla|screen|captura|mira lo que|analiza mi pantalla)"), QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression screenRegex(QStringLiteral("(pantalla|screen|captura|mira lo que|analiza mi pantalla|qu[eé] hay en|qu[eé] ves en)"), QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(screenRegex)) {
+        setState(QStringLiteral("thinking"), i18n("Capturando y analizando la pantalla…"));
         const QString tmpShot = QDir::tempPath() + QStringLiteral("/kiri_vision_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
         captureScreenToPng(tmpShot);
         base64Image = encodeImageToBase64(tmpShot);
         QFile::remove(tmpShot);
+
+        if (!base64Image.isEmpty()) {
+            const QString visionModel = resolveVisionModel();
+            if (visionModel.contains(QStringLiteral("moondream"), Qt::CaseInsensitive)) {
+                const QString visualDesc = analyzeImageWithVisionModel(base64Image);
+                if (!visualDesc.isEmpty()) {
+                    context.append(QStringLiteral("[Screen Visual Content:\n%1]\n\n").arg(visualDesc));
+                    base64Image.clear();
+                }
+            }
+        }
     }
 
     sendToOllama(trimmed, context, base64Image);
@@ -837,7 +906,7 @@ void KiriApplet::playNextTtsQueueItem()
 {
     if (m_ttsQueue.isEmpty()) {
         m_isSpeakingSentence = false;
-        if (m_state == QLatin1String("speaking")) {
+        if (m_state == QLatin1String("speaking") || m_state == QLatin1String("transcribing")) {
             setState(QStringLiteral("idle"), QString());
         }
         return;
@@ -1105,8 +1174,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         QString launchedName;
         if (launchApplication(appQuery, &launchedName)) {
             const QString resp = i18n("Abriendo %1.", launchedName.isEmpty() ? appQuery : launchedName);
-            sendMessage(resp, false);
-            speakText(resp);
+            appendAssistantMessage(resp);
             return true;
         }
     }
@@ -1121,8 +1189,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         QString closedName;
         if (closeApplication(appQuery, &closedName)) {
             const QString resp = i18n("Cerrando %1.", closedName.isEmpty() ? appQuery : closedName);
-            sendMessage(resp, false);
-            speakText(resp);
+            appendAssistantMessage(resp);
             return true;
         }
     }
@@ -1132,8 +1199,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     if (trimmed.contains(volUpRegex)) {
         QProcess::execute(QStringLiteral("wpctl"), QStringList() << QStringLiteral("set-volume") << QStringLiteral("@DEFAULT_AUDIO_SINK@") << QStringLiteral("5%+"));
         const QString resp = i18n("Subiendo el volumen.");
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1141,8 +1207,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     if (trimmed.contains(volDownRegex)) {
         QProcess::execute(QStringLiteral("wpctl"), QStringList() << QStringLiteral("set-volume") << QStringLiteral("@DEFAULT_AUDIO_SINK@") << QStringLiteral("5%-"));
         const QString resp = i18n("Bajando el volumen.");
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1150,8 +1215,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     if (trimmed.contains(volMuteRegex) || trimmed.compare(QStringLiteral("silencio"), Qt::CaseInsensitive) == 0) {
         QProcess::execute(QStringLiteral("wpctl"), QStringList() << QStringLiteral("set-mute") << QStringLiteral("@DEFAULT_AUDIO_SINK@") << QStringLiteral("1"));
         const QString resp = i18n("Audio silenciado.");
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1159,8 +1223,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     if (trimmed.contains(volUnmuteRegex)) {
         QProcess::execute(QStringLiteral("wpctl"), QStringList() << QStringLiteral("set-mute") << QStringLiteral("@DEFAULT_AUDIO_SINK@") << QStringLiteral("0"));
         const QString resp = i18n("Audio reactivado.");
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1169,8 +1232,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     if (trimmed.contains(mediaPlayRegex) || trimmed.compare(QStringLiteral("reproducir"), Qt::CaseInsensitive) == 0) {
         QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("play"));
         const QString resp = i18n("Reanudando reproducción.");
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1178,8 +1240,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     if (trimmed.contains(mediaPauseRegex) || trimmed.compare(QStringLiteral("pausa"), Qt::CaseInsensitive) == 0) {
         QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("pause"));
         const QString resp = i18n("Pausando reproducción.");
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1187,8 +1248,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     if (trimmed.contains(mediaNextRegex)) {
         QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("next"));
         const QString resp = i18n("Siguiente pista.");
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1196,8 +1256,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     if (trimmed.contains(mediaPrevRegex)) {
         QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("previous"));
         const QString resp = i18n("Pista anterior.");
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1206,8 +1265,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     if (trimmed.contains(lockScreenRegex)) {
         QProcess::startDetached(QStringLiteral("qdbus6"), QStringList() << QStringLiteral("org.freedesktop.ScreenSaver") << QStringLiteral("/ScreenSaver") << QStringLiteral("Lock"));
         const QString resp = i18n("Bloqueando la pantalla.");
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1216,8 +1274,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     if (trimmed.contains(shotActionRegex) && !trimmed.contains(QStringLiteral("analiza")) && !trimmed.contains(QStringLiteral("mira"))) {
         QProcess::startDetached(QStringLiteral("spectacle"), QStringList());
         const QString resp = i18n("Abriendo herramienta de captura de pantalla.");
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1232,8 +1289,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
 
         if (setActivePowerProfile(targetProfile)) {
             const QString resp = i18n("Perfil de energía cambiado a %1.", modeStr);
-            sendMessage(resp, false);
-            speakText(resp);
+            appendAssistantMessage(resp);
             return true;
         }
     }
@@ -1243,8 +1299,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     if (trimmed.contains(enableDndRegex)) {
         setDoNotDisturb(true);
         const QString resp = i18n("Modo No Molestar activado.");
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1252,8 +1307,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     if (trimmed.contains(disableDndRegex)) {
         setDoNotDisturb(false);
         const QString resp = i18n("Modo No Molestar desactivado.");
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1262,8 +1316,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     if (trimmed.contains(batteryRegex) && trimmed.contains(QStringLiteral("?"))) {
         const QString bInfo = getLocalBatteryInfo();
         if (!bInfo.isEmpty()) {
-            sendMessage(bInfo, false);
-            speakText(bInfo);
+            appendAssistantMessage(bInfo);
             return true;
         }
     }
@@ -1286,8 +1339,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         });
 
         const QString resp = i18n("Temporizador establecido para %1 %2.", val, unit);
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1298,8 +1350,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         if (!devices.isEmpty()) {
             if (ringKdeConnectDevice(devices.first().id)) {
                 const QString resp = i18n("Haciendo sonar tu teléfono (%1)…", devices.first().name);
-                sendMessage(resp, false);
-                speakText(resp);
+                appendAssistantMessage(resp);
                 return true;
             }
         }
@@ -1312,8 +1363,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         if (!devices.isEmpty()) {
             const QString bStr = getKdeConnectBattery(devices.first().id);
             if (!bStr.isEmpty()) {
-                sendMessage(bStr, false);
-                speakText(bStr);
+                appendAssistantMessage(bStr);
                 return true;
             }
         }
@@ -1326,8 +1376,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         const QString evPrompt = calMatch.captured(1).trimmed();
         if (createCalendarEvent(evPrompt, QString())) {
             const QString resp = i18n("Evento registrado en el calendario: %1.", evPrompt);
-            sendMessage(resp, false);
-            speakText(resp);
+            appendAssistantMessage(resp);
             return true;
         }
     }
@@ -1341,8 +1390,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         const QString client = readConfigString(QStringLiteral("defaultEmailClient"), QStringLiteral("proton"));
         composeEmail(to, i18n("Mensaje de Kiri"), body, client);
         const QString resp = i18n("Abriendo cliente de correo para enviar mensaje a %1.", to);
-        sendMessage(resp, false);
-        speakText(resp);
+        appendAssistantMessage(resp);
         return true;
     }
 
@@ -1578,7 +1626,73 @@ void KiriApplet::copyToClipboard(const QString &text) const
 
 QString KiriApplet::renderMarkdown(const QString &markdown) const
 {
-    return markdown;
+    if (markdown.isEmpty()) {
+        return QString();
+    }
+
+    // 1. Extract fenced code blocks to protect them from inline markdown replacements
+    QString working = markdown;
+    QStringList codeBlocks;
+    static const QRegularExpression fencedCodeRegex(QStringLiteral("```(?:[a-zA-Z0-9_+\\-]*)?\\s*\\n([\\s\\S]*?)```"));
+    auto it = fencedCodeRegex.globalMatch(working);
+    int offset = 0;
+    while (it.hasNext()) {
+        const QRegularExpressionMatch m = it.next();
+        const QString codeContent = m.captured(1).trimmed().toHtmlEscaped();
+        const QString placeholder = QStringLiteral("@@KIRI_CODE_BLOCK_%1@@").arg(codeBlocks.size());
+        codeBlocks.append(QStringLiteral("<pre style=\"margin-top:4px; margin-bottom:4px;\"><code>%1</code></pre>").arg(codeContent));
+        working.replace(m.capturedStart() + offset, m.capturedLength(), placeholder);
+        offset += placeholder.length() - m.capturedLength();
+    }
+
+    // 2. Escape HTML entities in non-code text
+    QString html = working.toHtmlEscaped();
+
+    // 3. Inline code `...`
+    static const QRegularExpression inlineCodeRegex(QStringLiteral("`([^`\\n]+)`"));
+    html.replace(inlineCodeRegex, QStringLiteral("<code>\\1</code>"));
+
+    // 4. Bold + Italic ***...***
+    static const QRegularExpression boldItalicRegex(QStringLiteral("\\*\\*\\*([^\\*\\n]+)\\*\\*\\*"));
+    html.replace(boldItalicRegex, QStringLiteral("<b><i>\\1</i></b>"));
+
+    // 5. Bold **...**
+    static const QRegularExpression boldRegex(QStringLiteral("\\*\\*([^\\*\\n]+)\\*\\*"));
+    html.replace(boldRegex, QStringLiteral("<b>\\1</b>"));
+
+    // 6. Italic *...*
+    static const QRegularExpression italicRegex(QStringLiteral("(?:^|(?<=\\s))\\*([^\\*\\n]+)\\*(?=$|\\s|[.,;:!?])"));
+    html.replace(italicRegex, QStringLiteral("<i>\\1</i>"));
+
+    // 7. Markdown links [text](url)
+    static const QRegularExpression linkRegex(QStringLiteral("\\[([^\\]]+)\\]\\((https?://[^\\)]+)\\)"));
+    html.replace(linkRegex, QStringLiteral("<a href=\"\\2\">\\1</a>"));
+
+    // 8. Headings (#, ##, ###) and unordered list items (- or *) line by line
+    QStringList lines = html.split(QLatin1Char('\n'));
+    static const QRegularExpression headingRegex(QStringLiteral("^\\s*#{1,4}\\s+(.+)$"));
+    static const QRegularExpression listRegex(QStringLiteral("^\\s*[\\-\\*]\\s+(.+)$"));
+
+    for (QString &line : lines) {
+        const QRegularExpressionMatch hm = headingRegex.match(line);
+        if (hm.hasMatch()) {
+            line = QStringLiteral("<b>%1</b>").arg(hm.captured(1));
+            continue;
+        }
+        const QRegularExpressionMatch lm = listRegex.match(line);
+        if (lm.hasMatch()) {
+            line = QStringLiteral("• %1").arg(lm.captured(1));
+        }
+    }
+
+    html = lines.join(QStringLiteral("<br>"));
+
+    // 9. Restore fenced code blocks
+    for (int i = 0; i < codeBlocks.size(); ++i) {
+        html.replace(QStringLiteral("@@KIRI_CODE_BLOCK_%1@@").arg(i), codeBlocks.at(i));
+    }
+
+    return html;
 }
 
 void KiriApplet::openKnowledgeFolder() const
@@ -1815,10 +1929,20 @@ QString KiriApplet::fetchKnowledgeBaseContext(const QString &query) const
 
 QString KiriApplet::captureScreenToPng(const QString &destPath) const
 {
+    const QString spectacle = QStandardPaths::findExecutable(QStringLiteral("spectacle"));
+    if (!spectacle.isEmpty()) {
+        QProcess proc;
+        proc.start(spectacle, {QStringLiteral("-b"), QStringLiteral("-n"), QStringLiteral("-o"), destPath});
+        if (proc.waitForFinished(5000) && QFileInfo::exists(destPath) && QFileInfo(destPath).size() > 0) {
+            return destPath;
+        }
+    }
+
     const QString grim = QStandardPaths::findExecutable(QStringLiteral("grim"));
     if (!grim.isEmpty()) {
-        QProcess::execute(grim, QStringList() << destPath);
-        return destPath;
+        if (QProcess::execute(grim, QStringList() << destPath) == 0 && QFileInfo::exists(destPath)) {
+            return destPath;
+        }
     }
     return QString();
 }

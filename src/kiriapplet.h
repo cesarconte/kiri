@@ -129,7 +129,9 @@ private Q_SLOTS:
 
 private:
     void setState(const QString &newState, const QString &newStatus = QString());
+    void appendAssistantMessage(const QString &text, bool speakIfAppropriate = true);
     void sendToOllama(const QString &userPrompt, const QString &injectedContext = QString(), const QString &base64Image = QString());
+    QString analyzeImageWithVisionModel(const QString &base64Image) const;
     bool detectAndExecuteSystemAction(const QString &input);
 
     // Speech & Audio

@@ -163,6 +163,13 @@ private Q_SLOTS:
             QVERIFY(!target.isEmpty());
         }
     }
+
+    void testWaylandScreenCaptureUtility()
+    {
+        const QString spectacle = QStandardPaths::findExecutable(QStringLiteral("spectacle"));
+        const QString grim = QStandardPaths::findExecutable(QStringLiteral("grim"));
+        QVERIFY2(!spectacle.isEmpty() || !grim.isEmpty(), "Neither spectacle nor grim found on system for Wayland screen capture.");
+    }
 };
 
 QTEST_MAIN(TestWakeWord)
