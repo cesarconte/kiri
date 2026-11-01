@@ -113,6 +113,10 @@ public:
     Q_INVOKABLE void applyWritingTool(const QString &action, const QString &customSourceText = QString());
     Q_INVOKABLE static QString buildWritingToolPrompt(const QString &action, const QString &sourceText);
 
+    // Visual Intelligence & Live Text (Phase 3 - KDE Spectacle Wayland + Tesseract OCR)
+    Q_INVOKABLE void runVisualIntelligence(const QString &captureMode, const QString &action = QStringLiteral("ocr"), const QString &customQuestion = QString());
+    Q_INVOKABLE static QVariantMap parseLiveTextEntities(const QString &ocrText);
+
 Q_SIGNALS:
     void stateChanged();
     void statusMessageChanged();
@@ -175,7 +179,7 @@ private:
     QString collectKWinWindowsInfo() const;
     QString extractScreenOcrText(const QString &imagePath) const;
     QString detectAvailableVisionModel() const;
-    QString captureScreenToPng(const QString &destPath) const;
+    QString captureScreenToPng(const QString &destPath, const QString &captureMode = QStringLiteral("fullscreen")) const;
     QString encodeImageToBase64(const QString &imagePath, int maxDimension = 1024) const;
 
     // KDE & System Integrations

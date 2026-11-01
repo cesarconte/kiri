@@ -259,6 +259,24 @@ private Q_SLOTS:
         }
         QVERIFY(sample.contains(QStringLiteral("prueba")));
     }
+
+    void testLiveTextEntityExtraction()
+    {
+        const QString ocrSample = QStringLiteral(
+            "Contacto: soporte@cachyos.org y ventas@kde.org\n"
+            "Documentación oficial en https://wiki.cachyos.org/es/home\n"
+            "Teléfono de asistencia: +34 612 345 678");
+
+        static const QRegularExpression urlRx(QStringLiteral("https?://[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+"), QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression emailRx(QStringLiteral("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}"), QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression phoneRx(QStringLiteral("(?:\\+\\d{1,3}[\\s\\-]?)?(?:\\d[\\s\\-]?){8,11}\\d"));
+
+        QVERIFY(ocrSample.contains(urlRx));
+        QVERIFY(ocrSample.contains(emailRx));
+        QVERIFY(ocrSample.contains(phoneRx));
+        QCOMPARE(urlRx.match(ocrSample).captured(0), QStringLiteral("https://wiki.cachyos.org/es/home"));
+        QCOMPARE(emailRx.match(ocrSample).captured(0), QStringLiteral("soporte@cachyos.org"));
+    }
 };
 
 QTEST_MAIN(TestWakeWord)

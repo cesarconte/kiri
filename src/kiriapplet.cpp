@@ -2084,6 +2084,141 @@ void KiriApplet::applyWritingTool(const QString &action, const QString &customSo
 }
 
 // =========================================================================
+// Visual Intelligence & Live Text (Phase 3 - Spectacle Wayland + Tesseract OCR)
+// =========================================================================
+
+QVariantMap KiriApplet::parseLiveTextEntities(const QString &ocrText)
+{
+    QVariantMap res;
+    QStringList urls;
+    QStringList emails;
+    QStringList phones;
+
+    static const QRegularExpression urlRx(QStringLiteral("https?://[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+"), QRegularExpression::CaseInsensitiveOption);
+    auto urlIt = urlRx.globalMatch(ocrText);
+    while (urlIt.hasNext()) {
+        const QString u = urlIt.next().captured(0);
+        if (!urls.contains(u)) urls.append(u);
+    }
+
+    static const QRegularExpression emailRx(QStringLiteral("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}"), QRegularExpression::CaseInsensitiveOption);
+    auto emailIt = emailRx.globalMatch(ocrText);
+    while (emailIt.hasNext()) {
+        const QString e = emailIt.next().captured(0);
+        if (!emails.contains(e)) emails.append(e);
+    }
+
+    static const QRegularExpression phoneRx(QStringLiteral("(?:\\+\\d{1,3}[\\s\\-]?)?(?:\\d[\\s\\-]?){8,11}\\d"));
+    auto phoneIt = phoneRx.globalMatch(ocrText);
+    while (phoneIt.hasNext()) {
+        const QString p = phoneIt.next().captured(0).trimmed();
+        if (!phones.contains(p)) phones.append(p);
+    }
+
+    res[QStringLiteral("urls")] = urls;
+    res[QStringLiteral("emails")] = emails;
+    res[QStringLiteral("phones")] = phones;
+    return res;
+}
+
+void KiriApplet::runVisualIntelligence(const QString &captureMode, const QString &action, const QString &customQuestion)
+{
+    const QString mode = captureMode.isEmpty() ? QStringLiteral("region") : captureMode;
+    if (mode == QStringLiteral("region")) {
+        setState(QStringLiteral("thinking"), i18n("Selecciona una región en pantalla con el ratón (Spectacle Wayland)…"));
+    } else if (mode == QStringLiteral("activewindow")) {
+        setState(QStringLiteral("thinking"), i18n("Capturando la ventana activa (Spectacle Wayland)…"));
+    } else {
+        setState(QStringLiteral("thinking"), i18n("Capturando la pantalla completa (Spectacle Wayland)…"));
+    }
+    QCoreApplication::processEvents();
+
+    const QString tmpShot = QDir::tempPath() + QStringLiteral("/kiri_livetext_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
+    const QString savedPath = captureScreenToPng(tmpShot, mode);
+    if (savedPath.isEmpty()) {
+        setState(QStringLiteral("idle"), QString());
+        return;
+    }
+
+    const QString ocrText = extractScreenOcrText(savedPath);
+    const QString kwinInfo = collectKWinWindowsInfo();
+    QFile::remove(savedPath);
+
+    QString modeLabel = (mode == QStringLiteral("region")) ? i18n("Región seleccionada")
+                      : (mode == QStringLiteral("activewindow")) ? i18n("Ventana activa")
+                      : i18n("Pantalla completa");
+
+    if (action == QStringLiteral("ocr")) {
+        // Pure instant Live Text OCR extraction + clipboard copy + entity detection
+        if (ocrText.isEmpty()) {
+            appendAssistantMessage(i18n("👁️ **Live Text (%1):** No se detectó texto legible en la zona capturada.", modeLabel));
+            setState(QStringLiteral("idle"), QString());
+            return;
+        }
+
+        copyToClipboard(ocrText);
+        const QVariantMap entities = parseLiveTextEntities(ocrText);
+        const QStringList urls = entities.value(QStringLiteral("urls")).toStringList();
+        const QStringList emails = entities.value(QStringLiteral("emails")).toStringList();
+        const QStringList phones = entities.value(QStringLiteral("phones")).toStringList();
+
+        QString msg = i18n("👁️ **Live Text extraído (%1) — Copiado al portapapeles:**\n\n```\n%2\n```", modeLabel, ocrText);
+        if (!urls.isEmpty() || !emails.isEmpty() || !phones.isEmpty()) {
+            msg.append(i18n("\n\n**Datos rápidos detectados:**"));
+            for (const QString &u : urls) msg.append(QStringLiteral("\n- 🔗 [%1](%1)").arg(u));
+            for (const QString &e : emails) msg.append(QStringLiteral("\n- ✉️ [%1](mailto:%1)").arg(e));
+            for (const QString &p : phones) msg.append(QStringLiteral("\n- 📞 `%1`").arg(p));
+        }
+
+        appendAssistantMessage(msg, false);
+        setState(QStringLiteral("idle"), QString());
+        return;
+    }
+
+    if (ocrText.isEmpty() && kwinInfo.isEmpty()) {
+        appendAssistantMessage(i18n("No se pudo extraer texto ni información de la captura (%1).", modeLabel));
+        setState(QStringLiteral("idle"), QString());
+        return;
+    }
+
+    QString userLabel;
+    QString aiInstruction;
+    if (action == QStringLiteral("translate")) {
+        userLabel = i18n("👁️ Traducir captura (%1)", modeLabel);
+        aiInstruction = QStringLiteral(
+            "Traduce al español de España (o al inglés si el texto original ya está íntegramente en español) todo el texto extraído de la captura de pantalla. "
+            "Muestra la traducción clara y bien estructurada.");
+    } else if (action == QStringLiteral("explain")) {
+        userLabel = i18n("👁️ Explicar / Analizar captura (%1)", modeLabel);
+        if (!customQuestion.trimmed().isEmpty()) {
+            aiInstruction = QStringLiteral("Responde en español de España a la siguiente pregunta sobre el contenido capturado en pantalla: \"%1\"").arg(customQuestion.trimmed());
+        } else {
+            aiInstruction = QStringLiteral("Explica de forma clara, estructurada y concisa qué muestra este fragmento de pantalla, resumiendo sus puntos principales o resolviendo cualquier error/código que aparezca.");
+        }
+    } else {
+        userLabel = i18n("👁️ Inteligencia Visual (%1)", modeLabel);
+        aiInstruction = QStringLiteral("Analiza y resume en español de España el siguiente contenido capturado en pantalla.");
+    }
+
+    QVariantMap userMsg;
+    userMsg[QStringLiteral("role")] = QStringLiteral("user");
+    userMsg[QStringLiteral("content")] = userLabel;
+    userMsg[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    m_messages.append(userMsg);
+    Q_EMIT messagesChanged();
+    saveConversationHistory();
+
+    m_lastQueryWasVoice = false;
+    const QString fullPrompt = QStringLiteral(
+        "%1\n\n"
+        "Contexto de ventanas KWin Wayland:\n%2\n\n"
+        "Texto extraído mediante OCR (Live Text) de la captura (%3):\n\"\"\"\n%4\n\"\"\"")
+        .arg(aiInstruction, kwinInfo, modeLabel, ocrText);
+
+    sendToOllama(fullPrompt);
+}
+
+// =========================================================================
 // Context Providers (Vitals, Weather, Local Knowledge, Vision)
 // =========================================================================
 
@@ -2489,13 +2624,23 @@ QString KiriApplet::fetchKnowledgeBaseContext(const QString &query) const
     return accumulated.trimmed();
 }
 
-QString KiriApplet::captureScreenToPng(const QString &destPath) const
+QString KiriApplet::captureScreenToPng(const QString &destPath, const QString &captureMode) const
 {
     const QString spectacle = QStandardPaths::findExecutable(QStringLiteral("spectacle"));
     if (!spectacle.isEmpty()) {
         QFile::remove(destPath);
+        QString modeFlag = QStringLiteral("-f");
+        int timeoutMs = 4500;
+        if (captureMode == QStringLiteral("region")) {
+            modeFlag = QStringLiteral("-r");
+            timeoutMs = 25000; // Allow user time to draw rectangular selection on Wayland
+        } else if (captureMode == QStringLiteral("activewindow")) {
+            modeFlag = QStringLiteral("-a");
+            timeoutMs = 4500;
+        }
+
         QProcess proc;
-        proc.start(spectacle, {QStringLiteral("-f"), QStringLiteral("-b"), QStringLiteral("-n"), QStringLiteral("-o"), destPath});
+        proc.start(spectacle, {modeFlag, QStringLiteral("-b"), QStringLiteral("-n"), QStringLiteral("-o"), destPath});
 
         // Use a non-blocking QEventLoop so plasmashell's D-Bus loop remains responsive
         // and wait until the Spectacle daemon (--dbus) finishes flushing the PNG to disk.
@@ -2504,15 +2649,22 @@ QString KiriApplet::captureScreenToPng(const QString &destPath) const
         QElapsedTimer deadline;
         deadline.start();
 
+        connect(&proc, &QProcess::finished, &loop, [&](int, QProcess::ExitStatus) {
+            if (captureMode == QStringLiteral("region") && !QFileInfo::exists(destPath)) {
+                // User cancelled rectangular selection (Escape)
+                loop.quit();
+            }
+        });
+
         connect(&pollTimer, &QTimer::timeout, &loop, [&]() {
-            if (QFileInfo::exists(destPath) && QFileInfo(destPath).size() > 1024) {
+            if (QFileInfo::exists(destPath) && QFileInfo(destPath).size() > 512) {
                 QImage testImg(destPath);
                 if (!testImg.isNull()) {
                     loop.quit();
                     return;
                 }
             }
-            if (deadline.elapsed() > 4500) {
+            if (deadline.elapsed() > timeoutMs) {
                 loop.quit();
             }
         });

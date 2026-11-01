@@ -18,6 +18,8 @@ Item {
     id: expandedRoot
     property var widget: null
     property bool showWritingTools: false
+    property bool showVisualIntelligence: false
+    property string visualCaptureScope: "region"
 
     implicitWidth: Kirigami.Units.gridUnit * 24
     implicitHeight: Kirigami.Units.gridUnit * 30
@@ -192,9 +194,30 @@ Item {
                 icon.name: "document-edit-symbolic"
                 checkable: true
                 checked: expandedRoot.showWritingTools
-                onClicked: expandedRoot.showWritingTools = !expandedRoot.showWritingTools
+                onClicked: {
+                    expandedRoot.showWritingTools = !expandedRoot.showWritingTools;
+                    if (expandedRoot.showWritingTools) {
+                        expandedRoot.showVisualIntelligence = false;
+                    }
+                }
                 QQC2.ToolTip.visible: hovered
                 QQC2.ToolTip.text: i18n("Herramientas de Escritura (Corregir, Reescribir, Tono y Resumen sobre texto seleccionado o escrito)")
+            }
+
+            // Visual Intelligence & Live Text Toggle Button (Phase 3 - Spectacle Wayland + OCR)
+            PlasmaComponents3.ToolButton {
+                id: visualIntelButton
+                icon.name: "rectangular-snip-symbolic"
+                checkable: true
+                checked: expandedRoot.showVisualIntelligence
+                onClicked: {
+                    expandedRoot.showVisualIntelligence = !expandedRoot.showVisualIntelligence;
+                    if (expandedRoot.showVisualIntelligence) {
+                        expandedRoot.showWritingTools = false;
+                    }
+                }
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.text: i18n("Inteligencia Visual y Live Text (Capturar región o ventana con Spectacle + OCR + IA)")
             }
 
             // Clear Conversation Button
@@ -277,6 +300,91 @@ Item {
                                 const customText = promptField.text.trim();
                                 Plasmoid.applyWritingTool(modelData.action, customText);
                                 if (customText.length > 0) {
+                                    promptField.text = "";
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Visual Intelligence & Live Text Panel (Phase 3 - KDE Spectacle Wayland + Tesseract OCR)
+        LiquidGlassCard {
+            id: visualIntelBar
+            Layout.fillWidth: true
+            visible: expandedRoot.showVisualIntelligence
+            implicitHeight: viCol.implicitHeight + Kirigami.Units.smallSpacing * 2
+            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
+            isHighlighted: false
+
+            ColumnLayout {
+                id: viCol
+                anchors.fill: parent
+                anchors.margins: Kirigami.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+
+                    Kirigami.Icon {
+                        source: "rectangular-snip-symbolic"
+                        implicitWidth: Kirigami.Units.iconSizes.small
+                        implicitHeight: Kirigami.Units.iconSizes.small
+                        color: Kirigami.Theme.highlightColor
+                    }
+
+                    PlasmaComponents3.Label {
+                        font.bold: true
+                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                        text: i18n("Inteligencia Visual y Live Text:")
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Repeater {
+                        model: [
+                            { scope: "region", label: i18n("📐 Región") },
+                            { scope: "activewindow", label: i18n("🪟 Ventana") },
+                            { scope: "fullscreen", label: i18n("🖥️ Pantalla") }
+                        ]
+
+                        PlasmaComponents3.ToolButton {
+                            required property var modelData
+                            text: modelData.label
+                            font: Kirigami.Theme.smallFont
+                            checkable: true
+                            checked: expandedRoot.visualCaptureScope === modelData.scope
+                            onClicked: expandedRoot.visualCaptureScope = modelData.scope
+                        }
+                    }
+                }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 3
+                    columnSpacing: Kirigami.Units.smallSpacing
+                    rowSpacing: Kirigami.Units.smallSpacing
+                    uniformCellWidths: true
+
+                    Repeater {
+                        model: [
+                            { action: "ocr", label: i18n("📋 Extraer texto (Live Text)") },
+                            { action: "translate", label: i18n("🌐 Traducir captura") },
+                            { action: "explain", label: i18n("🔍 Explicar / Analizar") }
+                        ]
+
+                        PlasmaComponents3.Button {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            text: modelData.label
+                            font: Kirigami.Theme.smallFont
+                            enabled: !Plasmoid.isBusy
+                            onClicked: {
+                                const customQ = promptField.text.trim();
+                                Plasmoid.runVisualIntelligence(expandedRoot.visualCaptureScope, modelData.action, customQ);
+                                if (customQ.length > 0 && modelData.action === "explain") {
                                     promptField.text = "";
                                 }
                             }
