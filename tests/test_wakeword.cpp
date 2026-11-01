@@ -4,6 +4,8 @@
 */
 
 #include <QTest>
+#include <QQmlEngine>
+#include <QQmlComponent>
 #include <QRegularExpression>
 #include <QProcess>
 #include <QStandardPaths>
@@ -169,8 +171,7 @@ private Q_SLOTS:
     void testWaylandScreenCaptureUtility()
     {
         const QString spectacle = QStandardPaths::findExecutable(QStringLiteral("spectacle"));
-        const QString grim = QStandardPaths::findExecutable(QStringLiteral("grim"));
-        QVERIFY2(!spectacle.isEmpty() || !grim.isEmpty(), "Neither spectacle nor grim found on system for Wayland screen capture.");
+        QVERIFY2(!spectacle.isEmpty(), "spectacle not found on system for KDE Plasma Wayland screen capture.");
 
         if (!spectacle.isEmpty() && !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
             const QString tmpShot = QDir::tempPath() + QStringLiteral("/test_kiri_spectacle_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
@@ -221,6 +222,22 @@ private Q_SLOTS:
             QRegularExpression::CaseInsensitiveOption);
         QVERIFY(QStringLiteral("¿qué canción está sonando?").contains(nowPlayingRegex));
         QVERIFY(QStringLiteral("qué estoy escuchando").contains(nowPlayingRegex));
+    }
+
+    void testQmlSyntaxAndLiquidGlassComponent()
+    {
+        QQmlEngine engine;
+        const QString qmlDir = QStringLiteral(KIRI_SOURCE_DIR) + QStringLiteral("/src/qml");
+        const QStringList qmlFiles = {
+            qmlDir + QStringLiteral("/LiquidGlassCard.qml"),
+            qmlDir + QStringLiteral("/SiriOrbAnimation.qml")
+        };
+
+        for (const QString &file : qmlFiles) {
+            QVERIFY2(QFile::exists(file), qPrintable(QStringLiteral("Missing QML file: %1").arg(file)));
+            QQmlComponent comp(&engine, QUrl::fromLocalFile(file));
+            QVERIFY2(!comp.isError(), qPrintable(comp.errorString()));
+        }
     }
 };
 

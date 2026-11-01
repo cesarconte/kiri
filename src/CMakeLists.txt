@@ -17,6 +17,7 @@ plasma_add_applet(org.cesar.kiri
     QML_SOURCES
         qml/main.qml
         qml/ExpandedRepresentation.qml
+        qml/LiquidGlassCard.qml
         qml/SiriOrbAnimation.qml
         qml/config.qml
         qml/ConfigGeneral.qml

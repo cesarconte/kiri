@@ -289,17 +289,15 @@ Item {
                         visible: Plasmoid.streamingText.length > 0
                         height: visible ? streamBubble.height + Kirigami.Units.mediumSpacing : 0
 
-                        Rectangle {
+                        LiquidGlassCard {
                             id: streamBubble
                             width: parent.width * 0.92
                             height: streamText.implicitHeight + Kirigami.Units.mediumSpacing * 2
                             anchors.left: parent.left
                             anchors.top: parent.top
                             anchors.topMargin: Kirigami.Units.smallSpacing
-                            radius: Kirigami.Units.mediumSpacing
-                            color: Kirigami.Theme.alternateBackgroundColor
-                            border.width: 1
-                            border.color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.35)
+                            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
+                            isHighlighted: false
 
                             TextEdit {
                                 id: streamText
@@ -332,7 +330,7 @@ Item {
                             ? Plasmoid.extractTerminalCommands(modelData.content)
                             : []
 
-                        Rectangle {
+                        LiquidGlassCard {
                             id: bubbleRect
                             width: msgDelegate.isUser
                                 ? Math.min(parent.width * 0.88, Math.max(Kirigami.Units.gridUnit * 6, msgColumn.implicitWidth + Kirigami.Units.mediumSpacing * 2))
@@ -340,14 +338,8 @@ Item {
                             height: msgColumn.implicitHeight + Kirigami.Units.mediumSpacing * 2
                             anchors.right: msgDelegate.isUser ? parent.right : undefined
                             anchors.left: msgDelegate.isUser ? undefined : parent.left
-                            radius: Kirigami.Units.mediumSpacing
-                            color: msgDelegate.isUser
-                                ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.22)
-                                : Kirigami.Theme.alternateBackgroundColor
-                            border.width: 1
-                            border.color: msgDelegate.isUser
-                                ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.45)
-                                : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.12)
+                            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
+                            isHighlighted: msgDelegate.isUser
 
                             ColumnLayout {
                                 id: msgColumn

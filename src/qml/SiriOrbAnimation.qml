@@ -136,6 +136,23 @@ Item {
             GradientStop { position: 1.0; color: orbRoot.secondaryColor }
         }
 
+        // Specular Liquid Glass lens highlight on top hemisphere
+        Rectangle {
+            anchors.top: parent.top
+            anchors.topMargin: parent.height * 0.06
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width * 0.72
+            height: parent.height * 0.42
+            radius: height / 2
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Qt.rgba(1.0, 1.0, 1.0, 0.42) }
+                GradientStop { position: 1.0; color: Qt.rgba(1.0, 1.0, 1.0, 0.0) }
+            }
+        }
+
+        border.width: 1
+        border.color: Qt.rgba(1.0, 1.0, 1.0, 0.35)
+
         Kirigami.Icon {
             id: iconItem
             anchors.centerIn: parent

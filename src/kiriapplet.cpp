@@ -2429,13 +2429,6 @@ QString KiriApplet::captureScreenToPng(const QString &destPath) const
             return destPath;
         }
     }
-
-    const QString grim = QStandardPaths::findExecutable(QStringLiteral("grim"));
-    if (!grim.isEmpty()) {
-        if (QProcess::execute(grim, QStringList() << destPath) == 0 && QFileInfo::exists(destPath)) {
-            return destPath;
-        }
-    }
     return QString();
 }
 

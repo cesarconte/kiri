@@ -23,7 +23,7 @@ Kiri combina la fluidez visual de un orbe animado estilo Siri con modelos locale
 ### Dependencias del sistema (CachyOS / Arch Linux)
 
 ```bash
-sudo pacman -S extra-cmake-modules plasma-workspace qt6-declarative qt6-base pipewire grim
+sudo pacman -S extra-cmake-modules plasma-workspace qt6-declarative qt6-base pipewire spectacle tesseract tesseract-data-spa tesseract-data-eng
 ```
 
 ### Herramientas de Audio y Modelos Locales
