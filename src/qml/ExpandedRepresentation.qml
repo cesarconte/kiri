@@ -80,75 +80,54 @@ Item {
         anchors.margins: Kirigami.Units.smallSpacing
         spacing: Kirigami.Units.smallSpacing
 
-        // Assistant Header Bar
+        // Assistant Status & Quick Controls Bar (Complements Plasma's top applet header without repeating title/pin)
         RowLayout {
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
 
-            Kirigami.Icon {
-                source: Plasmoid.state === "listening" ? "kiri-listening-symbolic" : "kiri-symbolic"
-                implicitWidth: Kirigami.Units.iconSizes.smallMedium
-                implicitHeight: Kirigami.Units.iconSizes.smallMedium
+            Rectangle {
+                implicitWidth: 8
+                implicitHeight: 8
+                radius: 4
+                color: {
+                    if (!Plasmoid.ollamaReachable) {
+                        return Kirigami.Theme.negativeTextColor;
+                    }
+                    if (Plasmoid.state === "listening") {
+                        return "#00e5ff";
+                    }
+                    if (Plasmoid.wakeWordEnabled) {
+                        return Kirigami.Theme.positiveTextColor;
+                    }
+                    return Kirigami.Theme.disabledTextColor;
+                }
             }
 
-            ColumnLayout {
+            PlasmaComponents3.Label {
                 Layout.fillWidth: true
-                spacing: 0
-
-                Kirigami.Heading {
-                    level: 4
-                    text: i18n("Kiri")
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                }
-
-                RowLayout {
-                    spacing: Kirigami.Units.smallSpacing / 2
-
-                    Rectangle {
-                        implicitWidth: 7
-                        implicitHeight: 7
-                        radius: 3.5
-                        color: {
-                            if (!Plasmoid.ollamaReachable) {
-                                return Kirigami.Theme.negativeTextColor;
-                            }
-                            if (Plasmoid.state === "listening") {
-                                return "#00e5ff";
-                            }
-                            if (Plasmoid.wakeWordEnabled) {
-                                return Kirigami.Theme.positiveTextColor;
-                            }
-                            return Kirigami.Theme.disabledTextColor;
-                        }
+                font: Kirigami.Theme.smallFont
+                opacity: 0.85
+                elide: Text.ElideRight
+                text: {
+                    if (!Plasmoid.ollamaReachable) {
+                        return i18n("Sin conexión con Ollama");
                     }
-
-                    PlasmaComponents3.Label {
-                        font: Kirigami.Theme.smallFont
-                        opacity: 0.75
-                        elide: Text.ElideRight
-                        text: {
-                            if (!Plasmoid.ollamaReachable) {
-                                return i18n("Sin conexión con Ollama");
-                            }
-                            if (Plasmoid.state === "listening") {
-                                return i18n("Escuchando…");
-                            }
-                            if (Plasmoid.state === "transcribing") {
-                                return i18n("Transcribiendo…");
-                            }
-                            if (Plasmoid.state === "thinking") {
-                                return i18n("Pensando…");
-                            }
-                            if (Plasmoid.state === "speaking") {
-                                return i18n("Hablando…");
-                            }
-                            if (Plasmoid.wakeWordEnabled) {
-                                return i18n("«¡Hola Kiri!» activo");
-                            }
-                            return i18n("Listo");
-                        }
+                    if (Plasmoid.state === "listening") {
+                        return i18n("Escuchando…");
                     }
+                    if (Plasmoid.state === "transcribing") {
+                        return i18n("Transcribiendo…");
+                    }
+                    if (Plasmoid.state === "thinking") {
+                        return i18n("Pensando…");
+                    }
+                    if (Plasmoid.state === "speaking") {
+                        return i18n("Hablando…");
+                    }
+                    if (Plasmoid.wakeWordEnabled) {
+                        return i18n("«¡Hola Kiri!» activo");
+                    }
+                    return i18n("Listo");
                 }
             }
 
@@ -213,18 +192,6 @@ Item {
                 onClicked: Plasmoid.clearHistory()
                 QQC2.ToolTip.visible: hovered
                 QQC2.ToolTip.text: i18n("Limpiar conversación")
-            }
-
-            // Pin Popup Window Button
-            PlasmaComponents3.ToolButton {
-                icon.name: "window-pin-symbolic"
-                checkable: true
-                checked: Plasmoid.configuration.pin
-                onToggled: {
-                    Plasmoid.configuration.pin = checked;
-                }
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: i18n("Mantener ventana fija al cambiar de aplicación")
             }
         }
 

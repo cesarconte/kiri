@@ -371,8 +371,8 @@ QString KiriApplet::analyzeImageWithVisionModel(const QString &base64Image) cons
     }
 
     QJsonObject reqPayload;
-    reqPayload[QStringLiteral("model")] = resolveVisionModel();
-    reqPayload[QStringLiteral("prompt")] = QStringLiteral("Describe accurately and concisely everything visible on this computer screen, including active window titles, visible text, and UI elements.");
+    reqPayload[QStringLiteral("model")] = detectAvailableVisionModel();
+    reqPayload[QStringLiteral("prompt")] = QStringLiteral("Describe accurately and in detail everything visible on this computer screen, including open applications, window titles, visible text, and interface elements.");
     reqPayload[QStringLiteral("stream")] = false;
 
     QJsonArray imgs;
@@ -380,7 +380,7 @@ QString KiriApplet::analyzeImageWithVisionModel(const QString &base64Image) cons
     reqPayload[QStringLiteral("images")] = imgs;
 
     const QUrl genUrl(resolveOllamaUrl() + QStringLiteral("/api/generate"));
-    const QByteArray rawResp = httpPostJsonSync(genUrl, reqPayload, 12000);
+    const QByteArray rawResp = httpPostJsonSync(genUrl, reqPayload, 25000);
     if (rawResp.isEmpty()) {
         return QString();
     }
@@ -415,6 +415,8 @@ void KiriApplet::sendMessage(const QString &text, bool fromVoice)
 
     // 2. Fetch context (weather, web search, local knowledge)
     QString context;
+    QString effectivePrompt = trimmed;
+
     const QString weatherCtx = fetchWeatherContext(trimmed);
     if (!weatherCtx.isEmpty()) {
         context.append(weatherCtx + QStringLiteral("\n\n"));
@@ -445,36 +447,55 @@ void KiriApplet::sendMessage(const QString &text, bool fromVoice)
         if (auto clip = QGuiApplication::clipboard()) {
             const QString clipText = clip->text().trimmed();
             if (!clipText.isEmpty()) {
-                context.append(QStringLiteral("[Current User Clipboard Content:\n%1]\n\n").arg(clipText.left(4000)));
+                effectivePrompt = QStringLiteral(
+                    "Contenido actual de mi portapapeles del sistema:\n\"\"\"\n%1\n\"\"\"\n\n"
+                    "Con base en ese texto copiado en mi portapapeles, responde en español de España a mi petición: %2")
+                    .arg(clipText.left(4000), trimmed);
             } else {
-                context.append(QStringLiteral("[Current User Clipboard Content: (Empty)]\n\n"));
+                appendAssistantMessage(i18n("Tu portapapeles está vacío en este momento. Copia algún texto primero y vuelve a intentarlo."));
+                return;
             }
         }
     }
 
     // 3. Check vision action (screen vision request)
     QString base64Image;
-    static const QRegularExpression screenRegex(QStringLiteral("(pantalla|screen|captura|mira lo que|analiza mi pantalla|qu[eé] hay en|qu[eé] ves en)"), QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression screenRegex(
+        QStringLiteral("(pantalla|screen|captura|mira lo que|analiza(?:r)?\\s+(?:mi\\s+|la\\s+)?pantalla|qu[eé] hay en|qu[eé] ves en)"),
+        QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(screenRegex)) {
-        setState(QStringLiteral("thinking"), i18n("Capturando y analizando la pantalla…"));
+        setState(QStringLiteral("thinking"), i18n("Capturando y analizando tu pantalla…"));
+        QCoreApplication::processEvents();
+
         const QString tmpShot = QDir::tempPath() + QStringLiteral("/kiri_vision_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
         captureScreenToPng(tmpShot);
         base64Image = encodeImageToBase64(tmpShot);
         QFile::remove(tmpShot);
 
-        if (!base64Image.isEmpty()) {
-            const QString visionModel = resolveVisionModel();
-            if (visionModel.contains(QStringLiteral("moondream"), Qt::CaseInsensitive)) {
-                const QString visualDesc = analyzeImageWithVisionModel(base64Image);
-                if (!visualDesc.isEmpty()) {
-                    context.append(QStringLiteral("[Screen Visual Content:\n%1]\n\n").arg(visualDesc));
-                    base64Image.clear();
-                }
+        if (base64Image.isEmpty()) {
+            appendAssistantMessage(i18n("No se pudo capturar la imagen de la pantalla a través de Spectacle en Wayland."));
+            return;
+        }
+
+        const QString visionModel = detectAvailableVisionModel();
+        if (visionModel.contains(QStringLiteral("moondream"), Qt::CaseInsensitive)) {
+            const QString visualDesc = analyzeImageWithVisionModel(base64Image);
+            base64Image.clear();
+            if (!visualDesc.isEmpty()) {
+                effectivePrompt = QStringLiteral(
+                    "El sistema de visión de Kiri acaba de capturar la pantalla del usuario y ha detectado exactamente lo siguiente en ella:\n"
+                    "\"\"\"\n%1\n\"\"\"\n\n"
+                    "Actúa como Kiri, el asistente visual del sistema: traduce, interpreta y explica de forma directa y natural en español de España qué hay en la pantalla del usuario respondiendo a: \"%2\". "
+                    "IMPORTANTE: Ya tienes la descripción visual arriba, por lo que NUNCA digas que no puedes ver la pantalla ni pidas al usuario que te la describa.")
+                    .arg(visualDesc, trimmed);
+            } else {
+                appendAssistantMessage(i18n("No se pudo obtener el análisis visual desde el modelo de visión (%1) en Ollama.", visionModel));
+                return;
             }
         }
     }
 
-    sendToOllama(trimmed, context, base64Image);
+    sendToOllama(effectivePrompt, context, base64Image);
 }
 
 void KiriApplet::sendToOllama(const QString &userPrompt, const QString &injectedContext, const QString &base64Image)
@@ -515,13 +536,17 @@ void KiriApplet::sendToOllama(const QString &userPrompt, const QString &injected
     sysObj[QStringLiteral("content")] = fullSysPrompt;
     chatMsgs.append(sysObj);
 
-    // Recent history (last 8 messages)
+    // Recent history (last 8 messages, filtering out stale vision refusals)
     const int startIdx = qMax(0, m_messages.size() - 8);
     for (int i = startIdx; i < m_messages.size() - 1; ++i) {
         const QVariantMap vm = m_messages.at(i).toMap();
+        const QString content = vm.value(QStringLiteral("content")).toString();
+        if (content.contains(QStringLiteral("necesitaría que me describieras"), Qt::CaseInsensitive)) {
+            continue;
+        }
         QJsonObject mObj;
         mObj[QStringLiteral("role")] = vm.value(QStringLiteral("role")).toString();
-        mObj[QStringLiteral("content")] = vm.value(QStringLiteral("content")).toString();
+        mObj[QStringLiteral("content")] = content;
         chatMsgs.append(mObj);
     }
 
@@ -2353,7 +2378,7 @@ QString KiriApplet::captureScreenToPng(const QString &destPath) const
     const QString spectacle = QStandardPaths::findExecutable(QStringLiteral("spectacle"));
     if (!spectacle.isEmpty()) {
         QProcess proc;
-        proc.start(spectacle, {QStringLiteral("-b"), QStringLiteral("-n"), QStringLiteral("-o"), destPath});
+        proc.start(spectacle, {QStringLiteral("-f"), QStringLiteral("-b"), QStringLiteral("-n"), QStringLiteral("-o"), destPath});
         if (proc.waitForFinished(5000) && QFileInfo::exists(destPath) && QFileInfo(destPath).size() > 0) {
             return destPath;
         }

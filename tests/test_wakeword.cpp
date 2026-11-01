@@ -169,6 +169,15 @@ private Q_SLOTS:
         const QString spectacle = QStandardPaths::findExecutable(QStringLiteral("spectacle"));
         const QString grim = QStandardPaths::findExecutable(QStringLiteral("grim"));
         QVERIFY2(!spectacle.isEmpty() || !grim.isEmpty(), "Neither spectacle nor grim found on system for Wayland screen capture.");
+
+        if (!spectacle.isEmpty() && !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
+            const QString tmpShot = QDir::tempPath() + QStringLiteral("/test_kiri_spectacle_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
+            QProcess proc;
+            proc.start(spectacle, {QStringLiteral("-f"), QStringLiteral("-b"), QStringLiteral("-n"), QStringLiteral("-o"), tmpShot});
+            QVERIFY(proc.waitForFinished(5000));
+            QVERIFY2(QFileInfo::exists(tmpShot) && QFileInfo(tmpShot).size() > 0, "spectacle -f -b -n -o failed to produce a valid PNG screenshot.");
+            QFile::remove(tmpShot);
+        }
     }
 
     void testSiriSystemControlPatterns()
