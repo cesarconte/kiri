@@ -164,7 +164,7 @@ void KiriRunner::match(KRunner::RunnerContext &context)
             m.setSubtext(i18n("Traduce %1 con IA local (Ollama)", what));
             QVariantMap payload;
             payload[QStringLiteral("type")] = QStringLiteral("writing_tool");
-            payload[QStringLiteral("action")] = QStringLiteral("translate:") + t.first;
+            payload[QStringLiteral("action")] = QString(QStringLiteral("translate:") + t.first);
             payload[QStringLiteral("text")] = inlineText;
             m.setData(payload);
             context.addMatch(m);
