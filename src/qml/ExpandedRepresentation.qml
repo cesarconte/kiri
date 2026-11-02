@@ -681,10 +681,10 @@ Item {
                                             required property string modelData
                                             Layout.fillWidth: true
                                             implicitHeight: cmdRow.implicitHeight + Kirigami.Units.smallSpacing * 2
-                                            color: Qt.rgba(0, 0, 0, 0.25)
+                                            color: Kirigami.Theme.alternateBackgroundColor
                                             radius: Kirigami.Units.smallSpacing
                                             border.width: 1
-                                            border.color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.4)
+                                            border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.highlightColor, 0.5)
 
                                             RowLayout {
                                                 id: cmdRow
