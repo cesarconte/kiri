@@ -49,7 +49,6 @@ KCMUtils.SimpleKCM {
 
     // Appearance & Services
     property string cfg_panelIconStyle: "symbolic"
-    property alias cfg_liquidGlassEnabled: liquidGlassCheck.checked
     property alias cfg_pin: pinWindowCheck.checked
     property string cfg_defaultEmailClient: "proton"
     property string cfg_defaultCalendarClient: "proton"
@@ -534,15 +533,6 @@ KCMUtils.SimpleKCM {
             onActivated: index => {
                 configRoot.cfg_panelIconStyle = configRoot.panelIconStyleModel[index].value;
             }
-        }
-
-        QQC2.CheckBox {
-            id: liquidGlassCheck
-            Kirigami.FormData.label: i18n("Estilo visual:")
-            text: i18n("Efecto «Liquid Glass» (superficies translúcidas con borde especular estilo macOS)")
-            checked: true
-            QQC2.ToolTip.text: i18n("Aplica refracción luminosa sutil, bordes especulares y realce vítreo en las tarjetas y el orbe de Kiri")
-            QQC2.ToolTip.visible: hovered
         }
 
         QQC2.CheckBox {

@@ -58,10 +58,6 @@
       <label>Visual style of the panel icon: symbolic (monochrome) or color</label>
       <default>symbolic</default>
     </entry>
-    <entry name="liquidGlassEnabled" type="Bool">
-      <label>Enable macOS Liquid Glass refractive specular styling on cards and surfaces</label>
-      <default>true</default>
-    </entry>
     <entry name="speechOutputMode" type="String">
       <label>When Kiri should read responses aloud: manual (only when clicking Speak), voice_only (when asked by voice), or always</label>
       <default>always</default>

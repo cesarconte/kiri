@@ -224,20 +224,18 @@ private Q_SLOTS:
         QVERIFY(QStringLiteral("qué estoy escuchando").contains(nowPlayingRegex));
     }
 
-    void testQmlSyntaxAndLiquidGlassComponent()
+    void testQmlSyntaxAndMainComponents()
     {
         QQmlEngine engine;
         const QString qmlDir = QStringLiteral(KIRI_SOURCE_DIR) + QStringLiteral("/src/qml");
-        const QStringList qmlFiles = {
-            qmlDir + QStringLiteral("/LiquidGlassCard.qml"),
-            qmlDir + QStringLiteral("/SiriOrbAnimation.qml")
-        };
 
-        for (const QString &file : qmlFiles) {
-            QVERIFY2(QFile::exists(file), qPrintable(QStringLiteral("Missing QML file: %1").arg(file)));
-            QQmlComponent comp(&engine, QUrl::fromLocalFile(file));
-            QVERIFY2(!comp.isError(), qPrintable(comp.errorString()));
-        }
+        const QString expandedPath = qmlDir + QStringLiteral("/ExpandedRepresentation.qml");
+        QVERIFY2(QFile::exists(expandedPath), "ExpandedRepresentation.qml must exist");
+
+        const QString orbPath = qmlDir + QStringLiteral("/SiriOrbAnimation.qml");
+        QVERIFY2(QFile::exists(orbPath), "SiriOrbAnimation.qml must exist");
+        QQmlComponent orbComp(&engine, QUrl::fromLocalFile(orbPath));
+        QVERIFY2(!orbComp.isError(), qPrintable(orbComp.errorString()));
     }
 
     void testWritingToolsPromptGeneration()

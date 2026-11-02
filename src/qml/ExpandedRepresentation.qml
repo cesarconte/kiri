@@ -80,13 +80,21 @@ Item {
         }
     }
 
-    LiquidGlassCard {
-        id: outerGlassShell
+    // Voice interaction glow: color changes smoothly when listening or speaking
+    Rectangle {
+        id: voiceInteractionGlow
         anchors.fill: parent
         anchors.margins: 2
-        glassStyle: "shell"
-        liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
-        isHighlighted: Plasmoid.state === "listening" || Plasmoid.state === "speaking"
+        radius: Kirigami.Units.smallSpacing
+        readonly property bool isVoiceActive: Plasmoid.state === "listening" || Plasmoid.state === "speaking"
+        color: isVoiceActive
+            ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.12)
+            : "transparent"
+        border.width: isVoiceActive ? 1 : 0
+        border.color: Kirigami.Theme.highlightColor
+
+        Behavior on color { ColorAnimation { duration: 250 } }
+        Behavior on border.width { NumberAnimation { duration: 200 } }
     }
 
     ColumnLayout {
@@ -266,13 +274,15 @@ Item {
         }
 
         // Apple Intelligence Writing Tools Panel (Phase 2)
-        LiquidGlassCard {
+        Rectangle {
             id: writingToolsBar
             Layout.fillWidth: true
             visible: expandedRoot.showWritingTools
             implicitHeight: wtCol.implicitHeight + Kirigami.Units.smallSpacing * 2
-            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
-            isHighlighted: false
+            radius: Kirigami.Units.smallSpacing
+            color: Kirigami.Theme.alternateBackgroundColor
+            border.width: 1
+            border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
 
             ColumnLayout {
                 id: wtCol
@@ -343,13 +353,15 @@ Item {
         }
 
         // Math Notes Panel (macOS Math Notes): each line is evaluated live, variables persist across lines
-        LiquidGlassCard {
+        Rectangle {
             id: mathNotesBar
             Layout.fillWidth: true
             Layout.preferredHeight: Kirigami.Units.gridUnit * 9
             visible: expandedRoot.showMathNotes
-            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
-            isHighlighted: false
+            radius: Kirigami.Units.smallSpacing
+            color: Kirigami.Theme.alternateBackgroundColor
+            border.width: 1
+            border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
 
             Timer {
                 id: mathDebounce
@@ -404,13 +416,15 @@ Item {
         }
 
         // Visual Intelligence & Live Text Panel (Phase 3 - KDE Spectacle Wayland + Tesseract OCR)
-        LiquidGlassCard {
+        Rectangle {
             id: visualIntelBar
             Layout.fillWidth: true
             visible: expandedRoot.showVisualIntelligence
             implicitHeight: viCol.implicitHeight + Kirigami.Units.smallSpacing * 2
-            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
-            isHighlighted: false
+            radius: Kirigami.Units.smallSpacing
+            color: Kirigami.Theme.alternateBackgroundColor
+            border.width: 1
+            border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
 
             ColumnLayout {
                 id: viCol
@@ -496,13 +510,14 @@ Item {
             text: i18n("No se puede conectar con Ollama en %1. Ejecuta scripts/setup-models.sh o inicia ollama.service.", Plasmoid.configuration.ollamaUrl)
         }
 
-        // Conversation History or Empty Welcome State (Recessed Liquid Glass Stage)
-        LiquidGlassCard {
+        // Conversation History or Empty Welcome State
+        Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            glassStyle: "recessed"
-            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
-            isHighlighted: false
+            radius: Kirigami.Units.smallSpacing
+            color: Kirigami.Theme.alternateBackgroundColor
+            border.width: 1
+            border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
 
             // Welcome placeholder when conversation is empty
             ColumnLayout {
@@ -588,15 +603,17 @@ Item {
                         visible: Plasmoid.streamingText.length > 0
                         height: visible ? streamBubble.height + Kirigami.Units.mediumSpacing : 0
 
-                        LiquidGlassCard {
+                        Rectangle {
                             id: streamBubble
                             width: parent.width * 0.92
                             height: streamText.implicitHeight + Kirigami.Units.mediumSpacing * 2
                             anchors.left: parent.left
                             anchors.top: parent.top
                             anchors.topMargin: Kirigami.Units.smallSpacing
-                            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
-                            isHighlighted: false
+                            radius: Kirigami.Units.smallSpacing
+                            color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.alternateBackgroundColor, 0.6)
+                            border.width: 1
+                            border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
 
                             TextEdit {
                                 id: streamText
@@ -629,7 +646,7 @@ Item {
                             ? Plasmoid.extractTerminalCommands(modelData.content)
                             : []
 
-                        LiquidGlassCard {
+                        Rectangle {
                             id: bubbleRect
                             width: msgDelegate.isUser
                                 ? Math.min(parent.width * 0.88, Math.max(Kirigami.Units.gridUnit * 6, msgColumn.implicitWidth + Kirigami.Units.mediumSpacing * 2))
@@ -637,8 +654,14 @@ Item {
                             height: msgColumn.implicitHeight + Kirigami.Units.mediumSpacing * 2
                             anchors.right: msgDelegate.isUser ? parent.right : undefined
                             anchors.left: msgDelegate.isUser ? undefined : parent.left
-                            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
-                            isHighlighted: msgDelegate.isUser
+                            radius: Kirigami.Units.smallSpacing
+                            color: msgDelegate.isUser
+                                ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.18)
+                                : Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.alternateBackgroundColor, 0.6)
+                            border.width: 1
+                            border.color: msgDelegate.isUser
+                                ? Kirigami.Theme.highlightColor
+                                : Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
 
                             ColumnLayout {
                                 id: msgColumn
@@ -801,13 +824,18 @@ Item {
             wrapMode: Text.WordWrap
         }
 
-        // Bottom Liquid Glass Dock (Siri Orb + Prompt Input Bar)
-        LiquidGlassCard {
+        // Bottom Dock (Siri Orb + Prompt Input Bar)
+        Rectangle {
             Layout.fillWidth: true
             implicitHeight: dockCol.implicitHeight + Kirigami.Units.smallSpacing * 2
-            glassStyle: "recessed"
-            liquidGlass: Plasmoid.configuration.liquidGlassEnabled ?? true
-            isHighlighted: Plasmoid.state === "listening"
+            radius: Kirigami.Units.smallSpacing
+            color: (Plasmoid.state === "listening")
+                ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.14)
+                : Kirigami.Theme.backgroundColor
+            border.width: 1
+            border.color: (Plasmoid.state === "listening")
+                ? Kirigami.Theme.highlightColor
+                : Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
 
             ColumnLayout {
                 id: dockCol
