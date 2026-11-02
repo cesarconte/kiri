@@ -6,10 +6,10 @@
                 "Name": "Cesar"
             }
         ],
-        "Description": "Búsqueda semántica RAG, Herramientas de Escritura, Live Text y acciones rápidas con Kiri (estilo Spotlight de macOS)",
+        "Description": "Búsqueda semántica RAG, Herramientas de Escritura, Live Text y acciones rápidas con Kity (estilo Spotlight de macOS)",
         "EnabledByDefault": true,
-        "Icon": "org.cesar.kiri",
+        "Icon": "org.cesar.kity",
         "License": "GPL-3.0-or-later",
-        "Name": "Kiri Spotlight & AI Actions"
+        "Name": "Kity Spotlight & AI Actions"
     }
 }

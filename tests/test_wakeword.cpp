@@ -1,5 +1,5 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kiri contributors
+    SPDX-FileCopyrightText: 2026 Kity contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 */
 
@@ -62,22 +62,22 @@ private Q_SLOTS:
     void testWakeWordRegexPatterns()
     {
         static const QRegularExpression wwRegex(
-            QStringLiteral("\\b(?:hola|oye|hey|ok)?\\s*(?:kiri|quiri|ciri|kili)\\b"),
+            QStringLiteral("\\b(?:hola|oye|hey|ok)?\\s*(?:kity|kitty|quiti|kiti)\\b"),
             QRegularExpression::CaseInsensitiveOption);
 
         // Positive test cases
         QStringList positiveCases = {
-            QStringLiteral("hola kiri"),
-            QStringLiteral("¡Hola, Kiri!"),
-            QStringLiteral("oye kiri"),
-            QStringLiteral("hey kiri"),
-            QStringLiteral("kiri"),
-            QStringLiteral("OK Kiri"),
-            QStringLiteral("Hola Kiri, ¿qué hora es?")
+            QStringLiteral("hola kity"),
+            QStringLiteral("¡Hola, Kity!"),
+            QStringLiteral("oye kity"),
+            QStringLiteral("hey kity"),
+            QStringLiteral("kity"),
+            QStringLiteral("OK Kity"),
+            QStringLiteral("Hola Kity, ¿qué hora es?")
         };
 
         for (const auto &text : positiveCases) {
-            QVERIFY2(text.contains(wwRegex) || text.contains(QStringLiteral("kiri"), Qt::CaseInsensitive),
+            QVERIFY2(text.contains(wwRegex) || text.contains(QStringLiteral("kity"), Qt::CaseInsensitive) || text.contains(QStringLiteral("kitty"), Qt::CaseInsensitive),
                      qPrintable(QStringLiteral("Failed to match valid wake word in: %1").arg(text)));
         }
 
@@ -91,7 +91,7 @@ private Q_SLOTS:
         };
 
         for (const auto &text : negativeCases) {
-            QVERIFY2(!text.contains(wwRegex) && !text.contains(QStringLiteral("kiri"), Qt::CaseInsensitive),
+            QVERIFY2(!text.contains(wwRegex) && !text.contains(QStringLiteral("kity"), Qt::CaseInsensitive) && !text.contains(QStringLiteral("kitty"), Qt::CaseInsensitive),
                      qPrintable(QStringLiteral("False positive triggered on: %1").arg(text)));
         }
     }
@@ -100,20 +100,20 @@ private Q_SLOTS:
     {
         const QString piperCli = QDir::homePath() + QStringLiteral("/.local/bin/piper");
         const QString whisperCli = QDir::homePath() + QStringLiteral("/.local/bin/whisper-cli");
-        const QString voicePath = QDir::homePath() + QStringLiteral("/.local/share/kiri/voices/es_ES-sharvard-medium.onnx");
-        const QString modelPath = QDir::homePath() + QStringLiteral("/.local/share/kiri/models/ggml-base.bin");
+        const QString voicePath = QDir::homePath() + QStringLiteral("/.local/share/kity/voices/es_ES-sharvard-medium.onnx");
+        const QString modelPath = QDir::homePath() + QStringLiteral("/.local/share/kity/models/ggml-base.bin");
 
         if (!QFile::exists(piperCli) || !QFile::exists(whisperCli) || !QFile::exists(voicePath) || !QFile::exists(modelPath)) {
             QSKIP("Audio binaries or models not found in ~/.local, skipping live neural audio inference test.");
         }
 
-        // 1. Synthesize audio "Hola Kiri"
-        const QString tmpWav = QDir::tempPath() + QStringLiteral("/test_hola_kiri_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
+        // 1. Synthesize audio "Hola Kity"
+        const QString tmpWav = QDir::tempPath() + QStringLiteral("/test_hola_kity_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
         QProcess piperProc;
         piperProc.start(piperCli, QStringList() << QStringLiteral("--model") << voicePath
-                                               << QStringLiteral("--output_file") << tmpWav);
+                                                << QStringLiteral("--output_file") << tmpWav);
         QVERIFY(piperProc.waitForStarted(3000));
-        piperProc.write("Hola Kiri");
+        piperProc.write("Hola Kity");
         piperProc.closeWriteChannel();
         QVERIFY(piperProc.waitForFinished(5000));
         QVERIFY(QFile::exists(tmpWav));
@@ -124,7 +124,7 @@ private Q_SLOTS:
         args << QStringLiteral("-m") << modelPath
              << QStringLiteral("-f") << tmpWav
              << QStringLiteral("-l") << QStringLiteral("es")
-             << QStringLiteral("--prompt") << QStringLiteral("Hola Kiri, Oye Kiri, Hey Kiri")
+             << QStringLiteral("--prompt") << QStringLiteral("Hola Kity, Oye Kity, Hey Kity")
              << QStringLiteral("--no-timestamps")
              << QStringLiteral("-t") << QStringLiteral("4")
              << QStringLiteral("-np");
@@ -137,11 +137,11 @@ private Q_SLOTS:
         QFile::remove(tmpWav);
 
         static const QRegularExpression wwRegex(
-            QStringLiteral("\\b(?:hola|oye|hey|ok)?\\s*(?:kiri|quiri|ciri|kili)\\b"),
+            QStringLiteral("\\b(?:hola|oye|hey|ok)?\\s*(?:kity|kitty|quiti|kiti)\\b"),
             QRegularExpression::CaseInsensitiveOption);
 
-        QVERIFY2(output.contains(wwRegex) || output.contains(QStringLiteral("kiri")),
-                 qPrintable(QStringLiteral("Whisper failed to recognize 'Hola Kiri' in output: %1").arg(output)));
+        QVERIFY2(output.contains(wwRegex) || output.contains(QStringLiteral("kity")) || output.contains(QStringLiteral("kitty")),
+                 qPrintable(QStringLiteral("Whisper failed to recognize 'Hola Kity' in output: %1").arg(output)));
     }
 
     void testLaunchRegexMatching()
@@ -174,7 +174,7 @@ private Q_SLOTS:
         QVERIFY2(!spectacle.isEmpty(), "spectacle not found on system for KDE Plasma Wayland screen capture.");
 
         if (!spectacle.isEmpty() && !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
-            const QString tmpShot = QDir::tempPath() + QStringLiteral("/test_kiri_spectacle_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
+            const QString tmpShot = QDir::tempPath() + QStringLiteral("/test_kity_spectacle_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
             QProcess proc;
             proc.start(spectacle, {QStringLiteral("-f"), QStringLiteral("-b"), QStringLiteral("-n"), QStringLiteral("-o"), tmpShot});
 
@@ -227,7 +227,7 @@ private Q_SLOTS:
     void testQmlSyntaxAndMainComponents()
     {
         QQmlEngine engine;
-        const QString qmlDir = QStringLiteral(KIRI_SOURCE_DIR) + QStringLiteral("/src/qml");
+        const QString qmlDir = QStringLiteral(KITY_SOURCE_DIR) + QStringLiteral("/src/qml");
 
         const QString expandedPath = qmlDir + QStringLiteral("/ExpandedRepresentation.qml");
         QVERIFY2(QFile::exists(expandedPath), "ExpandedRepresentation.qml must exist");
@@ -278,8 +278,8 @@ private Q_SLOTS:
 
     void testSpotlightKRunnerQueryPatterns()
     {
-        static const QRegularExpression prefixRx(QStringLiteral("^(?:kiri|ia)\\s+(.+)$"), QRegularExpression::CaseInsensitiveOption);
-        const auto m1 = prefixRx.match(QStringLiteral("kiri qué tiempo hace hoy"));
+        static const QRegularExpression prefixRx(QStringLiteral("^(?:kity|ia)\\s+(.+)$"), QRegularExpression::CaseInsensitiveOption);
+        const auto m1 = prefixRx.match(QStringLiteral("kity qué tiempo hace hoy"));
         QVERIFY(m1.hasMatch());
         QCOMPARE(m1.captured(1), QStringLiteral("qué tiempo hace hoy"));
 

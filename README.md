@@ -1,8 +1,8 @@
-# Kiri 🔮
+# Kity 🔮
 
 > **Asistente de voz e inteligencia artificial local al estilo Siri para KDE Plasma 6 en CachyOS Linux.**
 
-Kiri combina la fluidez visual de un orbe animado estilo Siri con modelos locales de última generación:
+Kity combina la fluidez visual de un orbe animado estilo Siri con modelos locales de última generación:
 - **LLM Local**: Inferencia mediante [Ollama](https://ollama.ai) (Qwen 2.5, LLaVA, Moondream).
 - **Reconocimiento de voz (STT)**: Transcripción precisa con [whisper.cpp](https://github.com/ggerganov/whisper.cpp) y PipeWire (`pw-record`).
 - **Síntesis de voz (TTS)**: Voz neuronal ultra-rápida y natural con [Piper TTS](https://github.com/rhasspy/piper) y PipeWire (`pw-play`).
@@ -16,8 +16,8 @@ Kiri combina la fluidez visual de un orbe animado estilo Siri con modelos locale
   - **Estética *Liquid Glass***: Superficies translúcidas con borde especular y refracción luminosa estilo macOS Tahoe / Golden Gate.
   - ***Writing Tools* (Apple Intelligence)**: Corrección gramatical (*Proofread*), reescritura, ajuste de tono (amigable, profesional, conciso), resúmenes, puntos clave y tablas sobre la selección primaria de Wayland o portapapeles.
   - ***Visual Intelligence & Live Text***: Captura interactiva de región (`-r`), ventana activa (`-a`) o pantalla (`-f`) con **KDE Spectacle** sobre KWin Wayland + extracción OCR con **Tesseract** + detección de enlaces/emails/teléfonos + traducción y análisis IA.
-  - **Plugin *Spotlight* para KRunner (`krunner_kiri`)**: Invoca a Kiri, aplica Herramientas de Escritura (`escribe`), extrae Live Text (`ocr`) o busca semánticamente en tu base RAG directamente desde `Alt + Espacio`.
-  - RAG local (Retrieval-Augmented Generation) sobre documentos en `~/.local/share/kiri/knowledge/`.
+  - **Plugin *Spotlight* para KRunner (`krunner_kity`)**: Invoca a Kity, aplica Herramientas de Escritura (`escribe`), extrae Live Text (`ocr`) o busca semánticamente en tu base RAG directamente desde `Alt + Espacio`.
+  - RAG local (Retrieval-Augmented Generation) sobre documentos en `~/.local/share/kity/knowledge/`.
 
 ---
 
@@ -31,7 +31,7 @@ sudo pacman -S extra-cmake-modules plasma-workspace qt6-declarative qt6-base pip
 
 ### Herramientas de Audio y Modelos Locales
 
-Kiri incluye scripts para configurar automáticamente el entorno de voz (Whisper.cpp, Piper TTS) y los modelos de IA:
+Kity incluye scripts para configurar automáticamente el entorno de voz (Whisper.cpp, Piper TTS) y los modelos de IA:
 
 ```bash
 # 1. Instalar o compilar herramientas de audio (Piper TTS y Whisper.cpp)
@@ -61,7 +61,7 @@ plasmashell --replace &
 ## 📂 Estructura del Proyecto
 
 ```
-kiri/
+kity/
 ├── CMakeLists.txt              # Configuración CMake principal para Plasma 6
 ├── .gitignore
 ├── README.md
@@ -70,9 +70,9 @@ kiri/
 │   └── setup-models.sh         # Script para descargar modelos STT y TTS
 └── src/
     ├── CMakeLists.txt          # Configuración del módulo Plasma Applet C++
-    ├── metadata.json           # Metadatos del plasmoide Kiri (Plasma 6)
-    ├── kiriapplet.h            # Cabecera principal del plasmoide
-    ├── kiriapplet.cpp          # Lógica backend C++
+    ├── metadata.json           # Metadatos del plasmoide Kity (Plasma 6)
+    ├── kityapplet.h            # Cabecera principal del plasmoide
+    ├── kityapplet.cpp          # Lógica backend C++
     ├── qml/                    # Vistas e interfaz QML Plasma 6 (Kirigami)
     │   ├── main.qml            # Representación compacta y acciones contextuales
     │   ├── ExpandedRepresentation.qml # Interfaz expandida del asistente

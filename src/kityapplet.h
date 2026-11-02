@@ -1,5 +1,5 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kiri contributors
+    SPDX-FileCopyrightText: 2026 Kity contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 */
 
@@ -20,7 +20,7 @@
 #include <QTimer>
 #include <QVariantList>
 
-class KiriApplet : public Plasma::Applet
+class KityApplet : public Plasma::Applet
 {
     Q_OBJECT
 
@@ -64,8 +64,8 @@ public:
         QString description;
     };
 
-    explicit KiriApplet(QObject *parent, const KPluginMetaData &data, const QVariantList &args);
-    ~KiriApplet() override;
+    explicit KityApplet(QObject *parent, const KPluginMetaData &data, const QVariantList &args);
+    ~KityApplet() override;
 
     void init() override;
     void configChanged() override;

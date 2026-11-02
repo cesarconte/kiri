@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2026 Kiri contributors
+# SPDX-FileCopyrightText: 2026 Kity contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 # install-audio-tools.sh: Installs Piper TTS and Whisper.cpp to ~/.local/bin if not present.
 
@@ -10,7 +10,7 @@ LOCAL_LIB="${HOME}/.local/lib"
 mkdir -p "${LOCAL_BIN}" "${LOCAL_LIB}"
 
 echo "=========================================================="
-echo "         Kiri - Audio Stack Verification & Setup          "
+echo "         Kity - Audio Stack Verification & Setup          "
 echo "=========================================================="
 
 # 1. PipeWire CLI checks
@@ -64,4 +64,4 @@ EOF
 fi
 
 echo ""
-echo "¡Herramientas de audio de Kiri listas y funcionales!"
+echo "¡Herramientas de audio de Kity listas y funcionales!"

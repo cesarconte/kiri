@@ -1,21 +1,21 @@
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-add_definitions(-DTRANSLATION_DOMAIN=\"plasma_applet_org.cesar.kiri\")
+add_definitions(-DTRANSLATION_DOMAIN=\"plasma_applet_org.cesar.kity\")
 
-ecm_qt_declare_logging_category(kiri_SRCS
+ecm_qt_declare_logging_category(kity_SRCS
     HEADER debug.h
-    IDENTIFIER KIRI_LOG
-    CATEGORY_NAME org.cesar.kiri
+    IDENTIFIER KITY_LOG
+    CATEGORY_NAME org.cesar.kity
     DEFAULT_SEVERITY Info
-    DESCRIPTION "Kiri voice and AI assistant"
-    EXPORT KIRI
+    DESCRIPTION "Kity voice and AI assistant"
+    EXPORT KITY
 )
 
-plasma_add_applet(org.cesar.kiri
+plasma_add_applet(org.cesar.kity
     CPP_SOURCES
-        kiriapplet.cpp
+        kityapplet.cpp
         mathnotes.cpp
         mathnotes.h
-        ${kiri_SRCS}
+        ${kity_SRCS}
     QML_SOURCES
         qml/main.qml
         qml/ExpandedRepresentation.qml
@@ -24,16 +24,16 @@ plasma_add_applet(org.cesar.kiri
         qml/ConfigGeneral.qml
     RESOURCES
         res/main.xml
-        res/org.cesar.kiri.svg
-        res/kiri.svg
-        res/kiri-symbolic.svg
-        res/kiri-listening.svg
-        res/kiri-listening-symbolic.svg
+        res/org.cesar.kity.svg
+        res/kity.svg
+        res/kity-symbolic.svg
+        res/kity-listening.svg
+        res/kity-listening-symbolic.svg
 )
 
-target_include_directories(org.cesar.kiri PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(org.cesar.kity PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_link_libraries(org.cesar.kiri PRIVATE
+target_link_libraries(org.cesar.kity PRIVATE
     Qt6::Core
     Qt6::DBus
     Qt6::Gui
@@ -49,23 +49,23 @@ target_link_libraries(org.cesar.kiri PRIVATE
 )
 
 # Install icons to standard hicolor icon directories
-install(FILES res/org.cesar.kiri.svg
-              res/kiri.svg
-              res/kiri-symbolic.svg
-              res/kiri-listening.svg
-              res/kiri-listening-symbolic.svg
+install(FILES res/org.cesar.kity.svg
+              res/kity.svg
+              res/kity-symbolic.svg
+              res/kity-listening.svg
+              res/kity-listening-symbolic.svg
         DESTINATION ${KDE_INSTALL_ICONDIR}/hicolor/scalable/apps
 )
 
 # Spotlight / KRunner Plugin (Phase 4)
-kcoreaddons_add_plugin(krunner_kiri
+kcoreaddons_add_plugin(krunner_kity
     INSTALL_NAMESPACE "kf6/krunner"
     SOURCES
-        runner/kirirunner.cpp
-        runner/kirirunner.h
+        runner/kityrunner.cpp
+        runner/kityrunner.h
 )
 
-target_link_libraries(krunner_kiri PRIVATE
+target_link_libraries(krunner_kity PRIVATE
     Qt6::Core
     Qt6::DBus
     Qt6::Gui

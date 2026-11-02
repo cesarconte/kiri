@@ -1,5 +1,5 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kiri contributors
+    SPDX-FileCopyrightText: 2026 Kity contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 */
 
@@ -59,7 +59,7 @@ KCMUtils.SimpleKCM {
 
     property var detectedModels: ["qwen2.5:7b"]
     property bool showAdvancedEngine: false
-    readonly property string defaultSpanishPrompt: "Eres Kiri, un asistente de voz e inteligencia artificial nativo para KDE Plasma en CachyOS Linux. Responde SIEMPRE en español de España (castellano), de forma concisa, clara, directa y natural, optimizada para síntesis de voz (TTS)."
+    readonly property string defaultSpanishPrompt: "Eres Kity, un asistente de voz e inteligencia artificial nativo para KDE Plasma en CachyOS Linux. Responde SIEMPRE en español de España (castellano), de forma concisa, clara, directa y natural, optimizada para síntesis de voz (TTS)."
 
     function fetchOllamaModels() {
         const baseUrl = (ollamaUrlField.text.trim() || "http://127.0.0.1:11434");
@@ -164,7 +164,7 @@ KCMUtils.SimpleKCM {
         id: whisperFileDialog
         title: i18n("Seleccionar modelo Whisper GGML (.bin)")
         nameFilters: [i18n("Modelos Whisper GGML (*.bin)"), i18n("Todos los archivos (*)")]
-        currentFolder: StandardPaths.writableLocation(StandardPaths.GenericDataLocation) + "/kiri/models"
+        currentFolder: StandardPaths.writableLocation(StandardPaths.GenericDataLocation) + "/kity/models"
         onAccepted: {
             whisperModelField.text = selectedFile.toString().replace(/^file:\/\//, "");
         }
@@ -174,7 +174,7 @@ KCMUtils.SimpleKCM {
         id: piperFileDialog
         title: i18n("Seleccionar modelo de voz Piper (.onnx)")
         nameFilters: [i18n("Modelos Piper ONNX (*.onnx)"), i18n("Todos los archivos (*)")]
-        currentFolder: StandardPaths.writableLocation(StandardPaths.GenericDataLocation) + "/kiri/voices"
+        currentFolder: StandardPaths.writableLocation(StandardPaths.GenericDataLocation) + "/kity/voices"
         onAccepted: {
             piperVoiceField.text = selectedFile.toString().replace(/^file:\/\//, "");
         }
@@ -186,18 +186,18 @@ KCMUtils.SimpleKCM {
 
     Kirigami.FormLayout {
         // ---------------------------------------------------------------------
-        // 1. Voice & Hands-Free Wake Word ("¡Hola Kiri!")
+        // 1. Voice & Hands-Free Wake Word ("¡Hola Kity!")
         // ---------------------------------------------------------------------
         Kirigami.Separator {
             Kirigami.FormData.isSection: true
-            Kirigami.FormData.label: i18n("Voz y Escucha Activa («¡Hola Kiri!»)")
+            Kirigami.FormData.label: i18n("Voz y Escucha Activa («¡Hola Kity!»)")
         }
 
         QQC2.CheckBox {
             id: wakeWordCheck
             Kirigami.FormData.label: i18n("Activación por voz:")
-            text: i18n("Escuchar «¡Hola Kiri!» u «Oye Kiri» en segundo plano")
-            QQC2.ToolTip.text: i18n("Permite invocar a Kiri con la voz en cualquier momento sin usar el ratón ni el teclado")
+            text: i18n("Escuchar «¡Hola Kity!» u «Oye Kity» en segundo plano")
+            QQC2.ToolTip.text: i18n("Permite invocar a Kity con la voz en cualquier momento sin usar el ratón ni el teclado")
             QQC2.ToolTip.visible: hovered
         }
 
@@ -227,7 +227,7 @@ KCMUtils.SimpleKCM {
             id: earconsCheck
             Kirigami.FormData.label: i18n("Avisos acústicos:")
             text: i18n("Reproducir tono armónico al activar o finalizar el micrófono")
-            QQC2.ToolTip.text: i18n("Emite un sonido sutil al estilo Siri cuando Kiri empieza o termina de escucharte")
+            QQC2.ToolTip.text: i18n("Emite un sonido sutil al estilo Siri cuando Kity empieza o termina de escucharte")
             QQC2.ToolTip.visible: hovered
         }
 
@@ -252,7 +252,7 @@ KCMUtils.SimpleKCM {
         QQC2.CheckBox {
             id: autoListenCheck
             Kirigami.FormData.label: i18n("Al abrir el popup:")
-            text: i18n("Empezar a escuchar por micrófono inmediatamente al abrir Kiri")
+            text: i18n("Empezar a escuchar por micrófono inmediatamente al abrir Kity")
         }
 
         RowLayout {
@@ -265,7 +265,7 @@ KCMUtils.SimpleKCM {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
                 Layout.preferredWidth: 0
-                placeholderText: i18n("Detección automática en ~/.local/share/kiri/models/")
+                placeholderText: i18n("Detección automática en ~/.local/share/kity/models/")
             }
 
             QQC2.Button {
@@ -287,7 +287,7 @@ KCMUtils.SimpleKCM {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
                 Layout.preferredWidth: 0
-                placeholderText: i18n("Detección automática en ~/.local/share/kiri/voices/")
+                placeholderText: i18n("Detección automática en ~/.local/share/kity/voices/")
             }
 
             QQC2.Button {
@@ -464,7 +464,7 @@ KCMUtils.SimpleKCM {
             Kirigami.FormData.label: i18n("Documentos locales:")
             text: i18n("Buscar en mis notas locales (.txt / .md) para enriquecer respuestas")
             checked: true
-            QQC2.ToolTip.text: i18n("Guarda apuntes o documentos en ~/.local/share/kiri/knowledge/ para que Kiri los consulte de forma privada")
+            QQC2.ToolTip.text: i18n("Guarda apuntes o documentos en ~/.local/share/kity/knowledge/ para que Kity los consulte de forma privada")
             QQC2.ToolTip.visible: hovered
         }
 
@@ -486,7 +486,7 @@ KCMUtils.SimpleKCM {
             enabled: kbEnabledCheck.checked
 
             QQC2.Label {
-                text: "~/.local/share/kiri/knowledge/"
+                text: "~/.local/share/kity/knowledge/"
                 font.family: "monospace"
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
@@ -499,7 +499,7 @@ KCMUtils.SimpleKCM {
                 QQC2.ToolTip.text: i18n("Abrir la carpeta de conocimiento local en el gestor de archivos Dolphin")
                 QQC2.ToolTip.visible: hovered
                 onClicked: {
-                    const path = StandardPaths.writableLocation(StandardPaths.GenericDataLocation) + "/kiri/knowledge";
+                    const path = StandardPaths.writableLocation(StandardPaths.GenericDataLocation) + "/kity/knowledge";
                     Qt.openUrlExternally("file://" + path);
                 }
             }

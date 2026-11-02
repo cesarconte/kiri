@@ -1,5 +1,5 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kiri contributors
+    SPDX-FileCopyrightText: 2026 Kity contributors
 
     SPDX-License-Identifier: GPL-3.0-or-later
 */
@@ -21,15 +21,15 @@ PlasmoidItem {
     Plasmoid.icon: {
         const isColor = Plasmoid.configuration.panelIconStyle === "color";
         if (Plasmoid.state === "listening") {
-            return isColor ? "kiri-listening" : "kiri-listening-symbolic";
+            return isColor ? "kity-listening" : "kity-listening-symbolic";
         }
-        return isColor ? "kiri" : "kiri-symbolic";
+        return isColor ? "kity" : "kity-symbolic";
     }
 
     Plasmoid.status: PlasmaCore.Types.ActiveStatus
     Plasmoid.backgroundHints: PlasmaCore.Types.DefaultBackground
 
-    toolTipMainText: i18n("Kiri")
+    toolTipMainText: i18n("Kity")
     toolTipSubText: {
         if (Plasmoid.state === "listening") {
             return i18n("Escuchando tu voz…");
@@ -40,7 +40,7 @@ PlasmoidItem {
         } else if (Plasmoid.state === "speaking") {
             return i18n("Reproduciendo respuesta…");
         }
-        return i18n("Haz clic para abrir Kiri o clic central para hablar de inmediato");
+        return i18n("Haz clic para abrir Kity o clic central para hablar de inmediato");
     }
 
     onExpandedChanged: {
@@ -65,7 +65,7 @@ PlasmoidItem {
     Plasmoid.contextualActions: [
         PlasmaCore.Action {
             text: Plasmoid.isRecording ? i18n("Detener escucha") : i18n("Hablar por voz")
-            icon.name: "kiri-symbolic"
+            icon.name: "kity-symbolic"
             onTriggered: {
                 root.expanded = true;
                 Plasmoid.toggleRecording();

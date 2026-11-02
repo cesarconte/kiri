@@ -1,5 +1,5 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kiri contributors
+    SPDX-FileCopyrightText: 2026 Kity contributors
 
     SPDX-License-Identifier: GPL-3.0-or-later
 */
@@ -147,13 +147,13 @@ Item {
                         return i18n("Hablando…");
                     }
                     if (Plasmoid.wakeWordEnabled) {
-                        return i18n("«¡Hola Kiri!» activo");
+                        return i18n("«¡Hola Kity!» activo");
                     }
                     return i18n("Listo");
                 }
             }
 
-            // Quick Toggle for "¡Hola Kiri!" Wake Word
+            // Quick Toggle for "¡Hola Kity!" Wake Word
             PlasmaComponents3.ToolButton {
                 id: wakeWordButton
                 visible: Plasmoid.whisperAvailable
@@ -167,8 +167,8 @@ Item {
                 }
                 QQC2.ToolTip.visible: hovered
                 QQC2.ToolTip.text: Plasmoid.wakeWordEnabled
-                    ? i18n("Escucha activa «¡Hola Kiri!» activada (clic para desactivar)")
-                    : i18n("Activar escucha manos libres «¡Hola Kiri!»")
+                    ? i18n("Escucha activa «¡Hola Kity!» activada (clic para desactivar)")
+                    : i18n("Activar escucha manos libres «¡Hola Kity!»")
             }
 
             // Speech Output Mode Selector Button
@@ -539,7 +539,7 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     opacity: 0.75
                     wrapMode: Text.WordWrap
-                    text: i18n("Pulsa la esfera inferior o di «¡Hola Kiri!» para hablar, o elige una acción rápida:")
+                    text: i18n("Pulsa la esfera inferior o di «¡Hola Kity!» para hablar, o elige una acción rápida:")
                 }
 
                 GridLayout {
@@ -883,7 +883,7 @@ Item {
                             focus: true
                             placeholderText: Plasmoid.isRecording
                                 ? i18n("Escuchando tu voz…")
-                                : i18n("Pregúntale o pídele cualquier cosa a Kiri…")
+                                : i18n("Pregúntale o pídele cualquier cosa a Kity…")
                             enabled: !Plasmoid.isRecording
                             wrapMode: TextEdit.Wrap
 

@@ -40,10 +40,10 @@
     </entry>
     <entry name="systemPrompt" type="String">
       <label>System instructions provided to the AI assistant</label>
-      <default>Eres Kiri, un asistente de voz e inteligencia artificial nativo para KDE Plasma en CachyOS Linux. Responde SIEMPRE en español de España (castellano), de forma concisa, clara, directa y natural, optimizada para síntesis de voz (TTS).</default>
+      <default>Eres Kity, un asistente de voz e inteligencia artificial nativo para KDE Plasma en CachyOS Linux. Responde SIEMPRE en español de España (castellano), de forma concisa, clara, directa y natural, optimizada para síntesis de voz (TTS).</default>
     </entry>
     <entry name="whisperModelPath" type="String">
-      <label>Path to the whisper.cpp GGML model file (.bin). Leave empty to auto-detect in ~/.local/share/kiri/models/</label>
+      <label>Path to the whisper.cpp GGML model file (.bin). Leave empty to auto-detect in ~/.local/share/kity/models/</label>
       <default></default>
     </entry>
     <entry name="whisperLanguage" type="String">
@@ -51,7 +51,7 @@
       <default>es</default>
     </entry>
     <entry name="piperVoicePath" type="String">
-      <label>Path to the Piper TTS ONNX model file (.onnx). Leave empty to auto-detect in ~/.local/share/kiri/voices/</label>
+      <label>Path to the Piper TTS ONNX model file (.onnx). Leave empty to auto-detect in ~/.local/share/kity/voices/</label>
       <default></default>
     </entry>
     <entry name="panelIconStyle" type="String">
@@ -59,11 +59,11 @@
       <default>symbolic</default>
     </entry>
     <entry name="speechOutputMode" type="String">
-      <label>When Kiri should read responses aloud: manual (only when clicking Speak), voice_only (when asked by voice), or always</label>
+      <label>When Kity should read responses aloud: manual (only when clicking Speak), voice_only (when asked by voice), or always</label>
       <default>always</default>
     </entry>
     <entry name="autoListenOnActivate" type="Bool">
-      <label>Automatically start listening via microphone when Kiri is activated with its shortcut</label>
+      <label>Automatically start listening via microphone when Kity is activated with its shortcut</label>
       <default>false</default>
     </entry>
     <entry name="vadEnabled" type="Bool">
@@ -75,7 +75,7 @@
       <default>1300</default>
     </entry>
     <entry name="wakeWordEnabled" type="Bool">
-      <label>Listen for wake word in background (e.g. 'Hola Kiri' or 'Oye Kiri')</label>
+      <label>Listen for wake word in background (e.g. 'Hola Kity' or 'Oye Kity')</label>
       <default>true</default>
     </entry>
     <entry name="earconsEnabled" type="Bool">

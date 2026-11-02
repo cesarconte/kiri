@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2026 Kiri contributors
+# SPDX-FileCopyrightText: 2026 Kity contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-# setup-models.sh: Download local AI, speech recognition, and TTS models for Kiri
+# setup-models.sh: Download local AI, speech recognition, and TTS models for Kity
 
 set -euo pipefail
 
-KIRI_DATA_DIR="${HOME}/.local/share/kiri"
-MODELS_DIR="${KIRI_DATA_DIR}/models"
-VOICES_DIR="${KIRI_DATA_DIR}/voices"
-KNOWLEDGE_DIR="${KIRI_DATA_DIR}/knowledge"
+KITY_DATA_DIR="${HOME}/.local/share/kity"
+MODELS_DIR="${KITY_DATA_DIR}/models"
+VOICES_DIR="${KITY_DATA_DIR}/voices"
+KNOWLEDGE_DIR="${KITY_DATA_DIR}/knowledge"
 
 echo "=========================================================="
-echo "         Kiri - Siri-style Voice Assistant Setup          "
+echo "         Kity - Siri-style Voice Assistant Setup          "
 echo "=========================================================="
 echo ""
 
@@ -60,4 +60,4 @@ else
 fi
 
 echo ""
-echo "¡Configuración de modelos de Kiri completada exitosamente!"
+echo "¡Configuración de modelos de Kity completada exitosamente!"

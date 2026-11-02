@@ -3,7 +3,7 @@
   "KPlugin": {
     "Authors": [
       {
-        "Name": "Kiri contributors"
+        "Name": "Kity contributors"
       }
     ],
     "Category": "Utilities",
@@ -13,12 +13,13 @@
     "FormFactors": [
       "desktop"
     ],
-    "Icon": "org.cesar.kiri",
+    "Icon": "org.cesar.kity",
+    "Id": "org.cesar.kity",
     "License": "GPL-3.0-or-later",
-    "Name": "Kiri",
-    "Name[es]": "Kiri",
+    "Name": "Kity",
+    "Name[es]": "Kity",
     "Version": "0.1.0",
-    "Website": "https://github.com/cesarconte/kiri"
+    "Website": "https://github.com/cesarconte/kity"
   },
   "X-Plasma-API-Minimum-Version": "6.0",
   "X-Plasma-NotificationArea": "true",

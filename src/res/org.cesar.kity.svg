@@ -65,7 +65,7 @@
   <!-- Back Gyro Orbital Ribbon -->
   <path d="M19 41 C21 21, 43 23, 45 23" fill="none" stroke="url(#ribbonMagenta)" stroke-width="2.5" stroke-linecap="round" opacity="0.65" />
 
-  <!-- Siri Voice Central Sphere (Kiri Core) -->
+  <!-- Siri Voice Central Sphere (Kity Core) -->
   <circle cx="32" cy="32" r="12" fill="url(#orbCore)" filter="url(#glow)" />
 
   <!-- Inner Radiant Highlight on Core -->

@@ -1,5 +1,5 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kiri contributors
+    SPDX-FileCopyrightText: 2026 Kity contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 */
 
@@ -10,13 +10,13 @@
 #include <KRunner/QueryMatch>
 #include <KRunner/RunnerContext>
 
-class KiriRunner : public KRunner::AbstractRunner
+class KityRunner : public KRunner::AbstractRunner
 {
     Q_OBJECT
 
 public:
-    explicit KiriRunner(QObject *parent, const KPluginMetaData &metaData);
-    ~KiriRunner() override = default;
+    explicit KityRunner(QObject *parent, const KPluginMetaData &metaData);
+    ~KityRunner() override = default;
 
     void init() override;
     void match(KRunner::RunnerContext &context) override;

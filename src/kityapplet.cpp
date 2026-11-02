@@ -1,9 +1,9 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kiri contributors
+    SPDX-FileCopyrightText: 2026 Kity contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 */
 
-#include "kiriapplet.h"
+#include "kityapplet.h"
 #include "mathnotes.h"
 
 #include <QHash>
@@ -43,9 +43,9 @@
 #include <QSysInfo>
 #include <QUrlQuery>
 
-K_PLUGIN_CLASS_WITH_JSON(KiriApplet, "metadata.json")
+K_PLUGIN_CLASS_WITH_JSON(KityApplet, "metadata.json")
 
-KiriApplet::KiriApplet(QObject *parent, const KPluginMetaData &data, const QVariantList &args)
+KityApplet::KityApplet(QObject *parent, const KPluginMetaData &data, const QVariantList &args)
     : Plasma::Applet(parent, data, args)
     , m_nam(new QNetworkAccessManager(this))
     , m_vadTimer(new QTimer(this))
@@ -54,14 +54,14 @@ KiriApplet::KiriApplet(QObject *parent, const KPluginMetaData &data, const QVari
 {
 }
 
-KiriApplet::~KiriApplet()
+KityApplet::~KityApplet()
 {
     stopRecording();
     stopSpeaking();
     stopWakeWordListener();
 }
 
-void KiriApplet::init()
+void KityApplet::init()
 {
     Plasma::Applet::init();
 
@@ -70,11 +70,11 @@ void KiriApplet::init()
     loadScheduledReminders();
     ensureKnowledgeBaseReady();
 
-    connect(m_vadTimer, &QTimer::timeout, this, &KiriApplet::checkVoiceActivity);
-    connect(m_reminderTimer, &QTimer::timeout, this, &KiriApplet::checkScheduledReminders);
+    connect(m_vadTimer, &QTimer::timeout, this, &KityApplet::checkVoiceActivity);
+    connect(m_reminderTimer, &QTimer::timeout, this, &KityApplet::checkScheduledReminders);
     m_reminderTimer->start(30000); // Check reminders every 30s
 
-    connect(m_readinessTimer, &QTimer::timeout, this, &KiriApplet::checkReadiness);
+    connect(m_readinessTimer, &QTimer::timeout, this, &KityApplet::checkReadiness);
     m_readinessTimer->start(60000); // Check service health every minute
 
     checkReadiness();
@@ -85,15 +85,15 @@ void KiriApplet::init()
         startWakeWordListener();
     }
 
-    // Register Kiri on session D-Bus for Spotlight / KRunner integration (Phase 4)
+    // Register Kity on session D-Bus for Spotlight / KRunner integration (Phase 4)
     QDBusConnection bus = QDBusConnection::sessionBus();
-    bus.registerService(QStringLiteral("org.cesar.kiri"));
-    bus.registerObject(QStringLiteral("/Kiri"),
+    bus.registerService(QStringLiteral("org.cesar.kity"));
+    bus.registerObject(QStringLiteral("/Kity"),
                        this,
                        QDBusConnection::ExportAllInvokables | QDBusConnection::ExportAllProperties | QDBusConnection::ExportAllSignals);
 }
 
-void KiriApplet::configChanged()
+void KityApplet::configChanged()
 {
     Plasma::Applet::configChanged();
 
@@ -109,21 +109,21 @@ void KiriApplet::configChanged()
 // Property Accessors
 // =========================================================================
 
-QString KiriApplet::state() const { return m_state; }
-QString KiriApplet::statusMessage() const { return m_statusMessage; }
-QString KiriApplet::streamingText() const { return m_streamingText; }
-QVariantList KiriApplet::messages() const { return m_messages; }
-QStringList KiriApplet::availableModels() const { return m_availableModels; }
-bool KiriApplet::ollamaReachable() const { return m_ollamaReachable; }
-bool KiriApplet::whisperAvailable() const { return m_whisperAvailable; }
-bool KiriApplet::piperAvailable() const { return m_piperAvailable; }
-bool KiriApplet::isRecording() const { return m_state == QLatin1String("listening"); }
-bool KiriApplet::isBusy() const { return m_state == QLatin1String("thinking") || m_state == QLatin1String("transcribing"); }
-bool KiriApplet::isSpeaking() const { return m_state == QLatin1String("speaking") || m_isSpeakingSentence; }
-qreal KiriApplet::audioLevel() const { return m_audioLevel; }
-bool KiriApplet::wakeWordEnabled() const { return m_wakeWordEnabled; }
+QString KityApplet::state() const { return m_state; }
+QString KityApplet::statusMessage() const { return m_statusMessage; }
+QString KityApplet::streamingText() const { return m_streamingText; }
+QVariantList KityApplet::messages() const { return m_messages; }
+QStringList KityApplet::availableModels() const { return m_availableModels; }
+bool KityApplet::ollamaReachable() const { return m_ollamaReachable; }
+bool KityApplet::whisperAvailable() const { return m_whisperAvailable; }
+bool KityApplet::piperAvailable() const { return m_piperAvailable; }
+bool KityApplet::isRecording() const { return m_state == QLatin1String("listening"); }
+bool KityApplet::isBusy() const { return m_state == QLatin1String("thinking") || m_state == QLatin1String("transcribing"); }
+bool KityApplet::isSpeaking() const { return m_state == QLatin1String("speaking") || m_isSpeakingSentence; }
+qreal KityApplet::audioLevel() const { return m_audioLevel; }
+bool KityApplet::wakeWordEnabled() const { return m_wakeWordEnabled; }
 
-void KiriApplet::setWakeWordEnabled(bool enabled)
+void KityApplet::setWakeWordEnabled(bool enabled)
 {
     if (m_wakeWordEnabled != enabled) {
         m_wakeWordEnabled = enabled;
@@ -136,7 +136,7 @@ void KiriApplet::setWakeWordEnabled(bool enabled)
     }
 }
 
-void KiriApplet::setState(const QString &newState, const QString &newStatus)
+void KityApplet::setState(const QString &newState, const QString &newStatus)
 {
     const bool stateChangedFlag = (m_state != newState);
     const bool statusChangedFlag = (m_statusMessage != newStatus);
@@ -172,7 +172,7 @@ void KiriApplet::setState(const QString &newState, const QString &newStatus)
 // Configuration Readers
 // =========================================================================
 
-QString KiriApplet::readConfigString(const QString &key, const QString &def) const
+QString KityApplet::readConfigString(const QString &key, const QString &def) const
 {
     const KConfigGroup cfg = config();
     if (cfg.hasGroup(QStringLiteral("General")) && cfg.group(QStringLiteral("General")).hasKey(key)) {
@@ -181,7 +181,7 @@ QString KiriApplet::readConfigString(const QString &key, const QString &def) con
     return cfg.readEntry(key, def);
 }
 
-int KiriApplet::readConfigInt(const QString &key, int def) const
+int KityApplet::readConfigInt(const QString &key, int def) const
 {
     const KConfigGroup cfg = config();
     if (cfg.hasGroup(QStringLiteral("General")) && cfg.group(QStringLiteral("General")).hasKey(key)) {
@@ -190,7 +190,7 @@ int KiriApplet::readConfigInt(const QString &key, int def) const
     return cfg.readEntry(key, def);
 }
 
-double KiriApplet::readConfigDouble(const QString &key, double def) const
+double KityApplet::readConfigDouble(const QString &key, double def) const
 {
     const KConfigGroup cfg = config();
     if (cfg.hasGroup(QStringLiteral("General")) && cfg.group(QStringLiteral("General")).hasKey(key)) {
@@ -199,7 +199,7 @@ double KiriApplet::readConfigDouble(const QString &key, double def) const
     return cfg.readEntry(key, def);
 }
 
-bool KiriApplet::readConfigBool(const QString &key, bool def) const
+bool KityApplet::readConfigBool(const QString &key, bool def) const
 {
     const KConfigGroup cfg = config();
     if (cfg.hasGroup(QStringLiteral("General")) && cfg.group(QStringLiteral("General")).hasKey(key)) {
@@ -208,7 +208,7 @@ bool KiriApplet::readConfigBool(const QString &key, bool def) const
     return cfg.readEntry(key, def);
 }
 
-QString KiriApplet::resolveOllamaUrl() const
+QString KityApplet::resolveOllamaUrl() const
 {
     QString url = readConfigString(QStringLiteral("ollamaUrl"), QStringLiteral("http://127.0.0.1:11434"));
     while (url.endsWith(QLatin1Char('/'))) {
@@ -217,30 +217,30 @@ QString KiriApplet::resolveOllamaUrl() const
     return url;
 }
 
-QString KiriApplet::resolveOllamaModel() const
+QString KityApplet::resolveOllamaModel() const
 {
     return readConfigString(QStringLiteral("ollamaModel"), QStringLiteral("qwen2.5:7b"));
 }
 
-QString KiriApplet::resolveVisionModel() const
+QString KityApplet::resolveVisionModel() const
 {
     return readConfigString(QStringLiteral("ollamaVisionModel"), QStringLiteral("moondream"));
 }
 
-QString KiriApplet::resolveSystemPrompt() const
+QString KityApplet::resolveSystemPrompt() const
 {
     return readConfigString(QStringLiteral("systemPrompt"),
-        QStringLiteral("Eres Kiri, un asistente de voz e inteligencia artificial nativo para KDE Plasma en CachyOS Linux. "
+        QStringLiteral("Eres Kity, un asistente de voz e inteligencia artificial nativo para KDE Plasma en CachyOS Linux. "
                        "Responde SIEMPRE en español de España (castellano), de forma concisa, clara, directa y natural, optimizada para síntesis de voz (TTS)."));
 }
 
-QString KiriApplet::resolveWhisperModelPath() const
+QString KityApplet::resolveWhisperModelPath() const
 {
     QString path = readConfigString(QStringLiteral("whisperModelPath"));
     if (!path.isEmpty() && QFile::exists(path)) {
         return path;
     }
-    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kiri/models");
+    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity/models");
     const QString defaultPath = dataDir + QStringLiteral("/ggml-base.bin");
     if (QFile::exists(defaultPath)) {
         return defaultPath;
@@ -248,7 +248,7 @@ QString KiriApplet::resolveWhisperModelPath() const
     return QString();
 }
 
-QString KiriApplet::resolveWhisperLanguage() const
+QString KityApplet::resolveWhisperLanguage() const
 {
     const QString lang = readConfigString(QStringLiteral("whisperLanguage"), QStringLiteral("es")).trimmed().toLower();
     if (lang.isEmpty() || lang == QStringLiteral("auto")) {
@@ -257,13 +257,13 @@ QString KiriApplet::resolveWhisperLanguage() const
     return lang;
 }
 
-QString KiriApplet::resolvePiperVoicePath() const
+QString KityApplet::resolvePiperVoicePath() const
 {
     QString path = readConfigString(QStringLiteral("piperVoicePath"));
     if (!path.isEmpty() && QFile::exists(path)) {
         return path;
     }
-    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kiri/voices");
+    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity/voices");
     const QString defaultVoice = dataDir + QStringLiteral("/es_ES-sharvard-medium.onnx");
     if (QFile::exists(defaultVoice)) {
         return defaultVoice;
@@ -271,7 +271,7 @@ QString KiriApplet::resolvePiperVoicePath() const
     return QString();
 }
 
-QString KiriApplet::resolveSpeechOutputMode() const
+QString KityApplet::resolveSpeechOutputMode() const
 {
     return readConfigString(QStringLiteral("speechOutputMode"), QStringLiteral("always"));
 }
@@ -280,7 +280,7 @@ QString KiriApplet::resolveSpeechOutputMode() const
 // Health & Readiness
 // =========================================================================
 
-void KiriApplet::checkReadiness()
+void KityApplet::checkReadiness()
 {
     // 1. Whisper check
     const bool hasPwRecord = !QStandardPaths::findExecutable(QStringLiteral("pw-record")).isEmpty();
@@ -298,7 +298,7 @@ void KiriApplet::checkReadiness()
     // 3. Ollama check (GET /api/tags)
     const QUrl tagsUrl(resolveOllamaUrl() + QStringLiteral("/api/tags"));
     QNetworkRequest req(tagsUrl);
-    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("KiriApplet/1.0"));
+    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("KityApplet/1.0"));
 
     QNetworkReply *reply = m_nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [this, reply, newWhisperAvailable, newPiperAvailable]() {
@@ -339,7 +339,7 @@ void KiriApplet::checkReadiness()
     });
 }
 
-void KiriApplet::refreshModels()
+void KityApplet::refreshModels()
 {
     checkReadiness();
 }
@@ -348,7 +348,7 @@ void KiriApplet::refreshModels()
 // Conversation & Ollama LLM Interaction
 // =========================================================================
 
-void KiriApplet::appendAssistantMessage(const QString &text, bool speakIfAppropriate)
+void KityApplet::appendAssistantMessage(const QString &text, bool speakIfAppropriate)
 {
     const QString trimmed = text.trimmed();
     if (trimmed.isEmpty()) {
@@ -374,7 +374,7 @@ void KiriApplet::appendAssistantMessage(const QString &text, bool speakIfAppropr
     setState(QStringLiteral("idle"), QString());
 }
 
-QString KiriApplet::analyzeImageWithVisionModel(const QString &base64Image) const
+QString KityApplet::analyzeImageWithVisionModel(const QString &base64Image) const
 {
     if (base64Image.isEmpty()) {
         return QString();
@@ -399,7 +399,7 @@ QString KiriApplet::analyzeImageWithVisionModel(const QString &base64Image) cons
     return doc.object().value(QStringLiteral("response")).toString().trimmed();
 }
 
-void KiriApplet::sendMessage(const QString &text, bool fromVoice)
+void KityApplet::sendMessage(const QString &text, bool fromVoice)
 {
     const QString trimmed = text.trimmed();
     if (trimmed.isEmpty()) {
@@ -481,7 +481,7 @@ void KiriApplet::sendMessage(const QString &text, bool fromVoice)
         const QString kwinWindows = collectKWinWindowsInfo();
 
         // Layer 2: Capture screen via Spectacle and extract visible UI text via Tesseract OCR
-        const QString tmpShot = QDir::tempPath() + QStringLiteral("/kiri_vision_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
+        const QString tmpShot = QDir::tempPath() + QStringLiteral("/kity_vision_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
         captureScreenToPng(tmpShot);
         const QString ocrText = extractScreenOcrText(tmpShot);
         base64Image = encodeImageToBase64(tmpShot);
@@ -510,9 +510,9 @@ void KiriApplet::sendMessage(const QString &text, bool fromVoice)
         base64Image.clear();
 
         effectivePrompt = QStringLiteral(
-            "El motor de inspección de escritorio de Kiri en KDE Plasma 6.8 (Wayland) acaba de analizar la pantalla actual del usuario y ha obtenido estos datos reales y exactos:\n\n"
+            "El motor de inspección de escritorio de Kity en KDE Plasma 6.8 (Wayland) acaba de analizar la pantalla actual del usuario y ha obtenido estos datos reales y exactos:\n\n"
             "%1\n\n"
-            "Instrucciones estrictas para Kiri:\n"
+            "Instrucciones estrictas para Kity:\n"
             "- Responde en español de España a la petición del usuario: \"%2\".\n"
             "- Indica con total claridad qué aplicación o aplicaciones se están ejecutando y mostrando en pantalla ahora mismo (por ejemplo, si la ventana activa es Antigravity, menciona explícitamente Antigravity y el título/proyecto que tiene abierto), qué contenido o conversación se lee en la interfaz según el texto extraído, y si hay otras ventanas abiertas o minimizadas.\n"
             "- PROHIBIDO inventar o alucinar objetos que no estén en los datos anteriores (nunca digas que ves un teclado, un ratón, ni digas que no puedes ver la pantalla).")
@@ -522,7 +522,7 @@ void KiriApplet::sendMessage(const QString &text, bool fromVoice)
     sendToOllama(effectivePrompt, context, base64Image);
 }
 
-void KiriApplet::sendToOllama(const QString &userPrompt, const QString &injectedContext, const QString &base64Image)
+void KityApplet::sendToOllama(const QString &userPrompt, const QString &injectedContext, const QString &base64Image)
 {
     if (!m_ollamaReachable) {
         setState(QStringLiteral("error"), i18n("No se puede conectar con el servidor Ollama en %1.", resolveOllamaUrl()));
@@ -609,11 +609,11 @@ void KiriApplet::sendToOllama(const QString &userPrompt, const QString &injected
     }
 
     m_currentOllamaReply = m_nam->post(req, QJsonDocument(reqPayload).toJson(QJsonDocument::Compact));
-    connect(m_currentOllamaReply, &QNetworkReply::readyRead, this, &KiriApplet::handleOllamaStreamChunk);
-    connect(m_currentOllamaReply, &QNetworkReply::finished, this, &KiriApplet::handleOllamaFinished);
+    connect(m_currentOllamaReply, &QNetworkReply::readyRead, this, &KityApplet::handleOllamaStreamChunk);
+    connect(m_currentOllamaReply, &QNetworkReply::finished, this, &KityApplet::handleOllamaFinished);
 }
 
-void KiriApplet::handleOllamaStreamChunk()
+void KityApplet::handleOllamaStreamChunk()
 {
     if (!m_currentOllamaReply) return;
 
@@ -636,7 +636,7 @@ void KiriApplet::handleOllamaStreamChunk()
     }
 }
 
-void KiriApplet::handleOllamaFinished()
+void KityApplet::handleOllamaFinished()
 {
     if (!m_currentOllamaReply) return;
 
@@ -683,7 +683,7 @@ void KiriApplet::handleOllamaFinished()
     }
 }
 
-void KiriApplet::stopGeneration()
+void KityApplet::stopGeneration()
 {
     if (m_currentOllamaReply) {
         m_currentOllamaReply->abort();
@@ -694,7 +694,7 @@ void KiriApplet::stopGeneration()
     setState(QStringLiteral("idle"), QString());
 }
 
-void KiriApplet::clearHistory()
+void KityApplet::clearHistory()
 {
     m_messages.clear();
     Q_EMIT messagesChanged();
@@ -706,7 +706,7 @@ void KiriApplet::clearHistory()
 // Voice & Audio Processing (Whisper.cpp + PipeWire)
 // =========================================================================
 
-void KiriApplet::startRecording()
+void KityApplet::startRecording()
 {
     if (m_state == QLatin1String("listening")) {
         return;
@@ -722,7 +722,7 @@ void KiriApplet::startRecording()
     stopSpeaking();
     playSiriEarcon(true);
 
-    m_currentRecordingPath = QDir::tempPath() + QStringLiteral("/kiri_rec_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
+    m_currentRecordingPath = QDir::tempPath() + QStringLiteral("/kity_rec_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
 
     m_recordProcess = new QProcess(this);
     QStringList args;
@@ -739,11 +739,11 @@ void KiriApplet::startRecording()
         return;
     }
 
-    setState(QStringLiteral("listening"), i18n("Escuchando… Habla ahora, Kiri detectará cuando termines."));
+    setState(QStringLiteral("listening"), i18n("Escuchando… Habla ahora, Kity detectará cuando termines."));
     startVad();
 }
 
-void KiriApplet::stopRecording()
+void KityApplet::stopRecording()
 {
     stopVad();
 
@@ -765,7 +765,7 @@ void KiriApplet::stopRecording()
     }
 }
 
-void KiriApplet::toggleRecording()
+void KityApplet::toggleRecording()
 {
     if (m_state == QLatin1String("listening")) {
         stopRecording();
@@ -774,21 +774,21 @@ void KiriApplet::toggleRecording()
     }
 }
 
-void KiriApplet::startVad()
+void KityApplet::startVad()
 {
     m_speechDetected = false;
     m_speechSilenceTimer.invalidate();
     m_vadTimer->start(100); // Check file growth / volume every 100ms
 }
 
-void KiriApplet::stopVad()
+void KityApplet::stopVad()
 {
     m_vadTimer->stop();
     m_audioLevel = 0.0;
     Q_EMIT audioLevelChanged();
 }
 
-void KiriApplet::checkVoiceActivity()
+void KityApplet::checkVoiceActivity()
 {
     if (!m_recordProcess || m_currentRecordingPath.isEmpty()) return;
 
@@ -848,7 +848,7 @@ void KiriApplet::checkVoiceActivity()
     }
 }
 
-void KiriApplet::runWhisperTranscription()
+void KityApplet::runWhisperTranscription()
 {
     QFileInfo fi(m_currentRecordingPath);
     if (!fi.exists() || fi.size() < 1024) {
@@ -909,7 +909,7 @@ void KiriApplet::runWhisperTranscription()
 // Text-to-Speech (Piper TTS + PipeWire)
 // =========================================================================
 
-void KiriApplet::speakText(const QString &text)
+void KityApplet::speakText(const QString &text)
 {
     stopSpeaking();
     const QString clean = stripMarkdownForSpeech(text);
@@ -918,7 +918,7 @@ void KiriApplet::speakText(const QString &text)
     }
 }
 
-void KiriApplet::stopSpeaking()
+void KityApplet::stopSpeaking()
 {
     m_ttsQueue.clear();
     m_ttsSpeechBuffer.clear();
@@ -935,7 +935,7 @@ void KiriApplet::stopSpeaking()
     }
 }
 
-void KiriApplet::processStreamingTtsChunk(const QString &newChunk)
+void KityApplet::processStreamingTtsChunk(const QString &newChunk)
 {
     const QString speechMode = resolveSpeechOutputMode();
     if (speechMode == QLatin1String("manual")) {
@@ -963,7 +963,7 @@ void KiriApplet::processStreamingTtsChunk(const QString &newChunk)
     }
 }
 
-void KiriApplet::enqueueSentenceForSpeech(const QString &sentence)
+void KityApplet::enqueueSentenceForSpeech(const QString &sentence)
 {
     m_ttsQueue.enqueue(sentence);
     if (!m_isSpeakingSentence) {
@@ -971,7 +971,7 @@ void KiriApplet::enqueueSentenceForSpeech(const QString &sentence)
     }
 }
 
-void KiriApplet::playNextTtsQueueItem()
+void KityApplet::playNextTtsQueueItem()
 {
     if (m_ttsQueue.isEmpty()) {
         m_isSpeakingSentence = false;
@@ -985,7 +985,7 @@ void KiriApplet::playNextTtsQueueItem()
     speakSentence(sentence);
 }
 
-void KiriApplet::speakSentence(const QString &sentence)
+void KityApplet::speakSentence(const QString &sentence)
 {
     const QString piperCli = QStandardPaths::findExecutable(QStringLiteral("piper"));
     const QString voicePath = resolvePiperVoicePath();
@@ -1028,7 +1028,7 @@ void KiriApplet::speakSentence(const QString &sentence)
     m_ttsProcess->closeWriteChannel();
 }
 
-QString KiriApplet::stripMarkdownForSpeech(const QString &markdown) const
+QString KityApplet::stripMarkdownForSpeech(const QString &markdown) const
 {
     QString res = markdown;
     // Remove code blocks
@@ -1044,10 +1044,10 @@ QString KiriApplet::stripMarkdownForSpeech(const QString &markdown) const
 }
 
 // =========================================================================
-// Wake Word Listener ("Hola Kiri" / "Oye Kiri" / "Hey Kiri")
+// Wake Word Listener ("Hola Kity" / "Oye Kity" / "Hey Kity")
 // =========================================================================
 
-void KiriApplet::startWakeWordListener()
+void KityApplet::startWakeWordListener()
 {
     if (!m_wakeWordEnabled) {
         return;
@@ -1063,7 +1063,7 @@ void KiriApplet::startWakeWordListener()
 
     const QString pwRecord = QStandardPaths::findExecutable(QStringLiteral("pw-record"));
     if (pwRecord.isEmpty()) {
-        qWarning() << "Kiri: pw-record not found in PATH for wake word listener";
+        qWarning() << "Kity: pw-record not found in PATH for wake word listener";
         return;
     }
 
@@ -1072,7 +1072,7 @@ void KiriApplet::startWakeWordListener()
 
     if (!m_wakeWordProcess) {
         m_wakeWordProcess = new QProcess(this);
-        connect(m_wakeWordProcess, &QProcess::readyReadStandardOutput, this, &KiriApplet::onWakeWordAudioChunkReady);
+        connect(m_wakeWordProcess, &QProcess::readyReadStandardOutput, this, &KityApplet::onWakeWordAudioChunkReady);
     }
 
     QStringList args;
@@ -1084,13 +1084,13 @@ void KiriApplet::startWakeWordListener()
 
     m_wakeWordProcess->start(pwRecord, args);
     if (!m_wakeWordProcess->waitForStarted(2000)) {
-        qWarning() << "Kiri: Failed to start pw-record for wake word listener";
+        qWarning() << "Kity: Failed to start pw-record for wake word listener";
     } else {
-        qInfo() << "Kiri: Wake word background listener started successfully (PID:" << m_wakeWordProcess->processId() << ")";
+        qInfo() << "Kity: Wake word background listener started successfully (PID:" << m_wakeWordProcess->processId() << ")";
     }
 }
 
-void KiriApplet::stopWakeWordListener()
+void KityApplet::stopWakeWordListener()
 {
     if (m_wakeWordProcess) {
         if (m_wakeWordProcess->state() == QProcess::Running) {
@@ -1104,7 +1104,7 @@ void KiriApplet::stopWakeWordListener()
     m_wakeWordEvaluating = false;
 }
 
-void KiriApplet::onWakeWordAudioChunkReady()
+void KityApplet::onWakeWordAudioChunkReady()
 {
     if (!m_wakeWordProcess) return;
 
@@ -1136,15 +1136,15 @@ void KiriApplet::onWakeWordAudioChunkReady()
     if (rms >= 0.016 && (!m_wakeWordCooldown.isValid() || m_wakeWordCooldown.elapsed() > 1200)) {
         if (m_wakeWordPcmBuffer.size() >= 24000) { // At least ~0.75s buffered
             m_wakeWordEvaluating = true;
-            qInfo() << "Kiri: Speech detected in background stream (RMS:" << rms << "), capturing wake word window...";
+            qInfo() << "Kity: Speech detected in background stream (RMS:" << rms << "), capturing wake word window...";
 
-            // Allow 650ms for user to finish saying "Hola Kiri"
+            // Allow 650ms for user to finish saying "Hola Kity"
             QTimer::singleShot(650, this, [this]() {
                 if (!m_wakeWordEnabled || m_state != QLatin1String("idle")) {
                     m_wakeWordEvaluating = false;
                     return;
                 }
-                const QString tmpWav = QDir::tempPath() + QStringLiteral("/kiri_ww_probe_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
+                const QString tmpWav = QDir::tempPath() + QStringLiteral("/kity_ww_probe_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
                 QFile f(tmpWav);
                 if (f.open(QIODevice::WriteOnly)) {
                     const QByteArray pcmData = m_wakeWordPcmBuffer.right(64000); // last ~2 seconds
@@ -1161,7 +1161,7 @@ void KiriApplet::onWakeWordAudioChunkReady()
     }
 }
 
-void KiriApplet::checkWakeWordTranscription(const QString &wavPath)
+void KityApplet::checkWakeWordTranscription(const QString &wavPath)
 {
     QString whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper-cli"));
     if (whisperCli.isEmpty()) {
@@ -1180,7 +1180,7 @@ void KiriApplet::checkWakeWordTranscription(const QString &wavPath)
     args << QStringLiteral("-m") << modelPath
          << QStringLiteral("-f") << wavPath
          << QStringLiteral("-l") << QStringLiteral("es")
-         << QStringLiteral("--prompt") << QStringLiteral("Hola Kiri, Oye Kiri, Hey Kiri")
+         << QStringLiteral("--prompt") << QStringLiteral("Hola Kity, Oye Kity, Hey Kity")
          << QStringLiteral("--no-timestamps")
          << QStringLiteral("-t") << QStringLiteral("4")
          << QStringLiteral("-np");
@@ -1200,17 +1200,17 @@ void KiriApplet::checkWakeWordTranscription(const QString &wavPath)
         raw.remove(bracketRegex);
         const QString cleaned = raw.trimmed().toLower();
 
-        qInfo() << "Kiri: Wake word probe transcription result:" << cleaned;
+        qInfo() << "Kity: Wake word probe transcription result:" << cleaned;
 
         static const QRegularExpression wwRegex(
-            QStringLiteral("(?:hola|oye|hey|ok|quiri|ciri|kili)?\\s*kiri|hola\\s*quiri"),
+            QStringLiteral("(?:hola|oye|hey|ok|quiti|kiti|quity|kitty)?\\s*(?:kity|kitty)|hola\\s*(?:quiti|kiti)"),
             QRegularExpression::CaseInsensitiveOption);
 
-        if (cleaned.contains(wwRegex) || cleaned.contains(QStringLiteral("kiri")) || cleaned.contains(QStringLiteral("quiri"))) {
-            qInfo() << "Kiri: WAKE WORD ACTIVATED! ('" << cleaned << "')";
+        if (cleaned.contains(wwRegex) || cleaned.contains(QStringLiteral("kity")) || cleaned.contains(QStringLiteral("kitty")) || cleaned.contains(QStringLiteral("quiti")) || cleaned.contains(QStringLiteral("kiti"))) {
+            qInfo() << "Kity: WAKE WORD ACTIVATED! ('" << cleaned << "')";
 
             KNotification::event(QStringLiteral("notification"),
-                                 i18n("Kiri"),
+                                 i18n("Kity"),
                                  i18n("¡Hola! Te escucho…"));
 
             stopWakeWordListener();
@@ -1229,7 +1229,7 @@ void KiriApplet::checkWakeWordTranscription(const QString &wavPath)
 // System Actions & Personal Assistant Capabilities
 // =========================================================================
 
-bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
+bool KityApplet::detectAndExecuteSystemAction(const QString &input)
 {
     const QString trimmed = input.trimmed();
 
@@ -1457,7 +1457,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
         const QString to = emMatch.captured(1).trimmed();
         const QString body = emMatch.captured(2).trimmed();
         const QString client = readConfigString(QStringLiteral("defaultEmailClient"), QStringLiteral("proton"));
-        composeEmail(to, i18n("Mensaje de Kiri"), body, client);
+        composeEmail(to, i18n("Mensaje de Kity"), body, client);
         const QString resp = i18n("Abriendo cliente de correo para enviar mensaje a %1.", to);
         appendAssistantMessage(resp);
         return true;
@@ -1683,7 +1683,7 @@ bool KiriApplet::detectAndExecuteSystemAction(const QString &input)
     return false;
 }
 
-bool KiriApplet::launchApplication(const QString &appQuery, QString *launchedNameOut)
+bool KityApplet::launchApplication(const QString &appQuery, QString *launchedNameOut)
 {
     QString query = appQuery.trimmed();
     query.remove(QRegularExpression(QStringLiteral("[.!?,;¿¡]+$")));
@@ -1842,7 +1842,7 @@ bool KiriApplet::launchApplication(const QString &appQuery, QString *launchedNam
     return false;
 }
 
-bool KiriApplet::closeApplication(const QString &appQuery, QString *closedNameOut)
+bool KityApplet::closeApplication(const QString &appQuery, QString *closedNameOut)
 {
     QString query = appQuery.trimmed();
     query.remove(QRegularExpression(QStringLiteral("[.!?,;¿¡]+$")));
@@ -1874,7 +1874,7 @@ bool KiriApplet::closeApplication(const QString &appQuery, QString *closedNameOu
     return QProcess::startDetached(QStringLiteral("pkill"), QStringList() << QStringLiteral("-f") << targetProc);
 }
 
-QString KiriApplet::extractExecBinaryName(const QString &execLine) const
+QString KityApplet::extractExecBinaryName(const QString &execLine) const
 {
     QString bin = execLine.section(QLatin1Char(' '), 0, 0).trimmed();
     if (bin.contains(QLatin1Char('/'))) {
@@ -1883,7 +1883,7 @@ QString KiriApplet::extractExecBinaryName(const QString &execLine) const
     return bin;
 }
 
-QStringList KiriApplet::extractTerminalCommands(const QString &markdown) const
+QStringList KityApplet::extractTerminalCommands(const QString &markdown) const
 {
     QStringList commands;
     static const QRegularExpression codeRegex(QStringLiteral("```(?:bash|sh|zsh)?\\s*\\n([\\s\\S]*?)\\n```"));
@@ -1895,7 +1895,7 @@ QStringList KiriApplet::extractTerminalCommands(const QString &markdown) const
     return commands;
 }
 
-void KiriApplet::executeCommandInKonsole(const QString &command)
+void KityApplet::executeCommandInKonsole(const QString &command)
 {
     const QString konsole = QStandardPaths::findExecutable(QStringLiteral("konsole"));
     if (!konsole.isEmpty()) {
@@ -1903,14 +1903,14 @@ void KiriApplet::executeCommandInKonsole(const QString &command)
     }
 }
 
-void KiriApplet::copyToClipboard(const QString &text) const
+void KityApplet::copyToClipboard(const QString &text) const
 {
     if (auto clip = QGuiApplication::clipboard()) {
         clip->setText(text);
     }
 }
 
-QString KiriApplet::renderMarkdown(const QString &markdown) const
+QString KityApplet::renderMarkdown(const QString &markdown) const
 {
     if (markdown.isEmpty()) {
         return QString();
@@ -1925,7 +1925,7 @@ QString KiriApplet::renderMarkdown(const QString &markdown) const
     while (it.hasNext()) {
         const QRegularExpressionMatch m = it.next();
         const QString codeContent = m.captured(1).trimmed().toHtmlEscaped();
-        const QString placeholder = QStringLiteral("@@KIRI_CODE_BLOCK_%1@@").arg(codeBlocks.size());
+        const QString placeholder = QStringLiteral("@@KITY_CODE_BLOCK_%1@@").arg(codeBlocks.size());
         codeBlocks.append(QStringLiteral("<pre style=\"margin-top:4px; margin-bottom:4px;\"><code>%1</code></pre>").arg(codeContent));
         working.replace(m.capturedStart() + offset, m.capturedLength(), placeholder);
         offset += placeholder.length() - m.capturedLength();
@@ -1975,22 +1975,22 @@ QString KiriApplet::renderMarkdown(const QString &markdown) const
 
     // 9. Restore fenced code blocks
     for (int i = 0; i < codeBlocks.size(); ++i) {
-        html.replace(QStringLiteral("@@KIRI_CODE_BLOCK_%1@@").arg(i), codeBlocks.at(i));
+        html.replace(QStringLiteral("@@KITY_CODE_BLOCK_%1@@").arg(i), codeBlocks.at(i));
     }
 
     return html;
 }
 
-void KiriApplet::openKnowledgeFolder() const
+void KityApplet::openKnowledgeFolder() const
 {
-    const QString path = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kiri/knowledge");
+    const QString path = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity/knowledge");
     QDir().mkpath(path);
     QProcess::startDetached(QStringLiteral("dolphin"), QStringList() << path);
 }
 
-int KiriApplet::knowledgeDocumentCount() const
+int KityApplet::knowledgeDocumentCount() const
 {
-    const QString path = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kiri/knowledge");
+    const QString path = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity/knowledge");
     QDir dir(path);
     return dir.entryList(QStringList() << QStringLiteral("*.txt") << QStringLiteral("*.md") << QStringLiteral("*.pdf"), QDir::Files).count();
 }
@@ -1999,7 +1999,7 @@ int KiriApplet::knowledgeDocumentCount() const
 // Apple Intelligence Writing Tools (Phase 2)
 // =========================================================================
 
-QString KiriApplet::readWaylandSelectionOrClipboard() const
+QString KityApplet::readWaylandSelectionOrClipboard() const
 {
     QClipboard *cb = QGuiApplication::clipboard();
     if (!cb) {
@@ -2012,7 +2012,7 @@ QString KiriApplet::readWaylandSelectionOrClipboard() const
     return text;
 }
 
-QString KiriApplet::buildWritingToolPrompt(const QString &action, const QString &sourceText)
+QString KityApplet::buildWritingToolPrompt(const QString &action, const QString &sourceText)
 {
     const QString cleanText = sourceText.trimmed();
     if (cleanText.isEmpty()) {
@@ -2063,7 +2063,7 @@ QString KiriApplet::buildWritingToolPrompt(const QString &action, const QString 
     return QStringLiteral("%1\n\nTexto original:\n\"\"\"\n%2\n\"\"\"").arg(instruction, cleanText.left(6000));
 }
 
-void KiriApplet::applyWritingTool(const QString &action, const QString &customSourceText)
+void KityApplet::applyWritingTool(const QString &action, const QString &customSourceText)
 {
     const QString source = !customSourceText.trimmed().isEmpty()
         ? customSourceText.trimmed()
@@ -2099,7 +2099,7 @@ void KiriApplet::applyWritingTool(const QString &action, const QString &customSo
     sendToOllama(fullPrompt);
 }
 
-QString KiriApplet::languageDisplayName(const QString &code)
+QString KityApplet::languageDisplayName(const QString &code)
 {
     static const QHash<QString, QString> names = {
         {QStringLiteral("es"), QStringLiteral("español de España")}, {QStringLiteral("en"), QStringLiteral("inglés")},
@@ -2112,12 +2112,12 @@ QString KiriApplet::languageDisplayName(const QString &code)
     return names.value(c, c.isEmpty() ? QStringLiteral("español de España") : c);
 }
 
-void KiriApplet::translateSelection(const QString &targetLanguage)
+void KityApplet::translateSelection(const QString &targetLanguage)
 {
     applyWritingTool(QStringLiteral("translate:") + (targetLanguage.isEmpty() ? QStringLiteral("es") : targetLanguage));
 }
 
-QStringList KiriApplet::evaluateMathNotes(const QString &text) const
+QStringList KityApplet::evaluateMathNotes(const QString &text) const
 {
     return MathNotes::evaluateLines(text);
 }
@@ -2126,7 +2126,7 @@ QStringList KiriApplet::evaluateMathNotes(const QString &text) const
 // Visual Intelligence & Live Text (Phase 3 - Spectacle Wayland + Tesseract OCR)
 // =========================================================================
 
-QVariantMap KiriApplet::parseLiveTextEntities(const QString &ocrText)
+QVariantMap KityApplet::parseLiveTextEntities(const QString &ocrText)
 {
     QVariantMap res;
     QStringList urls;
@@ -2160,7 +2160,7 @@ QVariantMap KiriApplet::parseLiveTextEntities(const QString &ocrText)
     return res;
 }
 
-void KiriApplet::runVisualIntelligence(const QString &captureMode, const QString &action, const QString &customQuestion)
+void KityApplet::runVisualIntelligence(const QString &captureMode, const QString &action, const QString &customQuestion)
 {
     const QString mode = captureMode.isEmpty() ? QStringLiteral("region") : captureMode;
     if (mode == QStringLiteral("region")) {
@@ -2172,7 +2172,7 @@ void KiriApplet::runVisualIntelligence(const QString &captureMode, const QString
     }
     QCoreApplication::processEvents();
 
-    const QString tmpShot = QDir::tempPath() + QStringLiteral("/kiri_livetext_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
+    const QString tmpShot = QDir::tempPath() + QStringLiteral("/kity_livetext_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
     const QString savedPath = captureScreenToPng(tmpShot, mode);
     if (savedPath.isEmpty()) {
         setState(QStringLiteral("idle"), QString());
@@ -2261,7 +2261,7 @@ void KiriApplet::runVisualIntelligence(const QString &captureMode, const QString
 // Context Providers (Vitals, Weather, Local Knowledge, Vision)
 // =========================================================================
 
-QString KiriApplet::collectSystemVitals() const
+QString KityApplet::collectSystemVitals() const
 {
     QStringList vitals;
     vitals << QStringLiteral("OS: CachyOS Linux (KDE Plasma 6, Wayland)");
@@ -2272,7 +2272,7 @@ QString KiriApplet::collectSystemVitals() const
     return vitals.join(QStringLiteral(", "));
 }
 
-QString KiriApplet::getActivePowerProfile() const
+QString KityApplet::getActivePowerProfile() const
 {
     QDBusInterface iface(QStringLiteral("net.hadess.PowerProfiles"),
                          QStringLiteral("/net/hadess/PowerProfiles"),
@@ -2287,7 +2287,7 @@ QString KiriApplet::getActivePowerProfile() const
     return QString();
 }
 
-bool KiriApplet::setActivePowerProfile(const QString &profile) const
+bool KityApplet::setActivePowerProfile(const QString &profile) const
 {
     QDBusInterface iface(QStringLiteral("net.hadess.PowerProfiles"),
                          QStringLiteral("/net/hadess/PowerProfiles"),
@@ -2303,7 +2303,7 @@ bool KiriApplet::setActivePowerProfile(const QString &profile) const
     return false;
 }
 
-QString KiriApplet::getLocalBatteryInfo() const
+QString KityApplet::getLocalBatteryInfo() const
 {
     QDBusInterface iface(QStringLiteral("org.freedesktop.UPower"),
                          QStringLiteral("/org/freedesktop/UPower/devices/DisplayDevice"),
@@ -2322,7 +2322,7 @@ QString KiriApplet::getLocalBatteryInfo() const
     return QString();
 }
 
-bool KiriApplet::isDoNotDisturbActive() const
+bool KityApplet::isDoNotDisturbActive() const
 {
     QDBusInterface iface(QStringLiteral("org.freedesktop.Notifications"),
                          QStringLiteral("/org/freedesktop/Notifications"),
@@ -2335,20 +2335,20 @@ bool KiriApplet::isDoNotDisturbActive() const
     return false;
 }
 
-bool KiriApplet::setDoNotDisturb(bool active) const
+bool KityApplet::setDoNotDisturb(bool active) const
 {
     QDBusInterface iface(QStringLiteral("org.freedesktop.Notifications"),
                          QStringLiteral("/org/freedesktop/Notifications"),
                          QStringLiteral("org.freedesktop.Notifications"),
                          QDBusConnection::sessionBus());
     if (iface.isValid()) {
-        iface.call(QStringLiteral("Inhibit"), QStringLiteral("Kiri"), active ? QStringLiteral("Modo No Molestar") : QStringLiteral(""));
+        iface.call(QStringLiteral("Inhibit"), QStringLiteral("Kity"), active ? QStringLiteral("Modo No Molestar") : QStringLiteral(""));
         return true;
     }
     return false;
 }
 
-void KiriApplet::playSiriEarcon(bool activating) const
+void KityApplet::playSiriEarcon(bool activating) const
 {
     if (!readConfigBool(QStringLiteral("earconsEnabled"), true)) {
         return;
@@ -2359,7 +2359,7 @@ void KiriApplet::playSiriEarcon(bool activating) const
         return;
     }
 
-    const QString earconPath = QDir::tempPath() + (activating ? QStringLiteral("/kiri_earcon_on.wav") : QStringLiteral("/kiri_earcon_off.wav"));
+    const QString earconPath = QDir::tempPath() + (activating ? QStringLiteral("/kity_earcon_on.wav") : QStringLiteral("/kity_earcon_off.wav"));
     if (!QFileInfo::exists(earconPath)) {
         // Synthesize a crystalline dual-tone harmonic Siri earcon (110ms, 16kHz mono PCM)
         const int sampleRate = 16000;
@@ -2393,7 +2393,7 @@ void KiriApplet::playSiriEarcon(bool activating) const
     }
 }
 
-bool KiriApplet::adjustScreenBrightness(int deltaPercent, int exactPercent) const
+bool KityApplet::adjustScreenBrightness(int deltaPercent, int exactPercent) const
 {
     QDBusInterface iface(QStringLiteral("org.kde.Solid.PowerManagement"),
                          QStringLiteral("/org/kde/Solid/PowerManagement/Actions/BrightnessControl"),
@@ -2423,7 +2423,7 @@ bool KiriApplet::adjustScreenBrightness(int deltaPercent, int exactPercent) cons
     return true;
 }
 
-QString KiriApplet::getNowPlayingMetadata() const
+QString KityApplet::getNowPlayingMetadata() const
 {
     const QString playerctl = QStandardPaths::findExecutable(QStringLiteral("playerctl"));
     if (!playerctl.isEmpty()) {
@@ -2451,7 +2451,7 @@ QString KiriApplet::getNowPlayingMetadata() const
     return i18n("No hay ninguna canción ni pista multimedia reproduciéndose en este momento.");
 }
 
-QString KiriApplet::getSystemResourceSummary(const QString &aspect) const
+QString KityApplet::getSystemResourceSummary(const QString &aspect) const
 {
     // Parse /proc/meminfo for RAM
     double totalGiB = 0.0;
@@ -2533,7 +2533,7 @@ QString KiriApplet::getSystemResourceSummary(const QString &aspect) const
                 localIp);
 }
 
-QString KiriApplet::fetchWeatherContext(const QString &query) const
+QString KityApplet::fetchWeatherContext(const QString &query) const
 {
     static const QRegularExpression weatherRegex(QStringLiteral("(tiempo|clima|temperatura|llueve|pron[oó]stico)"), QRegularExpression::CaseInsensitiveOption);
     if (!query.contains(weatherRegex)) return QString();
@@ -2547,7 +2547,7 @@ QString KiriApplet::fetchWeatherContext(const QString &query) const
     return QString();
 }
 
-QString KiriApplet::fetchDynamicLocalContext(const QString &query, const QString &intent) const
+QString KityApplet::fetchDynamicLocalContext(const QString &query, const QString &intent) const
 {
     Q_UNUSED(intent)
     QStringList ctx;
@@ -2560,18 +2560,18 @@ QString KiriApplet::fetchDynamicLocalContext(const QString &query, const QString
     return ctx.join(QStringLiteral("\n"));
 }
 
-void KiriApplet::ensureKnowledgeBaseReady()
+void KityApplet::ensureKnowledgeBaseReady()
 {
-    const QString kbPath = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kiri/knowledge");
+    const QString kbPath = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity/knowledge");
     QDir dir(kbPath);
     if (!dir.exists()) {
         dir.mkpath(kbPath);
     }
 }
 
-QString KiriApplet::fetchKnowledgeBaseContext(const QString &query) const
+QString KityApplet::fetchKnowledgeBaseContext(const QString &query) const
 {
-    const QString kbDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kiri/knowledge");
+    const QString kbDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity/knowledge");
     QDir dir(kbDir);
     if (!dir.exists()) {
         return QString();
@@ -2663,7 +2663,7 @@ QString KiriApplet::fetchKnowledgeBaseContext(const QString &query) const
     return accumulated.trimmed();
 }
 
-QString KiriApplet::captureScreenToPng(const QString &destPath, const QString &captureMode) const
+QString KityApplet::captureScreenToPng(const QString &destPath, const QString &captureMode) const
 {
     const QString spectacle = QStandardPaths::findExecutable(QStringLiteral("spectacle"));
     if (!spectacle.isEmpty()) {
@@ -2721,7 +2721,7 @@ QString KiriApplet::captureScreenToPng(const QString &destPath, const QString &c
     return QString();
 }
 
-QString KiriApplet::encodeImageToBase64(const QString &imagePath, int maxDimension) const
+QString KityApplet::encodeImageToBase64(const QString &imagePath, int maxDimension) const
 {
     QImage img(imagePath);
     if (img.isNull()) return QString();
@@ -2737,11 +2737,11 @@ QString KiriApplet::encodeImageToBase64(const QString &imagePath, int maxDimensi
     return QString::fromLatin1(bytes.toBase64());
 }
 
-QString KiriApplet::collectKWinWindowsInfo() const
+QString KityApplet::collectKWinWindowsInfo() const
 {
     const qint64 token = QDateTime::currentMSecsSinceEpoch();
-    const QString marker = QStringLiteral("KIRI_WIN_%1:").arg(token);
-    const QString scriptName = QStringLiteral("kiri_win_probe_%1").arg(token);
+    const QString marker = QStringLiteral("KITY_WIN_%1:").arg(token);
+    const QString scriptName = QStringLiteral("kity_win_probe_%1").arg(token);
     const QString scriptPath = QDir::tempPath() + QStringLiteral("/%1.js").arg(scriptName);
 
     QFile scriptFile(scriptPath);
@@ -2843,7 +2843,7 @@ QString KiriApplet::collectKWinWindowsInfo() const
     return result.join(QStringLiteral("\n\n"));
 }
 
-QString KiriApplet::extractScreenOcrText(const QString &imagePath) const
+QString KityApplet::extractScreenOcrText(const QString &imagePath) const
 {
     if (imagePath.isEmpty() || !QFileInfo::exists(imagePath)) {
         return QString();
@@ -2888,28 +2888,28 @@ QString KiriApplet::extractScreenOcrText(const QString &imagePath) const
 // Storage & History Persistence
 // =========================================================================
 
-QString KiriApplet::historyFilePath() const
+QString KityApplet::historyFilePath() const
 {
-    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kiri");
+    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity");
     QDir().mkpath(dataDir);
     return dataDir + QStringLiteral("/history.json");
 }
 
-QString KiriApplet::contactsFilePath() const
+QString KityApplet::contactsFilePath() const
 {
-    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kiri");
+    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity");
     QDir().mkpath(dataDir);
     return dataDir + QStringLiteral("/contacts.json");
 }
 
-QString KiriApplet::scheduledRemindersFilePath() const
+QString KityApplet::scheduledRemindersFilePath() const
 {
-    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kiri");
+    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity");
     QDir().mkpath(dataDir);
     return dataDir + QStringLiteral("/reminders.json");
 }
 
-void KiriApplet::loadConversationHistory()
+void KityApplet::loadConversationHistory()
 {
     QFile f(historyFilePath());
     if (f.open(QIODevice::ReadOnly)) {
@@ -2919,7 +2919,7 @@ void KiriApplet::loadConversationHistory()
     }
 }
 
-void KiriApplet::saveConversationHistory()
+void KityApplet::saveConversationHistory()
 {
     QFile f(historyFilePath());
     if (f.open(QIODevice::WriteOnly)) {
@@ -2928,7 +2928,7 @@ void KiriApplet::saveConversationHistory()
     }
 }
 
-void KiriApplet::loadContacts()
+void KityApplet::loadContacts()
 {
     QFile f(contactsFilePath());
     if (f.open(QIODevice::ReadOnly)) {
@@ -2946,7 +2946,7 @@ void KiriApplet::loadContacts()
     }
 }
 
-void KiriApplet::saveContacts()
+void KityApplet::saveContacts()
 {
     QFile f(contactsFilePath());
     if (f.open(QIODevice::WriteOnly)) {
@@ -2962,7 +2962,7 @@ void KiriApplet::saveContacts()
     }
 }
 
-void KiriApplet::loadScheduledReminders()
+void KityApplet::loadScheduledReminders()
 {
     QFile f(scheduledRemindersFilePath());
     if (f.open(QIODevice::ReadOnly)) {
@@ -2981,7 +2981,7 @@ void KiriApplet::loadScheduledReminders()
     }
 }
 
-void KiriApplet::saveScheduledReminders()
+void KityApplet::saveScheduledReminders()
 {
     QFile f(scheduledRemindersFilePath());
     if (f.open(QIODevice::WriteOnly)) {
@@ -2998,7 +2998,7 @@ void KiriApplet::saveScheduledReminders()
     }
 }
 
-void KiriApplet::checkScheduledReminders()
+void KityApplet::checkScheduledReminders()
 {
     const QDateTime now = QDateTime::currentDateTime();
     bool changed = false;
@@ -3014,10 +3014,10 @@ void KiriApplet::checkScheduledReminders()
     }
 }
 
-void KiriApplet::triggerReminderNotification(const ScheduledReminder &reminder)
+void KityApplet::triggerReminderNotification(const ScheduledReminder &reminder)
 {
     KNotification::event(QStringLiteral("notification"),
-                         i18n("Recordatorio Kiri"),
+                         i18n("Recordatorio Kity"),
                          reminder.text);
     speakText(i18n("Recordatorio: %1", reminder.text));
 }
@@ -3026,7 +3026,7 @@ void KiriApplet::triggerReminderNotification(const ScheduledReminder &reminder)
 // WAV Audio & Vision Helpers
 // =========================================================================
 
-QByteArray KiriApplet::createWavHeader(int dataSize, int sampleRate, int channels, int bitsPerSample) const
+QByteArray KityApplet::createWavHeader(int dataSize, int sampleRate, int channels, int bitsPerSample) const
 {
     QByteArray header(44, 0);
     char *h = header.data();
@@ -3062,7 +3062,7 @@ QByteArray KiriApplet::createWavHeader(int dataSize, int sampleRate, int channel
     return header;
 }
 
-QString KiriApplet::detectAvailableVisionModel() const
+QString KityApplet::detectAvailableVisionModel() const
 {
     const QString configured = readConfigString(QStringLiteral("ollamaVisionModel"));
     if (!configured.isEmpty() && m_availableModels.contains(configured)) {
@@ -3088,7 +3088,7 @@ QString KiriApplet::detectAvailableVisionModel() const
     return configured.isEmpty() ? QStringLiteral("moondream") : configured;
 }
 
-QString KiriApplet::fetchWebSearchContext(const QString &query) const
+QString KityApplet::fetchWebSearchContext(const QString &query) const
 {
     static const QRegularExpression searchRegex(
         QStringLiteral("(?:busca|buscar|averigua|qui[eé]n es|qu[eé] es)\\s+(.+)"),
@@ -3130,7 +3130,7 @@ QString KiriApplet::fetchWebSearchContext(const QString &query) const
 // KDE Connect D-Bus Integration
 // =========================================================================
 
-QList<KiriApplet::KdeConnectDevice> KiriApplet::getKdeConnectDevices() const
+QList<KityApplet::KdeConnectDevice> KityApplet::getKdeConnectDevices() const
 {
     QList<KdeConnectDevice> result;
     QDBusInterface iface(QStringLiteral("org.kde.kdeconnect"),
@@ -3163,7 +3163,7 @@ QList<KiriApplet::KdeConnectDevice> KiriApplet::getKdeConnectDevices() const
     return result;
 }
 
-QString KiriApplet::getKdeConnectBattery(const QString &deviceId) const
+QString KityApplet::getKdeConnectBattery(const QString &deviceId) const
 {
     QDBusInterface iface(QStringLiteral("org.kde.kdeconnect"),
                          QStringLiteral("/modules/kdeconnect/devices/") + deviceId + QStringLiteral("/battery"),
@@ -3181,7 +3181,7 @@ QString KiriApplet::getKdeConnectBattery(const QString &deviceId) const
     return QString();
 }
 
-bool KiriApplet::ringKdeConnectDevice(const QString &deviceId) const
+bool KityApplet::ringKdeConnectDevice(const QString &deviceId) const
 {
     QDBusInterface iface(QStringLiteral("org.kde.kdeconnect"),
                          QStringLiteral("/modules/kdeconnect/devices/") + deviceId + QStringLiteral("/findmyphone"),
@@ -3194,7 +3194,7 @@ bool KiriApplet::ringKdeConnectDevice(const QString &deviceId) const
     return false;
 }
 
-bool KiriApplet::sendTextToKdeConnect(const QString &deviceId, const QString &phoneNumber, const QString &message) const
+bool KityApplet::sendTextToKdeConnect(const QString &deviceId, const QString &phoneNumber, const QString &message) const
 {
     if (isRestrictedPhoneNumber(phoneNumber)) return false;
 
@@ -3209,7 +3209,7 @@ bool KiriApplet::sendTextToKdeConnect(const QString &deviceId, const QString &ph
     return false;
 }
 
-bool KiriApplet::sendClipboardToKdeConnect(const QString &deviceId, const QString &text) const
+bool KityApplet::sendClipboardToKdeConnect(const QString &deviceId, const QString &text) const
 {
     QDBusInterface iface(QStringLiteral("org.kde.kdeconnect"),
                          QStringLiteral("/modules/kdeconnect/devices/") + deviceId + QStringLiteral("/clipboard"),
@@ -3222,7 +3222,7 @@ bool KiriApplet::sendClipboardToKdeConnect(const QString &deviceId, const QStrin
     return false;
 }
 
-bool KiriApplet::initiatePhoneCall(const QString &deviceId, const QString &phoneNumber) const
+bool KityApplet::initiatePhoneCall(const QString &deviceId, const QString &phoneNumber) const
 {
     if (isRestrictedPhoneNumber(phoneNumber)) return false;
     const QString cleanNum = sanitizePhoneForDial(phoneNumber);
@@ -3238,19 +3238,19 @@ bool KiriApplet::initiatePhoneCall(const QString &deviceId, const QString &phone
     return false;
 }
 
-QString KiriApplet::normalizePhoneNumber(const QString &raw) const
+QString KityApplet::normalizePhoneNumber(const QString &raw) const
 {
     QString res = raw;
     res.remove(QRegularExpression(QStringLiteral("[^0-9+]")));
     return res;
 }
 
-QString KiriApplet::sanitizePhoneForDial(const QString &raw) const
+QString KityApplet::sanitizePhoneForDial(const QString &raw) const
 {
     return normalizePhoneNumber(raw);
 }
 
-bool KiriApplet::isRestrictedPhoneNumber(const QString &phone) const
+bool KityApplet::isRestrictedPhoneNumber(const QString &phone) const
 {
     const QString clean = normalizePhoneNumber(phone);
     // Block accidental emergency or premium rate dials from automated AI prompts
@@ -3261,7 +3261,7 @@ bool KiriApplet::isRestrictedPhoneNumber(const QString &phone) const
 // Calendar & Email Services
 // =========================================================================
 
-KiriApplet::ParsedCalendarEvent KiriApplet::parseCalendarEventPrompt(const QString &prompt, const QDateTime &now) const
+KityApplet::ParsedCalendarEvent KityApplet::parseCalendarEventPrompt(const QString &prompt, const QDateTime &now) const
 {
     ParsedCalendarEvent ev;
     ev.title = prompt.trimmed();
@@ -3288,7 +3288,7 @@ KiriApplet::ParsedCalendarEvent KiriApplet::parseCalendarEventPrompt(const QStri
     return ev;
 }
 
-int KiriApplet::monthNameToNumber(const QString &name) const
+int KityApplet::monthNameToNumber(const QString &name) const
 {
     const QString n = name.toLower();
     if (n.startsWith(QStringLiteral("ene")) || n.startsWith(QStringLiteral("jan"))) return 1;
@@ -3306,7 +3306,7 @@ int KiriApplet::monthNameToNumber(const QString &name) const
     return 1;
 }
 
-bool KiriApplet::createCalendarEvent(const QString &title, const QString &datePrompt)
+bool KityApplet::createCalendarEvent(const QString &title, const QString &datePrompt)
 {
     const QString full = title + QStringLiteral(" ") + datePrompt;
     const ParsedCalendarEvent ev = parseCalendarEventPrompt(full, QDateTime::currentDateTime());
@@ -3323,7 +3323,7 @@ bool KiriApplet::createCalendarEvent(const QString &title, const QString &datePr
     return true;
 }
 
-void KiriApplet::openCalendarService(const ParsedCalendarEvent &ev) const
+void KityApplet::openCalendarService(const ParsedCalendarEvent &ev) const
 {
     const QString client = readConfigString(QStringLiteral("defaultCalendarClient"), QStringLiteral("proton"));
     if (client == QStringLiteral("google")) {
@@ -3339,7 +3339,7 @@ void KiriApplet::openCalendarService(const ParsedCalendarEvent &ev) const
     }
 }
 
-QUrl KiriApplet::buildGoogleCalendarTemplateUrl(const ParsedCalendarEvent &ev) const
+QUrl KityApplet::buildGoogleCalendarTemplateUrl(const ParsedCalendarEvent &ev) const
 {
     QUrl url(QStringLiteral("https://calendar.google.com/calendar/render"));
     QUrlQuery q;
@@ -3355,7 +3355,7 @@ QUrl KiriApplet::buildGoogleCalendarTemplateUrl(const ParsedCalendarEvent &ev) c
     return url;
 }
 
-void KiriApplet::composeEmail(const QString &to, const QString &subject, const QString &body, const QString &service) const
+void KityApplet::composeEmail(const QString &to, const QString &subject, const QString &body, const QString &service) const
 {
     if (service == QStringLiteral("proton")) {
         const QString protonApp = QStandardPaths::findExecutable(QStringLiteral("proton-mail"));
@@ -3389,22 +3389,22 @@ void KiriApplet::composeEmail(const QString &to, const QString &subject, const Q
 // Contacts & Reminders Helpers
 // =========================================================================
 
-void KiriApplet::loadReminders()
+void KityApplet::loadReminders()
 {
     loadScheduledReminders();
 }
 
-void KiriApplet::saveReminders()
+void KityApplet::saveReminders()
 {
     saveScheduledReminders();
 }
 
-QString KiriApplet::remindersFilePath() const
+QString KityApplet::remindersFilePath() const
 {
     return scheduledRemindersFilePath();
 }
 
-KiriApplet::ContactEntry KiriApplet::findContactByName(const QString &query) const
+KityApplet::ContactEntry KityApplet::findContactByName(const QString &query) const
 {
     const QString q = normalizeForMatch(query);
     for (const auto &c : m_contacts) {
@@ -3415,7 +3415,7 @@ KiriApplet::ContactEntry KiriApplet::findContactByName(const QString &query) con
     return ContactEntry();
 }
 
-void KiriApplet::importContactsFromVcf(const QString &vcfPath)
+void KityApplet::importContactsFromVcf(const QString &vcfPath)
 {
     QFile f(vcfPath);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return;
@@ -3440,7 +3440,7 @@ void KiriApplet::importContactsFromVcf(const QString &vcfPath)
     saveContacts();
 }
 
-QString KiriApplet::normalizeForMatch(const QString &text) const
+QString KityApplet::normalizeForMatch(const QString &text) const
 {
     return text.toLower().normalized(QString::NormalizationForm_D).remove(QRegularExpression(QStringLiteral("[\\p{M}]")));
 }
@@ -3449,11 +3449,11 @@ QString KiriApplet::normalizeForMatch(const QString &text) const
 // HTTP Synchronous Helpers
 // =========================================================================
 
-QByteArray KiriApplet::httpGetSync(const QUrl &url, int timeoutMs) const
+QByteArray KityApplet::httpGetSync(const QUrl &url, int timeoutMs) const
 {
     QNetworkAccessManager mgr;
     QNetworkRequest req(url);
-    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("KiriApplet/1.0"));
+    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("KityApplet/1.0"));
 
     QNetworkReply *reply = mgr.get(req);
     QEventLoop loop;
@@ -3474,12 +3474,12 @@ QByteArray KiriApplet::httpGetSync(const QUrl &url, int timeoutMs) const
     return QByteArray();
 }
 
-QByteArray KiriApplet::httpPostJsonSync(const QUrl &url, const QJsonObject &payload, int timeoutMs) const
+QByteArray KityApplet::httpPostJsonSync(const QUrl &url, const QJsonObject &payload, int timeoutMs) const
 {
     QNetworkAccessManager mgr;
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("KiriApplet/1.0"));
+    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("KityApplet/1.0"));
 
     QNetworkReply *reply = mgr.post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     QEventLoop loop;
@@ -3500,4 +3500,4 @@ QByteArray KiriApplet::httpPostJsonSync(const QUrl &url, const QJsonObject &payl
     return QByteArray();
 }
 
-#include "kiriapplet.moc"
+#include "kityapplet.moc"
