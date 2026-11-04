@@ -60,6 +60,12 @@ PlasmoidItem {
         function onWakeWordTriggered() {
             root.expanded = true;
         }
+        function onOpenRequested() {
+            root.expanded = true;
+        }
+        function onToggleRequested() {
+            root.expanded = !root.expanded;
+        }
     }
 
     Plasmoid.contextualActions: [

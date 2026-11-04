@@ -95,6 +95,8 @@ public:
     Q_INVOKABLE void stopSpeaking();
     Q_INVOKABLE void startWakeWordListener();
     Q_INVOKABLE void stopWakeWordListener();
+    Q_INVOKABLE void openUI();
+    Q_INVOKABLE void toggleUI();
     Q_INVOKABLE void clearHistory();
     Q_INVOKABLE void refreshModels();
     Q_INVOKABLE void checkReadiness();
@@ -134,6 +136,8 @@ Q_SIGNALS:
     void audioLevelChanged();
     void transcriptionReady(const QString &text);
     void wakeWordTriggered();
+    void openRequested();
+    void toggleRequested();
     void wakeWordEnabledChanged();
 
 private Q_SLOTS:

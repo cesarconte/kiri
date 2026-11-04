@@ -694,6 +694,16 @@ void KityApplet::stopGeneration()
     setState(QStringLiteral("idle"), QString());
 }
 
+void KityApplet::openUI()
+{
+    Q_EMIT openRequested();
+}
+
+void KityApplet::toggleUI()
+{
+    Q_EMIT toggleRequested();
+}
+
 void KityApplet::clearHistory()
 {
     m_messages.clear();
