@@ -1,45 +1,64 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 22" width="22" height="22">
+<svg viewBox="-47 -47 520 520" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <!-- Breeze Cyan to Azure Gradient -->
-    <linearGradient id="panelCyan" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00e5ff" />
-      <stop offset="100%" stop-color="#2563eb" />
-    </linearGradient>
-
-    <!-- Breeze Magenta to Violet Gradient -->
-    <linearGradient id="panelMagenta" x1="100%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#ff4081" />
-      <stop offset="100%" stop-color="#a855f7" />
-    </linearGradient>
-
-    <!-- Core Sphere Gradient -->
-    <radialGradient id="panelCore" cx="40%" cy="38%" r="62%">
-      <stop offset="0%" stop-color="#ffffff" />
-      <stop offset="50%" stop-color="#38bdf8" />
-      <stop offset="100%" stop-color="#0284c7" />
+    <!-- Dark Translucent Orb Base -->
+    <radialGradient id="bgGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1c1d2e" />
+      <stop offset="65%" stop-color="#111220" />
+      <stop offset="100%" stop-color="#080912" />
     </radialGradient>
+
+    <!-- Siri Magenta / Pink / Violet Gradient -->
+    <linearGradient id="siriMagenta" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff2a6d" />
+      <stop offset="30%" stop-color="#ff3b80" />
+      <stop offset="70%" stop-color="#d946ef" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+
+    <!-- Siri Cyan / Electric Blue Gradient -->
+    <linearGradient id="siriCyan" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff" />
+      <stop offset="35%" stop-color="#00a8ff" />
+      <stop offset="75%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+
+    <!-- Outer Rim Glass Glow -->
+    <radialGradient id="rimGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="85%" stop-color="#ffffff" stop-opacity="0" />
+      <stop offset="96%" stop-color="#ffffff" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.05" />
+    </radialGradient>
+
+    <!-- Center Intersecting Glow -->
+    <radialGradient id="coreGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.75" />
+      <stop offset="35%" stop-color="#c084fc" stop-opacity="0.45" />
+      <stop offset="100%" stop-color="#c084fc" stop-opacity="0" />
+    </radialGradient>
+
+    <clipPath id="discClip">
+      <circle cx="213.13" cy="212.95" r="212.5" />
+    </clipPath>
   </defs>
 
-  <!-- Left Acoustic Voice Wave Arcs -->
-  <path d="M 3.8 8.8 C 2.8 10.1 2.8 11.9 3.8 13.2" fill="none" stroke="#00e5ff" stroke-width="1.3" stroke-linecap="round" opacity="0.85" />
-  <path d="M 5.8 7.2 C 4.5 9.4 4.5 12.6 5.8 14.8" fill="none" stroke="#38bdf8" stroke-width="1.3" stroke-linecap="round" opacity="0.95" />
+  <!-- Base Siri Orb -->
+  <circle cx="213.13" cy="212.95" r="212.5" fill="url(#bgGradient)" />
 
-  <!-- Right Acoustic Voice Wave Arcs -->
-  <path d="M 18.2 8.8 C 19.2 10.1 19.2 11.9 18.2 13.2" fill="none" stroke="#ff4081" stroke-width="1.3" stroke-linecap="round" opacity="0.85" />
-  <path d="M 16.2 7.2 C 17.5 9.4 17.5 12.6 16.2 14.8" fill="none" stroke="#d946ef" stroke-width="1.3" stroke-linecap="round" opacity="0.95" />
+  <!-- Flowing Wave Ribbons -->
+  <g clip-path="url(#discClip)">
+    <!-- Wave 1: Magenta / Pink Upper Ribbon -->
+    <path d="M392.68 223.36a46.31 46.31 0 0 1-.68 3.62c-4.3 18.71-18.42 31.04-36.61 32.18-17.94 1.13-39.32-7.84-52.82-21.52-50.4-51.06-82.88-79.14-113.05-100.62-21.51-15.32-50.06-26.8-78.17-29.76-15.48-1.63-31.69-.73-46.69 4.17 32.4-47.29 86.81-78.32 148.47-78.32 77.05 0 142.79 48.46 168.4 116.56-10.27-4.06-21.73-5.48-33.76-3.32-23.6 4.26-47.76 17.37-71 40.6l23.41 23.41c19.55-19.55 37.88-28.62 53.46-31.43 17.87-3.22 37.38 12.41 39.33 33.94v.08c0 3.49-.1 6.96-.3 10.4z"
+          fill="url(#siriMagenta)" />
 
-  <!-- Siri Voice Central Sphere (Kity Core) -->
-  <circle cx="11" cy="11" r="4.2" fill="url(#panelCore)" />
+    <!-- Wave 2: Cyan / Azure Lower Ribbon -->
+    <path d="M376.36 288.56C347.8 350.11 285.45 392.8 213.13 392.8c-64.02 0-120.22-33.45-152.09-83.82 11.67 6.13 24.47 10.2 37.92 11.65 57.77 6.2 107.13-25.2 147.04-65.11l-23.41-23.41c-37.37 37.37-77.27 60.2-120.09 55.6-36.22-3.89-66.53-36.21-69.2-72.35l-.02-2.4c0-4.33.15-8.62.45-12.88l.19-1.46c2.59-18.72 8.27-29.69 21.79-43.87 11.5-12.06 29.88-16.91 52.16-14.56 22.14 2.33 45.31 11.61 62.43 23.8 28.01 19.95 58.99 46.56 108.69 96.92 19.33 19.59 49.75 33.11 78.47 31.31 6.64-.42 12.96-1.67 18.89-3.65z"
+          fill="url(#siriCyan)" />
 
-  <!-- Entangled Orbital Voice Wave Loops -->
-  <!-- Cyan Loop -->
-  <path d="M 6.8 8.8 C 8.6 6.5 14.6 8.5 15.6 12.8 C 16.1 14.6 14.2 16.2 11.8 15.8 C 9.2 15.3 6.9 13.0 6.8 10.8"
-        fill="none" stroke="url(#panelCyan)" stroke-width="1.4" stroke-linecap="round" />
+    <!-- Intersecting Radiant Core Glow -->
+    <circle cx="213.13" cy="212.95" r="70" fill="url(#coreGlow)" />
+  </g>
 
-  <!-- Magenta Loop -->
-  <path d="M 15.2 9.0 C 13.4 6.6 7.4 8.7 6.4 13.0 C 5.9 14.8 7.8 16.2 10.2 15.8 C 12.8 15.3 15.1 13.0 15.2 10.8"
-        fill="none" stroke="url(#panelMagenta)" stroke-width="1.4" stroke-linecap="round" />
-
-  <!-- Core Radiant Center Pip -->
-  <circle cx="10.4" cy="10.2" r="1.1" fill="#ffffff" opacity="0.85" />
+  <!-- Glass Rim -->
+  <circle cx="213.13" cy="212.95" r="212.5" fill="url(#rimGlow)" />
 </svg>
