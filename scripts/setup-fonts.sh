@@ -165,12 +165,24 @@ fi
 kwriteconfig6 --file "${KONSOLE_PROFILE}" --group Appearance --key Font "SF Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 kwriteconfig6 --file "${HOME}/.config/konsolerc" --group "Desktop Entry" --key DefaultProfile "cachyos.profile"
 
+# Plasmoides: Actualizar reloj digital en appletsrc si existiera override
+APPLETS_RC="${HOME}/.config/plasma-org.kde.plasma.desktop-appletsrc"
+if [ -f "${APPLETS_RC}" ]; then
+    sed -i 's/^fontFamily=Noto Sans/fontFamily=SF Pro/' "${APPLETS_RC}" 2>/dev/null || true
+fi
+
 # Recargar Yakuake si está en ejecución para aplicar SF Mono en memoria
 if pgrep -x yakuake >/dev/null 2>&1; then
     echo "    Recargando instancia activa de Yakuake..."
     qdbus6 org.kde.yakuake /MainApplication org.qtproject.Qt.QCoreApplication.quit 2>/dev/null || killall yakuake 2>/dev/null || true
     sleep 0.5
     kstart yakuake >/dev/null 2>&1 &
+fi
+
+# Recargar plasmashell para inyectar SF Pro en todos los applets y elementos gráficos del escritorio
+if systemctl --user is-active --quiet plasma-plasmashell.service; then
+    echo "    Recargando plasmashell para refrescar applets y paneles..."
+    systemctl --user restart plasma-plasmashell.service
 fi
 
 echo "==> Tipografía macOS Golden Gate (SF Pro, SF Mono, New York) configurada correctamente."
