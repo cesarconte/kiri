@@ -152,12 +152,25 @@ kwriteconfig6 --file kdeglobals --group General --key toolBarFont "SF Pro,10,-1,
 kwriteconfig6 --file kdeglobals --group General --key menuFont "SF Pro,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 kwriteconfig6 --file kdeglobals --group WM --key activeFont "SF Pro,10,-1,5,600,0,0,0,0,0,0,0,0,0,0,1"
 
-# GTK 3, 4 y Konsole
+# GTK 3, 4, Konsole y Yakuake
 sed -i 's/^gtk-font-name=.*/gtk-font-name=SF Pro 10/' "${HOME}/.config/gtk-3.0/settings.ini" 2>/dev/null || true
 sed -i 's/^gtk-font-name=.*/gtk-font-name=SF Pro 10/' "${HOME}/.config/gtk-4.0/settings.ini" 2>/dev/null || true
 echo 'gtk-font-name="SF Pro 10"' > "${HOME}/.gtkrc-2.0"
-if [ -f "${HOME}/.local/share/konsole/cachyos.profile" ]; then
-    kwriteconfig6 --file "${HOME}/.local/share/konsole/cachyos.profile" --group Appearance --key Font "SF Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
+
+mkdir -p "${HOME}/.local/share/konsole"
+KONSOLE_PROFILE="${HOME}/.local/share/konsole/cachyos.profile"
+if [ ! -f "${KONSOLE_PROFILE}" ]; then
+    kwriteconfig6 --file "${KONSOLE_PROFILE}" --group General --key Name "cachyos"
+fi
+kwriteconfig6 --file "${KONSOLE_PROFILE}" --group Appearance --key Font "SF Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
+kwriteconfig6 --file "${HOME}/.config/konsolerc" --group "Desktop Entry" --key DefaultProfile "cachyos.profile"
+
+# Recargar Yakuake si está en ejecución para aplicar SF Mono en memoria
+if pgrep -x yakuake >/dev/null 2>&1; then
+    echo "    Recargando instancia activa de Yakuake..."
+    qdbus6 org.kde.yakuake /MainApplication org.qtproject.Qt.QCoreApplication.quit 2>/dev/null || killall yakuake 2>/dev/null || true
+    sleep 0.5
+    kstart yakuake >/dev/null 2>&1 &
 fi
 
 echo "==> Tipografía macOS Golden Gate (SF Pro, SF Mono, New York) configurada correctamente."
