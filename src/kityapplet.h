@@ -23,6 +23,7 @@
 class KityApplet : public Plasma::Applet
 {
     Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.cesar.kity")
 
     Q_PROPERTY(QString state READ state NOTIFY stateChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)

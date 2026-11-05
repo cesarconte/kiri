@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/qml/app">
+        <file>qml/MainWindow.qml</file>
+        <file>qml/SiriOrbAnimation.qml</file>
+    </qresource>
+</RCC>

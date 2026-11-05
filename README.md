@@ -16,6 +16,7 @@ Kity combina la fluidez visual de un orbe animado estilo Siri con modelos locale
   - **Estética *Liquid Glass***: Superficies translúcidas con borde especular y refracción luminosa estilo macOS Tahoe / Golden Gate.
   - ***Writing Tools* (Apple Intelligence)**: Corrección gramatical (*Proofread*), reescritura, ajuste de tono (amigable, profesional, conciso), resúmenes, puntos clave y tablas sobre la selección primaria de Wayland o portapapeles.
   - ***Visual Intelligence & Live Text***: Captura interactiva de región (`-r`), ventana activa (`-a`) o pantalla (`-f`) con **KDE Spectacle** sobre KWin Wayland + extracción OCR con **Tesseract** + detección de enlaces/emails/teléfonos + traducción y análisis IA.
+  - **Aplicación Standalone estilo macOS Golden Gate (`kity`)**: Aplicación de escritorio independiente con presencia y anclaje directo en el Dock / Gestor de tareas de Plasma (`org.cesar.kity.desktop`), ventana Liquid Glass con desenfoque KWin Wayland, historial de conversaciones sincronizado y acciones rápidas.
   - **Plugin *Spotlight* para KRunner (`krunner_kity`)**: Invoca a Kity, aplica Herramientas de Escritura (`escribe`), extrae Live Text (`ocr`) o busca semánticamente en tu base RAG directamente desde `Alt + Espacio`.
   - RAG local (Retrieval-Augmented Generation) sobre documentos en `~/.local/share/kity/knowledge/`.
 

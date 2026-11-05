@@ -1,0 +1,33 @@
+[Desktop Entry]
+Name=Kity
+GenericName=Asistente de IA y Voz
+GenericName[es]=Asistente de IA y Voz
+Comment=Asistente conversacional de inteligencia artificial estilo Siri para KDE Plasma
+Comment[es]=Asistente conversacional de inteligencia artificial estilo Siri para KDE Plasma
+Exec=kity %u
+Icon=org.cesar.kity
+Terminal=false
+Type=Application
+Categories=Utility;AudioVideo;System;
+StartupWMClass=org.cesar.kity
+StartupNotify=true
+MimeType=x-scheme-handler/kity;
+Actions=NewChat;Listen;OCR;
+
+[Desktop Action NewChat]
+Name=Nueva conversación
+Name[es]=Nueva conversación
+Exec=kity --new-chat
+Icon=document-new
+
+[Desktop Action Listen]
+Name=Hablar por voz
+Name[es]=Hablar por voz
+Exec=kity --listen
+Icon=audio-input-microphone
+
+[Desktop Action OCR]
+Name=Captura de pantalla inteligente (Live Text)
+Name[es]=Captura de pantalla inteligente (Live Text)
+Exec=kity --ocr
+Icon=rectangular-snip-symbolic

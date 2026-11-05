@@ -73,3 +73,31 @@ target_link_libraries(krunner_kity PRIVATE
     KF6::I18n
     KF6::Runner
 )
+
+# Standalone Kity Desktop Application (macOS Golden Gate Siri App Style)
+add_executable(kity
+    app/main.cpp
+    app/kityclient.cpp
+    app/kityclient.h
+    app/resources.qrc
+)
+
+target_include_directories(kity PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/app)
+
+target_link_libraries(kity PRIVATE
+    Qt6::Core
+    Qt6::DBus
+    Qt6::Gui
+    Qt6::Quick
+    Qt6::Widgets
+    KF6::CoreAddons
+    KF6::DBusAddons
+    KF6::I18n
+    KF6::WindowSystem
+)
+
+install(TARGETS kity ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
+
+install(FILES org.cesar.kity.desktop
+        DESTINATION ${KDE_INSTALL_APPDIR}
+)
