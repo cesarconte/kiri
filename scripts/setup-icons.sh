@@ -9,8 +9,8 @@
 set -euo pipefail
 
 ICONS_DIR="${HOME}/.local/share/icons"
-REPO_URL="https://github.com/vinceliuice/WhiteSur-icon-theme.git"
-TEMP_CLONE_DIR="/tmp/whitesur-icons-build"
+REPO_URL="https://github.com/cesarconte/macos-goldengate-icons.git"
+TEMP_CLONE_DIR="/tmp/macos-goldengate-icons-build"
 
 echo "==> [1/5] Descargando y compilando el tema de iconos macOS (WhiteSur)..."
 mkdir -p "${ICONS_DIR}"
