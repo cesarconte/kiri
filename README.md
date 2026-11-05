@@ -29,20 +29,24 @@ Kity combina la fluidez visual de un orbe animado estilo Siri con modelos locale
 sudo pacman -S extra-cmake-modules plasma-workspace qt6-declarative qt6-base pipewire spectacle tesseract tesseract-data-spa tesseract-data-eng
 ```
 
-### Herramientas de Audio, Fuentes macOS y Modelos Locales
+### Herramientas de Audio, Fuentes e Iconos macOS, y Modelos Locales
 
-Kity incluye scripts para configurar automáticamente el entorno de voz (Whisper.cpp, Piper TTS), la tipografía nativa de Apple y los modelos de IA:
+Kity incluye scripts para configurar automáticamente el entorno de voz (Whisper.cpp, Piper TTS), la tipografía nativa de Apple, el tema de iconos squircle de macOS y los modelos de IA:
 
 ```bash
 # 1. Configurar tipografías oficiales de Apple (SF Pro, SF Mono, New York)
 chmod +x scripts/setup-fonts.sh
 ./scripts/setup-fonts.sh
 
-# 2. Instalar o compilar herramientas de audio (Piper TTS y Whisper.cpp)
+# 2. Configurar tema de iconos oficial macOS Golden Gate (WhiteSur + Breeze fallback)
+chmod +x scripts/setup-icons.sh
+./scripts/setup-icons.sh
+
+# 3. Instalar o compilar herramientas de audio (Piper TTS y Whisper.cpp)
 chmod +x scripts/install-audio-tools.sh
 ./scripts/install-audio-tools.sh
 
-# 3. Descargar modelos locales (Whisper GGML, voz Piper y modelos Ollama)
+# 4. Descargar modelos locales (Whisper GGML, voz Piper y modelos Ollama)
 chmod +x scripts/setup-models.sh
 ./scripts/setup-models.sh
 ```
