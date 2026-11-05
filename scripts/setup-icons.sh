@@ -46,14 +46,29 @@ for theme in WhiteSur WhiteSur-light WhiteSur-dark; do
     gtk-update-icon-cache -f -t "${ICONS_DIR}/${theme}" >/dev/null 2>&1 || true
 done
 
-echo "==> [5/5] Aplicando tema de iconos en KDE Plasma 6 y GTK..."
+echo "==> [5/5] Aplicando tema de iconos en KDE Plasma 6, Sycoca y GTK..."
 kwriteconfig6 --file kdeglobals --group Icons --key Theme "WhiteSur"
+mkdir -p "${HOME}/.config/kdedefaults"
+kwriteconfig6 --file "${HOME}/.config/kdedefaults/kdeglobals" --group Icons --key Theme "WhiteSur"
+
+# Forzar reconstrucción de la base de datos de servicios del sistema (KService/KSycoca)
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    echo "    Reconstruyendo base de datos de tipos MIME y servicios KDE (kbuildsycoca6)..."
+    kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+fi
+
 sed -i 's/^gtk-icon-theme-name=.*/gtk-icon-theme-name=WhiteSur/' "${HOME}/.config/gtk-3.0/settings.ini" 2>/dev/null || true
 sed -i 's/^gtk-icon-theme-name=.*/gtk-icon-theme-name=WhiteSur/' "${HOME}/.config/gtk-4.0/settings.ini" 2>/dev/null || true
 
+# Notificar al shell y reiniciar servicios de UI dependientes para recargar la caché en memoria
 if systemctl --user is-active --quiet plasma-plasmashell.service; then
-    echo "    Recargando plasmashell para refrescar iconos en paneles y dock..."
+    echo "    Recargando plasmashell para refrescar paneles y escritorio..."
     systemctl --user restart plasma-plasmashell.service
+fi
+
+if systemctl --user is-active --quiet macos-dock.service; then
+    echo "    Recargando macos-dock para refrescar dock y Launchpad..."
+    systemctl --user restart macos-dock.service
 fi
 
 echo "==> Tema de iconos macOS Golden Gate (WhiteSur) configurado e integrado con éxito."
