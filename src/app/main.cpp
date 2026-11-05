@@ -11,6 +11,7 @@
 #include <QQuickWindow>
 #include <KDBusService>
 #include <KLocalizedString>
+#include <KLocalizedContext>
 #include <KWindowEffects>
 
 #include "kityclient.h"
@@ -18,7 +19,7 @@
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("kity"));
+    app.setApplicationName(QStringLiteral("kity_app"));
     app.setOrganizationName(QStringLiteral("cesar"));
     app.setOrganizationDomain(QStringLiteral("cesar.org"));
     app.setApplicationDisplayName(QStringLiteral("Kity"));
@@ -52,6 +53,7 @@ int main(int argc, char *argv[])
 
     KityClient client;
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextObject(new KLocalizedContext(&engine));
 
     engine.rootContext()->setContextProperty(QStringLiteral("kityClient"), &client);
     engine.rootContext()->setContextProperty(QStringLiteral("Plasmoid"), &client);

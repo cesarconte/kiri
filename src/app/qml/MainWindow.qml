@@ -417,7 +417,7 @@ Window {
 
                         HoverHandler { id: s4Hover }
                         TapHandler {
-                            kityClient.sendMessage(i18n("¿Qué información tienes en mis notas locales?"), false)
+                            onTapped: kityClient.sendMessage(i18n("¿Qué información tienes en mis notas locales?"), false)
                         }
 
                         RowLayout {
@@ -495,7 +495,7 @@ Window {
                                     readOnly: true
                                     selectByMouse: true
                                     wrapMode: TextEdit.Wrap
-                                    font.pixelSize: 13.5
+                                    font.pixelSize: 13
                                     textFormat: msgDelegate.isUser ? TextEdit.PlainText : TextEdit.MarkdownText
                                     text: msgDelegate.msgText
                                     color: msgDelegate.isUser ? "#ffffff" : Kirigami.Theme.textColor
@@ -529,7 +529,7 @@ Window {
 
                                     Text {
                                         text: msgDelegate.timestamp.length >= 16 ? msgDelegate.timestamp.substring(11, 16) : ""
-                                        font.pixelSize: 10.5
+                                        font.pixelSize: 11
                                         opacity: 0.5
                                         color: Kirigami.Theme.textColor
                                     }
@@ -569,7 +569,7 @@ Window {
                                 Text {
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
-                                    font.pixelSize: 13.5
+                                    font.pixelSize: 13
                                     text: kityClient.streamingText.length > 0
                                           ? kityClient.streamingText + " ▍"
                                           : i18n("Pensando…")
@@ -663,7 +663,7 @@ Window {
                                          ? i18n("Escuchando tu voz…")
                                          : i18n("Pregúntale o pídele cualquier cosa a Kity…")
                         wrapMode: TextEdit.Wrap
-                        font.pixelSize: 13.5
+                        font.pixelSize: 13
                         focus: true
 
                         Keys.onPressed: event => {
