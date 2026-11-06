@@ -117,9 +117,14 @@ Window {
         // Window Content Layout
         // =====================================================================
         ColumnLayout {
+            id: mainContentColumn
             anchors.fill: parent
-            anchors.margins: Kirigami.Units.mediumSpacing
-            spacing: Kirigami.Units.smallSpacing
+            anchors.topMargin: Kirigami.Units.smallSpacing + 2
+            anchors.leftMargin: Kirigami.Units.largeSpacing + 4
+            anchors.rightMargin: Kirigami.Units.largeSpacing + 4
+            anchors.bottomMargin: Kirigami.Units.largeSpacing + 4
+            spacing: Kirigami.Units.mediumSpacing
+            visible: !root.showPreferences
 
             // -----------------------------------------------------------------
             // Top Window Bar: Traffic Lights, Siri Status Pill, Preferences & Pin
@@ -727,20 +732,19 @@ Window {
 
                         Repeater {
                             model: [
-                                { label: i18n("Analizar pantalla"), iconName: "camera-photo-symbolic", prompt: "Analiza qué hay en mi pantalla", isWritingTool: false },
-                                { label: i18n("Herramientas de escritura"), iconName: "document-edit-symbolic", prompt: "", isWritingTool: true },
-                                { label: i18n("Resumir portapapeles"), iconName: "edit-copy-symbolic", prompt: "Resume lo que he copiado en el portapapeles", isWritingTool: false },
-                                { label: i18n("Estado del sistema"), iconName: "utilities-system-monitor-symbolic", prompt: "Estado del sistema", isWritingTool: false },
-                                { label: i18n("¿Qué canción suena?"), iconName: "audio-volume-high-symbolic", prompt: "¿Qué canción está sonando?", isWritingTool: false },
-                                { label: i18n("Modo oscuro"), iconName: "weather-clear-night-symbolic", prompt: "Activa el modo oscuro", isWritingTool: false }
+                                { label: "🖥️ Analizar pantalla", prompt: "Analiza qué hay en mi pantalla", isWritingTool: false },
+                                { label: "✍️ Herramientas de escritura", prompt: "", isWritingTool: true },
+                                { label: "📋 Resumir copiado", prompt: "Resume lo que he copiado en el portapapeles", isWritingTool: false },
+                                { label: "⚡ Estado del sistema", prompt: "Estado del sistema", isWritingTool: false },
+                                { label: "🎵 ¿Qué canción suena?", prompt: "¿Qué canción está sonando?", isWritingTool: false },
+                                { label: "🌙 Modo oscuro", prompt: "Activa el modo oscuro", isWritingTool: false }
                             ]
 
                             PlasmaComponents3.Button {
                                 required property var modelData
                                 Layout.fillWidth: true
-                                Layout.minimumHeight: Kirigami.Units.gridUnit * 2.3
+                                Layout.minimumHeight: Kirigami.Units.gridUnit * 2.2
                                 text: modelData.label
-                                icon.name: modelData.iconName
                                 font: Kirigami.Theme.defaultFont
                                 onClicked: {
                                     if (modelData.isWritingTool) {
@@ -925,16 +929,32 @@ Window {
                 }
             }
 
+            // Dynamic status bar when recording, transcribing, thinking, or speaking (collapses when empty)
+            PlasmaComponents3.Label {
+                Layout.fillWidth: true
+                visible: kityClient.statusMessage.length > 0
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                text: kityClient.statusMessage
+                font: Kirigami.Theme.smallFont
+                color: kityClient.state === "error" ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.highlightColor
+                wrapMode: Text.WordWrap
+            }
+
             // -----------------------------------------------------------------
             // Bottom Dock: Dynamic Animated Siri Orb & Text Input (From Plasmoid)
             // -----------------------------------------------------------------
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: dockCol.implicitHeight + Kirigami.Units.smallSpacing * 2
-                radius: Kirigami.Units.smallSpacing
-                color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.alternateBackgroundColor, 0.4)
+                radius: Kirigami.Units.smallSpacing * 1.5
+                color: (kityClient.state === "listening")
+                    ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.14)
+                    : Kirigami.Theme.backgroundColor
                 border.width: 1
-                border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
+                border.color: (kityClient.state === "listening")
+                    ? Kirigami.Theme.highlightColor
+                    : Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
 
                 ColumnLayout {
                     id: dockCol
@@ -1025,16 +1045,17 @@ Window {
         Rectangle {
             id: preferencesModal
             anchors.fill: parent
-            radius: 22
+            anchors.margins: 4
+            radius: 20
             visible: root.showPreferences
-            color: glassContainer.isDark ? Qt.rgba(0.08, 0.10, 0.14, 0.96) : Qt.rgba(0.97, 0.98, 1.0, 0.96)
+            color: glassContainer.isDark ? Qt.rgba(0.11, 0.13, 0.18, 1.0) : Qt.rgba(0.97, 0.98, 1.0, 1.0)
             border.width: 1
             border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.20)
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: Kirigami.Units.largeSpacing
-                spacing: Kirigami.Units.mediumSpacing
+                anchors.margins: Kirigami.Units.largeSpacing + 4
+                spacing: Kirigami.Units.largeSpacing
 
                 // Header
                 RowLayout {
@@ -1081,6 +1102,8 @@ Window {
                         Kirigami.Separator {
                             Kirigami.FormData.isSection: true
                             Kirigami.FormData.label: i18n("Voz y Activación Manos Libres")
+                            Layout.topMargin: Kirigami.Units.smallSpacing
+                            Layout.bottomMargin: Kirigami.Units.mediumSpacing
                         }
 
                         PlasmaComponents3.CheckBox {
@@ -1088,6 +1111,8 @@ Window {
                             text: i18n("Escuchar «¡Hola Kity!» u «Oye Kity» en segundo plano")
                             checked: kityClient.wakeWordEnabled
                             onToggled: kityClient.wakeWordEnabled = checked
+                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
+                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
                         }
 
                         QQC2.ComboBox {
@@ -1095,6 +1120,8 @@ Window {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
                             Layout.preferredWidth: 0
+                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
+                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
                             model: [
                                 { value: "always", text: i18n("Hablar siempre en voz alta (Recomendado)") },
                                 { value: "voice_only", text: i18n("Solo cuando preguntes con la voz") },
@@ -1117,6 +1144,8 @@ Window {
                             text: i18n("Reproducir tono armónico al estilo Siri")
                             checked: kityClient.earconsEnabled
                             onToggled: kityClient.earconsEnabled = checked
+                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
+                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
                         }
 
                         PlasmaComponents3.CheckBox {
@@ -1124,6 +1153,8 @@ Window {
                             text: i18n("Detener grabación al terminar de hablar (VAD)")
                             checked: kityClient.vadEnabled
                             onToggled: kityClient.vadEnabled = checked
+                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
+                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
                         }
 
                         PlasmaComponents3.Label {
@@ -1131,6 +1162,8 @@ Window {
                             text: kityClient.whisperAvailable ? i18n("✓ Disponible (whisper.cpp base)") : i18n("✗ No detectado")
                             color: kityClient.whisperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
                             font.bold: true
+                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
+                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
                         }
 
                         PlasmaComponents3.Label {
@@ -1138,17 +1171,23 @@ Window {
                             text: kityClient.piperAvailable ? i18n("✓ Disponible (es_ES-sharvard-medium)") : i18n("✗ No detectado")
                             color: kityClient.piperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
                             font.bold: true
+                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
+                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
                         }
 
                         // Section 2: Artificial Intelligence
                         Kirigami.Separator {
                             Kirigami.FormData.isSection: true
                             Kirigami.FormData.label: i18n("Inteligencia Artificial Local (Ollama)")
+                            Layout.topMargin: Kirigami.Units.largeSpacing * 1.8
+                            Layout.bottomMargin: Kirigami.Units.mediumSpacing
                         }
 
                         RowLayout {
                             Kirigami.FormData.label: i18n("Estado de Ollama:")
                             spacing: Kirigami.Units.smallSpacing
+                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
+                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
 
                             Rectangle {
                                 implicitWidth: 10
@@ -1181,12 +1220,16 @@ Window {
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
                             font: Kirigami.Theme.smallFont
+                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
+                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
                         }
 
                         // Section 3: Local Knowledge (RAG)
                         Kirigami.Separator {
                             Kirigami.FormData.isSection: true
                             Kirigami.FormData.label: i18n("Conocimiento Local y Privacidad (RAG)")
+                            Layout.topMargin: Kirigami.Units.largeSpacing * 1.8
+                            Layout.bottomMargin: Kirigami.Units.mediumSpacing
                         }
 
                         PlasmaComponents3.Label {
@@ -1195,6 +1238,8 @@ Window {
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
                             font: Kirigami.Theme.smallFont
+                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
+                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
                         }
 
                         PlasmaComponents3.Button {
@@ -1202,12 +1247,16 @@ Window {
                             icon.name: "document-open-folder"
                             text: i18n("Abrir carpeta en Dolphin")
                             onClicked: kityClient.openKnowledgeFolder()
+                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
+                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
                         }
 
                         // Section 4: Window & Appearance
                         Kirigami.Separator {
                             Kirigami.FormData.isSection: true
                             Kirigami.FormData.label: i18n("Ventana y Comportamiento")
+                            Layout.topMargin: Kirigami.Units.largeSpacing * 1.8
+                            Layout.bottomMargin: Kirigami.Units.mediumSpacing
                         }
 
                         PlasmaComponents3.CheckBox {
@@ -1215,12 +1264,16 @@ Window {
                             text: i18n("Mantener ventana de Kity siempre encima")
                             checked: root.isPinned
                             onToggled: root.isPinned = checked
+                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
+                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
                         }
 
                         PlasmaComponents3.Label {
                             Kirigami.FormData.label: i18n("Atajos de teclado:")
                             text: i18n("Ctrl+M / Alt+M: Activar voz · Esc: Detener o cerrar")
                             font: Kirigami.Theme.smallFont
+                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
+                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
                         }
                     }
                 }
@@ -1235,6 +1288,8 @@ Window {
                     PlasmaComponents3.Button {
                         text: i18n("Cerrar")
                         icon.name: "dialog-ok"
+                        Layout.minimumHeight: Kirigami.Units.gridUnit * 2.2
+                        Layout.preferredWidth: Kirigami.Units.gridUnit * 6
                         onClicked: root.showPreferences = false
                     }
                 }
