@@ -273,7 +273,7 @@ void KityApplet::setOllamaModel(const QString &model)
 
 QString KityApplet::resolveVisionModel() const
 {
-    return readConfigString(QStringLiteral("ollamaVisionModel"), QStringLiteral("moondream"));
+    return readConfigString(QStringLiteral("ollamaVisionModel"), resolveOllamaModel());
 }
 
 QString KityApplet::resolveSystemPrompt() const
@@ -628,8 +628,8 @@ void KityApplet::sendToOllama(const QString &userPrompt, const QString &injected
 
     const bool hasVision = !base64Image.isEmpty();
     QString modelToUse = hasVision ? resolveVisionModel() : resolveOllamaModel();
-    if (!hasVision && modelToUse.contains(QStringLiteral("moondream"), Qt::CaseInsensitive)) {
-        modelToUse = QStringLiteral("llama3.2:3b");
+    if (modelToUse.isEmpty() || modelToUse.contains(QStringLiteral("moondream"), Qt::CaseInsensitive)) {
+        modelToUse = resolveOllamaModel();
     }
 
     // Build chat messages array
@@ -3199,11 +3199,11 @@ QString KityApplet::detectAvailableVisionModel() const
     }
 
     const QStringList knownVision = {
-        QStringLiteral("moondream"),
+        QStringLiteral("llama3.2-vision"),
         QStringLiteral("llava"),
+        QStringLiteral("bakllava"),
         QStringLiteral("minicpm-v"),
-        QStringLiteral("qwen2.5vl"),
-        QStringLiteral("llama3.2-vision")
+        QStringLiteral("qwen2.5vl")
     };
 
     for (const auto &cand : knownVision) {
@@ -3214,7 +3214,7 @@ QString KityApplet::detectAvailableVisionModel() const
         }
     }
 
-    return configured.isEmpty() ? QStringLiteral("moondream") : configured;
+    return configured.isEmpty() ? resolveOllamaModel() : configured;
 }
 
 QString KityApplet::fetchWebSearchContext(const QString &query) const

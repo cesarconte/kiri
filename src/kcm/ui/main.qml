@@ -216,25 +216,36 @@ KCMUtils.SimpleKCM {
 
             QQC2.Button {
                 id: checkButton
-                icon.name: "view-refresh-symbolic"
-                text: i18n("Comprobar")
                 enabled: !kcm.ollamaChecking
                 QQC2.ToolTip.text: i18n("Verificar conexión con el servidor Ollama local")
-                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.visible: checkBtnHover.hovered
+                HoverHandler { id: checkBtnHover }
                 onClicked: {
                     kcm.checkReadiness();
                     kcm.fetchModels();
-                    refreshRotation.restart();
+                    checkIconAnim.restart();
                 }
 
-                NumberAnimation {
-                    id: refreshRotation
-                    target: checkButton.icon
-                    property: "rotation"
-                    from: 0
-                    to: 360
-                    duration: 650
-                    easing.type: Easing.InOutCubic
+                contentItem: RowLayout {
+                    spacing: Kirigami.Units.smallSpacing
+                    Kirigami.Icon {
+                        id: checkIcon
+                        source: "view-refresh-symbolic"
+                        implicitWidth: Kirigami.Units.iconSizes.small
+                        implicitHeight: Kirigami.Units.iconSizes.small
+                        RotationAnimation on rotation {
+                            id: checkIconAnim
+                            from: 0
+                            to: 360
+                            duration: 650
+                            running: kcm.ollamaChecking
+                            loops: kcm.ollamaChecking ? Animation.Infinite : 1
+                        }
+                    }
+                    QQC2.Label {
+                        text: i18n("Comprobar")
+                        verticalAlignment: Text.AlignVCenter
+                    }
                 }
             }
 
@@ -277,11 +288,35 @@ KCMUtils.SimpleKCM {
             }
 
             QQC2.Button {
-                icon.name: "view-refresh-symbolic"
-                text: i18n("Actualizar lista")
-                QQC2.ToolTip.text: i18n("Consultar modelos instalados en Ollama")
-                QQC2.ToolTip.visible: hovered
-                onClicked: kcm.fetchModels()
+                id: refreshModelsButton
+                QQC2.ToolTip.text: i18n("Consultar modelos instalados en Ollama y refrescar lista")
+                QQC2.ToolTip.visible: refreshModelsBtnHover.hovered
+                HoverHandler { id: refreshModelsBtnHover }
+                onClicked: {
+                    kcm.fetchModels();
+                    refreshModelsAnim.restart();
+                }
+
+                contentItem: RowLayout {
+                    spacing: Kirigami.Units.smallSpacing
+                    Kirigami.Icon {
+                        id: refreshModelsIcon
+                        source: "view-refresh-symbolic"
+                        implicitWidth: Kirigami.Units.iconSizes.small
+                        implicitHeight: Kirigami.Units.iconSizes.small
+                        RotationAnimation on rotation {
+                            id: refreshModelsAnim
+                            from: 0
+                            to: 360
+                            duration: 650
+                            running: false
+                        }
+                    }
+                    QQC2.Label {
+                        text: i18n("Actualizar lista")
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
             }
         }
 
@@ -324,9 +359,35 @@ KCMUtils.SimpleKCM {
             }
 
             QQC2.Button {
-                icon.name: "edit-reset"
-                text: i18n("Restaurar instrucción por defecto (Español de España)")
-                onClicked: kcm.restoreDefaultPrompt()
+                id: restorePromptBtn
+                QQC2.ToolTip.text: i18n("Restablecer la instrucción base en español de España")
+                QQC2.ToolTip.visible: restorePromptHover.hovered
+                HoverHandler { id: restorePromptHover }
+                onClicked: {
+                    kcm.restoreDefaultPrompt();
+                    restoreAnim.restart();
+                }
+
+                contentItem: RowLayout {
+                    spacing: Kirigami.Units.smallSpacing
+                    Kirigami.Icon {
+                        id: restoreIcon
+                        source: "edit-reset"
+                        implicitWidth: Kirigami.Units.iconSizes.small
+                        implicitHeight: Kirigami.Units.iconSizes.small
+                        RotationAnimation on rotation {
+                            id: restoreAnim
+                            from: 0
+                            to: -360
+                            duration: 500
+                            running: false
+                        }
+                    }
+                    QQC2.Label {
+                        text: i18n("Restaurar instrucción por defecto (Español de España)")
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
             }
         }
 
@@ -346,17 +407,21 @@ KCMUtils.SimpleKCM {
             editable: true
             value: kcm.ollamaNumCtx
             onValueModified: kcm.ollamaNumCtx = value
+            QQC2.ToolTip.text: i18n("4096 tokens (por defecto) es el tamaño óptimo de memoria para respuestas de voz y contexto RAG sin sobrecargar la inferencia.")
+            QQC2.ToolTip.visible: hovered
         }
 
         QQC2.SpinBox {
             visible: root.showAdvancedOllama
             Kirigami.FormData.label: i18n("Hilos de CPU para inferencia:")
             from: 1
-            to: 64
+            to: 20
             stepSize: 1
             editable: true
             value: kcm.ollamaNumThread
             onValueModified: kcm.ollamaNumThread = value
+            QQC2.ToolTip.text: i18n("Óptimo para tu procesador Intel Core i5-13600K: 6 hilos (aprovecha al 100% los 6 núcleos P de alto rendimiento con máxima velocidad y cero competencia de hilos).")
+            QQC2.ToolTip.visible: hovered
         }
 
         QQC2.SpinBox {
@@ -368,6 +433,8 @@ KCMUtils.SimpleKCM {
             editable: true
             value: kcm.ollamaNumPredict
             onValueModified: kcm.ollamaNumPredict = value
+            QQC2.ToolTip.text: i18n("384 tokens garantiza respuestas concisas, dinámicas y naturales, optimizadas para síntesis de voz (TTS).")
+            QQC2.ToolTip.visible: hovered
         }
 
         QQC2.TextField {
@@ -378,16 +445,47 @@ KCMUtils.SimpleKCM {
             placeholderText: "24h"
             text: kcm.ollamaKeepAlive
             onTextEdited: kcm.ollamaKeepAlive = text.trim()
+            QQC2.ToolTip.text: i18n("24h mantiene el modelo cargado en tus 32 GB de RAM, eliminando el retardo de 2 a 3 segundos de carga inicial en frío.")
+            QQC2.ToolTip.visible: hovered
         }
 
-        QQC2.TextField {
+        RowLayout {
             visible: root.showAdvancedOllama
             Kirigami.FormData.label: i18n("Modelo de visión (pantalla):")
             Layout.fillWidth: true
             Layout.minimumWidth: 0
-            placeholderText: "moondream"
-            text: kcm.ollamaVisionModel
-            onTextEdited: kcm.ollamaVisionModel = text.trim()
+
+            QQC2.ComboBox {
+                id: visionModelCombo
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                editable: true
+                model: kcm.detectedModels.length > 0 ? kcm.detectedModels : ["llama3.2:3b", "mistral:7b", "llama3.1:8b", "gemma2:9b"]
+                editText: kcm.ollamaVisionModel
+                currentIndex: {
+                    const idx = model.indexOf(kcm.ollamaVisionModel);
+                    return idx >= 0 ? idx : 0;
+                }
+                onActivated: index => {
+                    kcm.ollamaVisionModel = model[index];
+                }
+                onAccepted: {
+                    if (editText.trim().length > 0) {
+                        kcm.ollamaVisionModel = editText.trim();
+                    }
+                }
+                QQC2.ToolTip.text: i18n("Modelo utilizado para analizar capturas de pantalla. Por defecto se apoya en Live Text OCR (Tesseract) con tu modelo local (ej. %1). Si instalas un modelo multimodal (como llama3.2-vision:11b o llava:7b), puedes seleccionarlo aquí.", kcm.ollamaModel)
+                QQC2.ToolTip.visible: hovered
+            }
+
+            QQC2.Label {
+                text: i18n("Live Text OCR activo")
+                color: Kirigami.Theme.positiveTextColor
+                font: Kirigami.Theme.smallFont
+                QQC2.ToolTip.text: i18n("El motor nativo de Live Text OCR (Tesseract) procesa el texto de pantalla y ventanas de forma instantánea.")
+                QQC2.ToolTip.visible: ocrBadgeHover.hovered
+                HoverHandler { id: ocrBadgeHover }
+            }
         }
 
         // =====================================================================

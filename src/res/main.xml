@@ -35,8 +35,8 @@
       <default>24h</default>
     </entry>
     <entry name="ollamaVisionModel" type="String">
-      <label>Ollama vision model name (e.g. moondream, llava, minicpm-v)</label>
-      <default>moondream</default>
+      <label>Ollama vision model name (e.g. llama3.2:3b, llama3.2-vision, llava)</label>
+      <default>llama3.2:3b</default>
     </entry>
     <entry name="systemPrompt" type="String">
       <label>System instructions provided to the AI assistant</label>

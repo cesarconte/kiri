@@ -195,7 +195,7 @@ private:
 
     QString m_ollamaUrl = QStringLiteral("http://127.0.0.1:11434");
     QString m_ollamaModel = QStringLiteral("llama3.2:3b");
-    QString m_ollamaVisionModel = QStringLiteral("moondream");
+    QString m_ollamaVisionModel = QStringLiteral("llama3.2:3b");
     double m_ollamaTemperature = 0.2;
     int m_ollamaNumCtx = 4096;
     int m_ollamaNumThread = 6;

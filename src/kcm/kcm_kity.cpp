@@ -60,7 +60,10 @@ void KcmKity::load()
 
     m_ollamaUrl = cfg.readEntry(QStringLiteral("ollamaUrl"), QStringLiteral("http://127.0.0.1:11434"));
     m_ollamaModel = cfg.readEntry(QStringLiteral("ollamaModel"), QStringLiteral("llama3.2:3b"));
-    m_ollamaVisionModel = cfg.readEntry(QStringLiteral("ollamaVisionModel"), QStringLiteral("moondream"));
+    m_ollamaVisionModel = cfg.readEntry(QStringLiteral("ollamaVisionModel"), QStringLiteral("llama3.2:3b"));
+    if (m_ollamaVisionModel == QLatin1String("moondream")) {
+        m_ollamaVisionModel = QStringLiteral("llama3.2:3b");
+    }
     m_ollamaTemperature = cfg.readEntry(QStringLiteral("ollamaTemperature"), 0.2);
     m_ollamaNumCtx = cfg.readEntry(QStringLiteral("ollamaNumCtx"), 4096);
     m_ollamaNumThread = cfg.readEntry(QStringLiteral("ollamaNumThread"), 6);
@@ -163,7 +166,7 @@ void KcmKity::defaults()
 
     setOllamaUrl(QStringLiteral("http://127.0.0.1:11434"));
     setOllamaModel(QStringLiteral("llama3.2:3b"));
-    setOllamaVisionModel(QStringLiteral("moondream"));
+    setOllamaVisionModel(QStringLiteral("llama3.2:3b"));
     setOllamaTemperature(0.2);
     setOllamaNumCtx(4096);
     setOllamaNumThread(6);
@@ -438,7 +441,7 @@ void KcmKity::fetchModels()
                 QStringList list;
                 for (const QJsonValue &v : arr) {
                     const QString name = v.toObject().value(QStringLiteral("name")).toString();
-                    if (!name.isEmpty() && !name.contains(QStringLiteral("moondream"), Qt::CaseInsensitive)) {
+                    if (!name.isEmpty()) {
                         list.append(name);
                     }
                 }
@@ -448,6 +451,7 @@ void KcmKity::fetchModels()
                     }
                     m_detectedModels = list;
                     Q_EMIT detectedModelsChanged();
+                    Q_EMIT diagnosticsChanged();
                 }
             }
         }
