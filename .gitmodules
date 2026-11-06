@@ -1,0 +1,3 @@
+[submodule "src/kcm"]
+	path = src/kcm
+	url = https://github.com/cesarconte/kcm-kity.git

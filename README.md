@@ -3,7 +3,7 @@
 > **Asistente de voz e inteligencia artificial local al estilo Siri para KDE Plasma 6 en CachyOS Linux.**
 
 Kity combina la fluidez visual de un orbe animado estilo Siri con modelos locales de última generación:
-- **LLM Local**: Inferencia mediante [Ollama](https://ollama.ai) (Qwen 2.5, LLaVA, Moondream).
+- **LLM Local**: Inferencia mediante [Ollama](https://ollama.ai) (Llama 3.2, Mistral, Llama 3.1, Gemma 2).
 - **Reconocimiento de voz (STT)**: Transcripción precisa con [whisper.cpp](https://github.com/ggerganov/whisper.cpp) y PipeWire (`pw-record`).
 - **Síntesis de voz (TTS)**: Voz neuronal ultra-rápida y natural con [Piper TTS](https://github.com/rhasspy/piper) y PipeWire (`pw-play`).
 - **Integración con Plasma 6 y Wayland**:
@@ -55,8 +55,10 @@ chmod +x scripts/setup-models.sh
 ### Compilación e Instalación
 
 ```bash
+git clone --recurse-submodules https://github.com/cesarconte/kiri.git
+cd kiri
 cmake -B build -S . -DCMAKE_INSTALL_PREFIX=$HOME/.local
-cmake --build build
+cmake --build build -j$(nproc)
 cmake --install build
 ```
 
