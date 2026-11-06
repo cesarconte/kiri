@@ -1472,7 +1472,7 @@ Window {
                                                     }
                                                 }
                                                 if (list.length === 0) {
-                                                    list.push(kityClient.ollamaModel ? kityClient.ollamaModel : "qwen2.5:7b");
+                                                    list.push(kityClient.ollamaModel ? kityClient.ollamaModel : "llama3.2:3b");
                                                 }
                                                 return list;
                                             }

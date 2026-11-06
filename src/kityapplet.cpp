@@ -222,7 +222,7 @@ QString KityApplet::resolveOllamaUrl() const
 
 QString KityApplet::resolveOllamaModel() const
 {
-    return readConfigString(QStringLiteral("ollamaModel"), QStringLiteral("qwen2.5:7b"));
+    return readConfigString(QStringLiteral("ollamaModel"), QStringLiteral("llama3.2:3b"));
 }
 
 void KityApplet::setOllamaModel(const QString &model)
@@ -584,7 +584,7 @@ void KityApplet::sendToOllama(const QString &userPrompt, const QString &injected
     const bool hasVision = !base64Image.isEmpty();
     QString modelToUse = hasVision ? resolveVisionModel() : resolveOllamaModel();
     if (!hasVision && modelToUse.contains(QStringLiteral("moondream"), Qt::CaseInsensitive)) {
-        modelToUse = QStringLiteral("qwen2.5:7b");
+        modelToUse = QStringLiteral("llama3.2:3b");
     }
 
     // Build chat messages array

@@ -34,7 +34,7 @@ KCMUtils.SimpleKCM {
 
     // Ollama AI Engine
     property alias cfg_ollamaUrl: ollamaUrlField.text
-    property string cfg_ollamaModel: "qwen2.5:7b"
+    property string cfg_ollamaModel: "llama3.2:3b"
     property string cfg_ollamaVisionModel: "moondream"
     property double cfg_ollamaTemperature: 0.2
     property alias cfg_ollamaNumCtx: ollamaCtxSpinBox.value
@@ -57,7 +57,7 @@ KCMUtils.SimpleKCM {
     // Local State & Dynamic Ollama Model Discovery
     // =========================================================================
 
-    property var detectedModels: ["qwen2.5:7b"]
+    property var detectedModels: ["llama3.2:3b"]
     property bool showAdvancedEngine: false
     readonly property string defaultSpanishPrompt: "Eres Kity, un asistente de voz e inteligencia artificial nativo para KDE Plasma en CachyOS Linux. Responde SIEMPRE en español de España (castellano), de forma concisa, clara, directa y natural, optimizada para síntesis de voz (TTS)."
 

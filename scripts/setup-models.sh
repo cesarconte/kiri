@@ -48,10 +48,8 @@ echo "[3/3] Verificando servidor Ollama..."
 if command -v ollama >/dev/null 2>&1; then
     if systemctl is-active --quiet ollama.service || pgrep -x ollama >/dev/null; then
         echo "Servidor Ollama detectado en ejecución."
-        echo "Descargando modelo recomendado de lenguaje: qwen2.5:7b..."
-        ollama pull qwen2.5:7b || echo "Aviso: no se pudo descargar qwen2.5:7b automáticamente."
-        echo "Descargando modelo de visión: moondream..."
-        ollama pull moondream || echo "Aviso: no se pudo descargar moondream automáticamente."
+        echo "Descargando modelo recomendado de lenguaje: llama3.2:3b..."
+        ollama pull llama3.2:3b || echo "Aviso: no se pudo descargar llama3.2:3b automáticamente."
     else
         echo "Aviso: El servicio Ollama no está activo. Ejecuta 'systemctl start ollama' o 'ollama serve'."
     fi

@@ -117,7 +117,7 @@ KityClient::KityClient(QObject *parent)
     loadLocalHistory();
 
     QSettings settings(QStringLiteral("cesar"), QStringLiteral("kity"));
-    m_ollamaModel = settings.value(QStringLiteral("ollamaModel"), QStringLiteral("qwen2.5:7b")).toString();
+    m_ollamaModel = settings.value(QStringLiteral("ollamaModel"), QStringLiteral("llama3.2:3b")).toString();
 }
 
 void KityClient::setupDBus()

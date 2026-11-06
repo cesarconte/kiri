@@ -182,6 +182,6 @@ private:
     QString m_speechOutputMode = QStringLiteral("always");
     bool m_vadEnabled = true;
     bool m_earconsEnabled = true;
-    QString m_ollamaModel = QStringLiteral("qwen2.5:7b");
+    QString m_ollamaModel = QStringLiteral("llama3.2:3b");
     bool m_connected = false;
 };
