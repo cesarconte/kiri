@@ -75,11 +75,6 @@ PlasmoidItem {
             icon.name: "edit-clear-history-symbolic"
             enabled: Plasmoid.messages.length > 0
             onTriggered: Plasmoid.clearHistory()
-        },
-        PlasmaCore.Action {
-            text: i18n("Preferencias de Kity…")
-            icon.name: "preferences-system"
-            onTriggered: Plasmoid.openSettings()
         }
     ]
 

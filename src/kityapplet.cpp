@@ -93,13 +93,15 @@ void KityApplet::init()
                        this,
                        QDBusConnection::ExportAllInvokables | QDBusConnection::ExportAllProperties | QDBusConnection::ExportAllSignals);
 
-    // Wire internal configure action to systemsettings kcm_kity
+    // Wire internal configure action to systemsettings kcm_kity with macOS-style naming
     QAction *cfgAct = internalAction(QStringLiteral("configure"));
     if (cfgAct) {
         cfgAct->disconnect();
+        cfgAct->setText(i18n("Ajustes de Kity…"));
+        cfgAct->setIcon(QIcon::fromTheme(QStringLiteral("preferences-system")));
         connect(cfgAct, &QAction::triggered, this, &KityApplet::openSettings);
     } else {
-        cfgAct = new QAction(QIcon::fromTheme(QStringLiteral("preferences-system")), i18n("Configurar Kity…"), this);
+        cfgAct = new QAction(QIcon::fromTheme(QStringLiteral("preferences-system")), i18n("Ajustes de Kity…"), this);
         connect(cfgAct, &QAction::triggered, this, &KityApplet::openSettings);
         setInternalAction(QStringLiteral("configure"), cfgAct);
     }
