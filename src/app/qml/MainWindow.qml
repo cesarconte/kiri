@@ -1431,7 +1431,7 @@ Window {
 
                                     Kirigami.Separator { Layout.fillWidth: true }
 
-                                    // Row 2: Models
+                                    // Row 2: Active Ollama model selector
                                     RowLayout {
                                         Layout.fillWidth: true
                                         Layout.minimumHeight: 38
@@ -1442,17 +1442,48 @@ Window {
                                             Layout.preferredWidth: 0
                                             spacing: 2
                                             PlasmaComponents3.Label {
-                                                text: i18n("Modelos instalados")
+                                                text: i18n("Modelo activo de lenguaje (LLM)")
                                                 font.bold: true
                                                 Layout.fillWidth: true
                                             }
                                             PlasmaComponents3.Label {
-                                                text: kityClient.availableModels.length > 0 ? kityClient.availableModels.join(", ") : i18n("Ningún modelo detectado")
+                                                text: kityClient.availableModels.length > 0
+                                                    ? i18n("Modelo local de Ollama que procesará tus preguntas y tareas")
+                                                    : i18n("Inicia Ollama y pulsa «Comprobar» para detectar tus modelos")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
                                                 wrapMode: Text.WordWrap
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 0
+                                            }
+                                        }
+
+                                        QQC2.ComboBox {
+                                            id: modelSelectorCombo
+                                            Layout.preferredWidth: 210
+                                            Layout.alignment: Qt.AlignVCenter
+                                            model: {
+                                                var list = [];
+                                                for (var i = 0; i < kityClient.availableModels.length; ++i) {
+                                                    var m = kityClient.availableModels[i];
+                                                    // Filter out vision-only auxiliary models from main chat LLM dropdown
+                                                    if (m.indexOf("moondream") === -1) {
+                                                        list.push(m);
+                                                    }
+                                                }
+                                                if (list.length === 0) {
+                                                    list.push(kityClient.ollamaModel ? kityClient.ollamaModel : "qwen2.5:7b");
+                                                }
+                                                return list;
+                                            }
+                                            currentIndex: {
+                                                var idx = model.indexOf(kityClient.ollamaModel);
+                                                return idx >= 0 ? idx : 0;
+                                            }
+                                            onActivated: index => {
+                                                if (index >= 0 && index < model.length) {
+                                                    kityClient.setOllamaModel(model[index]);
+                                                }
                                             }
                                         }
                                     }

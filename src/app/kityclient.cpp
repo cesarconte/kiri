@@ -14,6 +14,7 @@
 #include <QJsonDocument>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QTextDocument>
 
@@ -114,6 +115,9 @@ KityClient::KityClient(QObject *parent)
 
     setupDBus();
     loadLocalHistory();
+
+    QSettings settings(QStringLiteral("cesar"), QStringLiteral("kity"));
+    m_ollamaModel = settings.value(QStringLiteral("ollamaModel"), QStringLiteral("qwen2.5:7b")).toString();
 }
 
 void KityClient::setupDBus()
@@ -203,6 +207,13 @@ void KityClient::setupDBus()
                         QStringLiteral("/Kity"),
                         m_iface->interface(),
                         QStringLiteral("earconsEnabledChanged"),
+                        this,
+                        SLOT(syncFromDBus()));
+
+            bus.connect(QStringLiteral("org.cesar.kity"),
+                        QStringLiteral("/Kity"),
+                        m_iface->interface(),
+                        QStringLiteral("ollamaModelChanged"),
                         this,
                         SLOT(syncFromDBus()));
 
@@ -313,6 +324,12 @@ void KityClient::syncFromDBus()
         }
     }
 
+    const QString nextModel = m_iface->property("ollamaModel").toString();
+    if (!nextModel.isEmpty() && m_ollamaModel != nextModel) {
+        m_ollamaModel = nextModel;
+        Q_EMIT ollamaModelChanged();
+    }
+
     const QVariant msgsVar = m_iface->property("messages");
     if (msgsVar.isValid() && msgsVar.canConvert<QVariantList>()) {
         const QVariantList nextMsgs = msgsVar.toList();
@@ -378,6 +395,20 @@ void KityClient::setEarconsEnabled(bool enabled)
             m_iface->setProperty("earconsEnabled", enabled);
         }
         Q_EMIT earconsEnabledChanged();
+    }
+}
+
+void KityClient::setOllamaModel(const QString &model)
+{
+    if (m_ollamaModel != model) {
+        m_ollamaModel = model;
+        if (m_iface && m_iface->isValid()) {
+            m_iface->setProperty("ollamaModel", model);
+            m_iface->asyncCall(QStringLiteral("setOllamaModel"), model);
+        }
+        QSettings settings(QStringLiteral("cesar"), QStringLiteral("kity"));
+        settings.setValue(QStringLiteral("ollamaModel"), model);
+        Q_EMIT ollamaModelChanged();
     }
 }
 

@@ -41,6 +41,7 @@ class KityApplet : public Plasma::Applet
     Q_PROPERTY(QString speechOutputMode READ resolveSpeechOutputMode WRITE setSpeechOutputMode NOTIFY speechOutputModeChanged)
     Q_PROPERTY(bool vadEnabled READ vadEnabled WRITE setVadEnabled NOTIFY vadEnabledChanged)
     Q_PROPERTY(bool earconsEnabled READ earconsEnabled WRITE setEarconsEnabled NOTIFY earconsEnabledChanged)
+    Q_PROPERTY(QString ollamaModel READ resolveOllamaModel WRITE setOllamaModel NOTIFY ollamaModelChanged)
 
 public:
     struct ContactEntry {
@@ -110,6 +111,7 @@ public:
     Q_INVOKABLE void clearHistory();
     Q_INVOKABLE void refreshModels();
     Q_INVOKABLE void checkReadiness();
+    Q_INVOKABLE void setOllamaModel(const QString &model);
 
     Q_INVOKABLE bool launchApplication(const QString &appQuery, QString *launchedNameOut = nullptr);
     Q_INVOKABLE bool closeApplication(const QString &appQuery, QString *closedNameOut = nullptr);
@@ -152,6 +154,7 @@ Q_SIGNALS:
     void speechOutputModeChanged();
     void vadEnabledChanged();
     void earconsEnabledChanged();
+    void ollamaModelChanged();
 
 private Q_SLOTS:
     void handleOllamaStreamChunk();

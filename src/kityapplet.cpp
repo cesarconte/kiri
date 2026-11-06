@@ -225,6 +225,16 @@ QString KityApplet::resolveOllamaModel() const
     return readConfigString(QStringLiteral("ollamaModel"), QStringLiteral("qwen2.5:7b"));
 }
 
+void KityApplet::setOllamaModel(const QString &model)
+{
+    if (resolveOllamaModel() != model) {
+        KConfigGroup cfg = config();
+        cfg.group(QStringLiteral("General")).writeEntry(QStringLiteral("ollamaModel"), model);
+        cfg.sync();
+        Q_EMIT ollamaModelChanged();
+    }
+}
+
 QString KityApplet::resolveVisionModel() const
 {
     return readConfigString(QStringLiteral("ollamaVisionModel"), QStringLiteral("moondream"));

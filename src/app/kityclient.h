@@ -81,6 +81,7 @@ class KityClient : public QObject
     Q_PROPERTY(QString speechOutputMode READ speechOutputMode WRITE setSpeechOutputMode NOTIFY speechOutputModeChanged)
     Q_PROPERTY(bool vadEnabled READ vadEnabled WRITE setVadEnabled NOTIFY vadEnabledChanged)
     Q_PROPERTY(bool earconsEnabled READ earconsEnabled WRITE setEarconsEnabled NOTIFY earconsEnabledChanged)
+    Q_PROPERTY(QString ollamaModel READ ollamaModel WRITE setOllamaModel NOTIFY ollamaModelChanged)
     Q_PROPERTY(bool connected READ isConnected NOTIFY connectionChanged)
     Q_PROPERTY(QObject *configuration READ configuration CONSTANT)
 
@@ -104,6 +105,7 @@ public:
     QString speechOutputMode() const { return m_speechOutputMode; }
     bool vadEnabled() const { return m_vadEnabled; }
     bool earconsEnabled() const { return m_earconsEnabled; }
+    QString ollamaModel() const { return m_ollamaModel; }
     bool isConnected() const { return m_connected; }
     QObject *configuration() { return m_configHelper; }
 
@@ -111,6 +113,7 @@ public:
     void setSpeechOutputMode(const QString &mode);
     void setVadEnabled(bool enabled);
     void setEarconsEnabled(bool enabled);
+    Q_INVOKABLE void setOllamaModel(const QString &model);
 
     // Q_INVOKABLE methods corresponding to backend functions
     Q_INVOKABLE void sendMessage(const QString &text, bool fromVoice = false);
@@ -147,6 +150,7 @@ Q_SIGNALS:
     void speechOutputModeChanged();
     void vadEnabledChanged();
     void earconsEnabledChanged();
+    void ollamaModelChanged();
     void connectionChanged();
     void transcriptionReady(const QString &text);
 
@@ -178,5 +182,6 @@ private:
     QString m_speechOutputMode = QStringLiteral("always");
     bool m_vadEnabled = true;
     bool m_earconsEnabled = true;
+    QString m_ollamaModel = QStringLiteral("qwen2.5:7b");
     bool m_connected = false;
 };
