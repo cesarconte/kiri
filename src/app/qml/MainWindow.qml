@@ -1088,16 +1088,18 @@ Window {
                     Layout.fillWidth: true
                 }
 
-                // Scrollable Settings Cards Container (macOS Golden Gate / KDE Plasma 6 FormCards)
+                // Scrollable Settings Cards Container using native KDE Kirigami.AbstractCard
                 QQC2.ScrollView {
+                    id: prefScrollView
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    contentWidth: availableWidth
                     QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
                     clip: true
 
                     ColumnLayout {
-                        width: parent.width
-                        spacing: Kirigami.Units.largeSpacing + 4
+                        width: prefScrollView.availableWidth
+                        spacing: Kirigami.Units.largeSpacing
 
                         // =====================================================
                         // Group 1: Voz y Activación Manos Libres
@@ -1113,18 +1115,10 @@ Window {
                                 color: Kirigami.Theme.highlightColor
                             }
 
-                            Rectangle {
+                            Kirigami.AbstractCard {
                                 Layout.fillWidth: true
-                                implicitHeight: g1Col.implicitHeight + Kirigami.Units.largeSpacing * 2
-                                radius: 12
-                                color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.03)
-                                border.width: 1
-                                border.color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08)
 
-                                ColumnLayout {
-                                    id: g1Col
-                                    anchors.fill: parent
-                                    anchors.margins: Kirigami.Units.largeSpacing
+                                contentItem: ColumnLayout {
                                     spacing: Kirigami.Units.mediumSpacing
 
                                     // Row 1: Wake word
@@ -1321,18 +1315,10 @@ Window {
                                 color: Kirigami.Theme.highlightColor
                             }
 
-                            Rectangle {
+                            Kirigami.AbstractCard {
                                 Layout.fillWidth: true
-                                implicitHeight: g2Col.implicitHeight + Kirigami.Units.largeSpacing * 2
-                                radius: 12
-                                color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.03)
-                                border.width: 1
-                                border.color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08)
 
-                                ColumnLayout {
-                                    id: g2Col
-                                    anchors.fill: parent
-                                    anchors.margins: Kirigami.Units.largeSpacing
+                                contentItem: ColumnLayout {
                                     spacing: Kirigami.Units.mediumSpacing
 
                                     // Row 1: Connection status
@@ -1414,18 +1400,10 @@ Window {
                                 color: Kirigami.Theme.highlightColor
                             }
 
-                            Rectangle {
+                            Kirigami.AbstractCard {
                                 Layout.fillWidth: true
-                                implicitHeight: g3Col.implicitHeight + Kirigami.Units.largeSpacing * 2
-                                radius: 12
-                                color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.03)
-                                border.width: 1
-                                border.color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08)
 
-                                ColumnLayout {
-                                    id: g3Col
-                                    anchors.fill: parent
-                                    anchors.margins: Kirigami.Units.largeSpacing
+                                contentItem: ColumnLayout {
                                     spacing: Kirigami.Units.mediumSpacing
 
                                     RowLayout {
@@ -1447,7 +1425,7 @@ Window {
                                             }
                                         }
                                         PlasmaComponents3.Button {
-                                            text: i18n("Abrir en Dolphin")
+                                            text: i18n("Abrir carpeta")
                                             icon.name: "document-open-folder"
                                             onClicked: kityClient.openKnowledgeFolder()
                                         }
@@ -1470,18 +1448,10 @@ Window {
                                 color: Kirigami.Theme.highlightColor
                             }
 
-                            Rectangle {
+                            Kirigami.AbstractCard {
                                 Layout.fillWidth: true
-                                implicitHeight: g4Col.implicitHeight + Kirigami.Units.largeSpacing * 2
-                                radius: 12
-                                color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.03)
-                                border.width: 1
-                                border.color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08)
 
-                                ColumnLayout {
-                                    id: g4Col
-                                    anchors.fill: parent
-                                    anchors.margins: Kirigami.Units.largeSpacing
+                                contentItem: ColumnLayout {
                                     spacing: Kirigami.Units.mediumSpacing
 
                                     RowLayout {
@@ -1532,22 +1502,6 @@ Window {
                                 }
                             }
                         }
-                    }
-                }
-
-                Kirigami.Separator {
-                    Layout.fillWidth: true
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    Item { Layout.fillWidth: true }
-                    PlasmaComponents3.Button {
-                        text: i18n("Cerrar")
-                        icon.name: "dialog-ok"
-                        Layout.minimumHeight: Kirigami.Units.gridUnit * 2.2
-                        Layout.preferredWidth: Kirigami.Units.gridUnit * 6
-                        onClicked: root.showPreferences = false
                     }
                 }
             }
