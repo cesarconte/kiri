@@ -1385,12 +1385,46 @@ Window {
                                             }
                                         }
                                         PlasmaComponents3.Button {
-                                            text: i18n("Comprobar")
-                                            icon.name: "view-refresh"
+                                            id: checkBtn
                                             Layout.alignment: Qt.AlignVCenter
+                                            property bool isChecking: false
+
+                                            contentItem: RowLayout {
+                                                spacing: Kirigami.Units.smallSpacing
+                                                Kirigami.Icon {
+                                                    id: refreshIcon
+                                                    source: "view-refresh"
+                                                    implicitWidth: Kirigami.Units.iconSizes.small
+                                                    implicitHeight: Kirigami.Units.iconSizes.small
+                                                    Layout.alignment: Qt.AlignVCenter
+                                                    transformOrigin: Item.Center
+
+                                                    RotationAnimation {
+                                                        target: refreshIcon
+                                                        from: 0
+                                                        to: 360
+                                                        duration: 650
+                                                        loops: Animation.Infinite
+                                                        running: checkBtn.isChecking
+                                                    }
+                                                }
+                                                PlasmaComponents3.Label {
+                                                    text: checkBtn.isChecking ? i18n("Comprobando…") : i18n("Comprobar")
+                                                    Layout.alignment: Qt.AlignVCenter
+                                                }
+                                            }
+
                                             onClicked: {
+                                                isChecking = true;
+                                                checkTimer.restart();
                                                 kityClient.checkReadiness();
                                                 kityClient.refreshModels();
+                                            }
+
+                                            Timer {
+                                                id: checkTimer
+                                                interval: 850
+                                                onTriggered: checkBtn.isChecking = false
                                             }
                                         }
                                     }

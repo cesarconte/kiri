@@ -472,7 +472,11 @@ void KityClient::openKnowledgeFolder() const
 {
     if (m_iface && m_iface->isValid()) {
         m_iface->asyncCall(QStringLiteral("openKnowledgeFolder"));
+        return;
     }
+    const QString path = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity/knowledge");
+    QDir().mkpath(path);
+    QProcess::startDetached(QStringLiteral("dolphin"), QStringList() << path);
 }
 
 void KityClient::runVisualIntelligence(const QString &captureMode, const QString &action, const QString &customQuestion)

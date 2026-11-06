@@ -127,6 +127,9 @@ void KityApplet::setWakeWordEnabled(bool enabled)
 {
     if (m_wakeWordEnabled != enabled) {
         m_wakeWordEnabled = enabled;
+        KConfigGroup cfg = config();
+        cfg.group(QStringLiteral("General")).writeEntry(QStringLiteral("wakeWordEnabled"), enabled);
+        cfg.sync();
         Q_EMIT wakeWordEnabledChanged();
         if (m_wakeWordEnabled) {
             startWakeWordListener();
