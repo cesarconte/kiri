@@ -1128,16 +1128,21 @@ Window {
                                         spacing: Kirigami.Units.mediumSpacing
                                         ColumnLayout {
                                             Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            Layout.preferredWidth: 0
                                             spacing: 2
                                             PlasmaComponents3.Label {
                                                 text: i18n("Activación por voz «¡Hola Kity!»")
                                                 font.bold: true
+                                                Layout.fillWidth: true
                                             }
                                             PlasmaComponents3.Label {
                                                 text: i18n("Escuchar en segundo plano sin usar el ratón ni el teclado")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
                                                 wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
                                             }
                                         }
                                         QQC2.Switch {
@@ -1155,16 +1160,21 @@ Window {
                                         spacing: Kirigami.Units.mediumSpacing
                                         ColumnLayout {
                                             Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            Layout.preferredWidth: 0
                                             spacing: 2
                                             PlasmaComponents3.Label {
                                                 text: i18n("Respuestas habladas")
                                                 font.bold: true
+                                                Layout.fillWidth: true
                                             }
                                             PlasmaComponents3.Label {
                                                 text: i18n("Modo de lectura en voz alta de las respuestas")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
                                                 wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
                                             }
                                         }
                                         QQC2.ComboBox {
@@ -1196,16 +1206,21 @@ Window {
                                         spacing: Kirigami.Units.mediumSpacing
                                         ColumnLayout {
                                             Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            Layout.preferredWidth: 0
                                             spacing: 2
                                             PlasmaComponents3.Label {
                                                 text: i18n("Avisos acústicos (Estilo Siri)")
                                                 font.bold: true
+                                                Layout.fillWidth: true
                                             }
                                             PlasmaComponents3.Label {
                                                 text: i18n("Tono armónico sutil al activar o detener el micrófono")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
                                                 wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
                                             }
                                         }
                                         QQC2.Switch {
@@ -1223,16 +1238,21 @@ Window {
                                         spacing: Kirigami.Units.mediumSpacing
                                         ColumnLayout {
                                             Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            Layout.preferredWidth: 0
                                             spacing: 2
                                             PlasmaComponents3.Label {
                                                 text: i18n("Detección de fin de frase (VAD)")
                                                 font.bold: true
+                                                Layout.fillWidth: true
                                             }
                                             PlasmaComponents3.Label {
                                                 text: i18n("Detener la grabación automáticamente cuando termines de hablar")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
                                                 wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
                                             }
                                         }
                                         QQC2.Switch {
@@ -1250,18 +1270,25 @@ Window {
                                         spacing: Kirigami.Units.mediumSpacing
                                         ColumnLayout {
                                             Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            Layout.preferredWidth: 0
                                             spacing: 2
                                             PlasmaComponents3.Label {
                                                 text: i18n("Motores de voz locales")
                                                 font.bold: true
+                                                Layout.fillWidth: true
                                             }
                                             PlasmaComponents3.Label {
                                                 text: i18n("Whisper.cpp (STT) y Piper TTS (síntesis neuronal)")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
+                                                wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
                                             }
                                         }
                                         RowLayout {
+                                            Layout.alignment: Qt.AlignVCenter
                                             spacing: Kirigami.Units.smallSpacing
                                             Rectangle {
                                                 implicitWidth: whisperBadgeText.implicitWidth + 14
@@ -1328,12 +1355,16 @@ Window {
                                         spacing: Kirigami.Units.mediumSpacing
                                         ColumnLayout {
                                             Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            Layout.preferredWidth: 0
                                             spacing: 2
                                             PlasmaComponents3.Label {
                                                 text: i18n("Servidor Ollama")
                                                 font.bold: true
+                                                Layout.fillWidth: true
                                             }
                                             RowLayout {
+                                                Layout.fillWidth: true
                                                 spacing: 6
                                                 Rectangle {
                                                     implicitWidth: 8
@@ -1347,12 +1378,16 @@ Window {
                                                         : i18n("No detectado en localhost:11434")
                                                     font: Kirigami.Theme.smallFont
                                                     color: kityClient.ollamaReachable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+                                                    wrapMode: Text.WordWrap
+                                                    Layout.fillWidth: true
+                                                    Layout.minimumWidth: 0
                                                 }
                                             }
                                         }
                                         PlasmaComponents3.Button {
                                             text: i18n("Comprobar")
                                             icon.name: "view-refresh"
+                                            Layout.alignment: Qt.AlignVCenter
                                             onClicked: {
                                                 kityClient.checkReadiness();
                                                 kityClient.refreshModels();
@@ -1369,16 +1404,21 @@ Window {
                                         spacing: Kirigami.Units.mediumSpacing
                                         ColumnLayout {
                                             Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            Layout.preferredWidth: 0
                                             spacing: 2
                                             PlasmaComponents3.Label {
                                                 text: i18n("Modelos instalados")
                                                 font.bold: true
+                                                Layout.fillWidth: true
                                             }
                                             PlasmaComponents3.Label {
                                                 text: kityClient.availableModels.length > 0 ? kityClient.availableModels.join(", ") : i18n("Ningún modelo detectado")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
                                                 wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
                                             }
                                         }
                                     }
@@ -1412,21 +1452,27 @@ Window {
                                         spacing: Kirigami.Units.mediumSpacing
                                         ColumnLayout {
                                             Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            Layout.preferredWidth: 0
                                             spacing: 2
                                             PlasmaComponents3.Label {
                                                 text: i18n("Base documental privada")
                                                 font.bold: true
+                                                Layout.fillWidth: true
                                             }
                                             PlasmaComponents3.Label {
                                                 text: i18n("Kity consulta notas y documentos en tu carpeta local (~/.local/share/kity/knowledge/)")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
                                                 wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
                                             }
                                         }
                                         PlasmaComponents3.Button {
                                             text: i18n("Abrir carpeta")
                                             icon.name: "document-open-folder"
+                                            Layout.alignment: Qt.AlignVCenter
                                             onClicked: kityClient.openKnowledgeFolder()
                                         }
                                     }
@@ -1460,16 +1506,21 @@ Window {
                                         spacing: Kirigami.Units.mediumSpacing
                                         ColumnLayout {
                                             Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            Layout.preferredWidth: 0
                                             spacing: 2
                                             PlasmaComponents3.Label {
                                                 text: i18n("Fijar en primer plano")
                                                 font.bold: true
+                                                Layout.fillWidth: true
                                             }
                                             PlasmaComponents3.Label {
                                                 text: i18n("Mantener la ventana de Kity siempre visible sobre las demás aplicaciones")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
                                                 wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
                                             }
                                         }
                                         QQC2.Switch {
@@ -1486,16 +1537,21 @@ Window {
                                         spacing: Kirigami.Units.mediumSpacing
                                         ColumnLayout {
                                             Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            Layout.preferredWidth: 0
                                             spacing: 2
                                             PlasmaComponents3.Label {
                                                 text: i18n("Atajos de teclado rápidos")
                                                 font.bold: true
+                                                Layout.fillWidth: true
                                             }
                                             PlasmaComponents3.Label {
                                                 text: i18n("Ctrl+M o Alt+M: Activar/detener voz · Esc: Detener generación o cerrar")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
                                                 wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
                                             }
                                         }
                                     }
