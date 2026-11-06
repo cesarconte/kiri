@@ -16,8 +16,6 @@ import org.kde.plasma.plasmoid
 PlasmoidItem {
     id: root
 
-    preferredRepresentation: PlasmoidItem.CompactRepresentation
-
     Plasmoid.icon: {
         const isColor = Plasmoid.configuration.panelIconStyle === "color";
         if (Plasmoid.state === "listening") {
