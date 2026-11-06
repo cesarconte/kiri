@@ -38,6 +38,9 @@ class KityApplet : public Plasma::Applet
     Q_PROPERTY(bool isSpeaking READ isSpeaking NOTIFY stateChanged)
     Q_PROPERTY(qreal audioLevel READ audioLevel NOTIFY audioLevelChanged)
     Q_PROPERTY(bool wakeWordEnabled READ wakeWordEnabled WRITE setWakeWordEnabled NOTIFY wakeWordEnabledChanged)
+    Q_PROPERTY(QString speechOutputMode READ resolveSpeechOutputMode WRITE setSpeechOutputMode NOTIFY speechOutputModeChanged)
+    Q_PROPERTY(bool vadEnabled READ vadEnabled WRITE setVadEnabled NOTIFY vadEnabledChanged)
+    Q_PROPERTY(bool earconsEnabled READ earconsEnabled WRITE setEarconsEnabled NOTIFY earconsEnabledChanged)
 
 public:
     struct ContactEntry {
@@ -85,6 +88,12 @@ public:
     qreal audioLevel() const;
     bool wakeWordEnabled() const;
     void setWakeWordEnabled(bool enabled);
+    QString resolveSpeechOutputMode() const;
+    void setSpeechOutputMode(const QString &mode);
+    bool vadEnabled() const;
+    void setVadEnabled(bool enabled);
+    bool earconsEnabled() const;
+    void setEarconsEnabled(bool enabled);
 
     // Q_INVOKABLE Methods
     Q_INVOKABLE void sendMessage(const QString &text, bool fromVoice = false);
@@ -140,6 +149,9 @@ Q_SIGNALS:
     void openRequested();
     void toggleRequested();
     void wakeWordEnabledChanged();
+    void speechOutputModeChanged();
+    void vadEnabledChanged();
+    void earconsEnabledChanged();
 
 private Q_SLOTS:
     void handleOllamaStreamChunk();
@@ -180,7 +192,6 @@ private:
     QString resolveWhisperModelPath() const;
     QString resolveWhisperLanguage() const;
     QString resolvePiperVoicePath() const;
-    QString resolveSpeechOutputMode() const;
 
     // Context retrievers
     QString fetchWebSearchContext(const QString &query) const;

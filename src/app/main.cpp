@@ -8,6 +8,7 @@
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QPainterPath>
 #include <QQuickWindow>
 #include <KDBusService>
 #include <KLocalizedString>
@@ -18,6 +19,7 @@
 
 int main(int argc, char *argv[])
 {
+    KLocalizedString::setApplicationDomain("plasma_applet_org.cesar.kity");
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("kity_app"));
     app.setOrganizationName(QStringLiteral("cesar"));
@@ -66,7 +68,14 @@ int main(int argc, char *argv[])
     QObject *rootObj = engine.rootObjects().first();
     QQuickWindow *window = qobject_cast<QQuickWindow *>(rootObj);
     if (window) {
-        KWindowEffects::enableBlurBehind(window, true);
+        auto updateBlurRegion = [window]() {
+            QPainterPath path;
+            path.addRoundedRect(QRectF(0, 0, window->width(), window->height()), 22, 22);
+            KWindowEffects::enableBlurBehind(window, true, QRegion(path.toFillPolygon().toPolygon()));
+        };
+        updateBlurRegion();
+        QObject::connect(window, &QWindow::widthChanged, window, updateBlurRegion);
+        QObject::connect(window, &QWindow::heightChanged, window, updateBlurRegion);
     }
 
     auto handleCommandLine = [&](const QCommandLineParser &p) {

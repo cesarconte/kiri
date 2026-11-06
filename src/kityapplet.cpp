@@ -276,6 +276,40 @@ QString KityApplet::resolveSpeechOutputMode() const
     return readConfigString(QStringLiteral("speechOutputMode"), QStringLiteral("always"));
 }
 
+void KityApplet::setSpeechOutputMode(const QString &mode)
+{
+    KConfigGroup cfg = config();
+    cfg.group(QStringLiteral("General")).writeEntry(QStringLiteral("speechOutputMode"), mode);
+    cfg.sync();
+    Q_EMIT speechOutputModeChanged();
+}
+
+bool KityApplet::vadEnabled() const
+{
+    return readConfigBool(QStringLiteral("vadEnabled"), true);
+}
+
+void KityApplet::setVadEnabled(bool enabled)
+{
+    KConfigGroup cfg = config();
+    cfg.group(QStringLiteral("General")).writeEntry(QStringLiteral("vadEnabled"), enabled);
+    cfg.sync();
+    Q_EMIT vadEnabledChanged();
+}
+
+bool KityApplet::earconsEnabled() const
+{
+    return readConfigBool(QStringLiteral("earconsEnabled"), true);
+}
+
+void KityApplet::setEarconsEnabled(bool enabled)
+{
+    KConfigGroup cfg = config();
+    cfg.group(QStringLiteral("General")).writeEntry(QStringLiteral("earconsEnabled"), enabled);
+    cfg.sync();
+    Q_EMIT earconsEnabledChanged();
+}
+
 // =========================================================================
 // Health & Readiness
 // =========================================================================
