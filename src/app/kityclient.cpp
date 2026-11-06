@@ -510,6 +510,11 @@ void KityClient::openKnowledgeFolder() const
     QProcess::startDetached(QStringLiteral("dolphin"), QStringList() << path);
 }
 
+void KityClient::openSettings() const
+{
+    QProcess::startDetached(QStringLiteral("systemsettings"), QStringList() << QStringLiteral("kcm_kity"));
+}
+
 void KityClient::runVisualIntelligence(const QString &captureMode, const QString &action, const QString &customQuestion)
 {
     if (m_iface && m_iface->isValid()) {

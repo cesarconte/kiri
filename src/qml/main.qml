@@ -16,6 +16,8 @@ import org.kde.plasma.plasmoid
 PlasmoidItem {
     id: root
 
+    preferredRepresentation: fullRepresentation
+
     Plasmoid.icon: {
         const isColor = Plasmoid.configuration.panelIconStyle === "color";
         if (Plasmoid.state === "listening") {
@@ -39,6 +41,13 @@ PlasmoidItem {
             return i18n("Reproduciendo respuesta…");
         }
         return i18n("Haz clic para abrir Kity o clic central para hablar de inmediato");
+    }
+
+    Connections {
+        target: Plasmoid
+        function onActivated() {
+            Plasmoid.toggleUI();
+        }
     }
 
     Plasmoid.contextualActions: [
@@ -66,11 +75,17 @@ PlasmoidItem {
             icon.name: "edit-clear-history-symbolic"
             enabled: Plasmoid.messages.length > 0
             onTriggered: Plasmoid.clearHistory()
+        },
+        PlasmaCore.Action {
+            text: i18n("Preferencias de Kity…")
+            icon.name: "preferences-system"
+            onTriggered: Plasmoid.openSettings()
         }
     ]
 
-    compactRepresentation: MouseArea {
+    MouseArea {
         id: compactMouse
+        anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         hoverEnabled: true
 
@@ -96,7 +111,9 @@ PlasmoidItem {
 
         Kirigami.Icon {
             anchors.fill: parent
+            anchors.margins: Math.round(Kirigami.Units.smallSpacing / 2)
             source: Plasmoid.icon
+            fallback: "qrc:/qt/qml/plasma/applet/org/cesar/kity/res/" + Plasmoid.icon + ".svg"
             active: compactMouse.containsMouse
         }
     }

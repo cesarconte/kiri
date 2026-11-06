@@ -18,10 +18,7 @@ plasma_add_applet(org.cesar.kity
         ${kity_SRCS}
     QML_SOURCES
         qml/main.qml
-        qml/ExpandedRepresentation.qml
         qml/SiriOrbAnimation.qml
-        qml/config.qml
-        qml/ConfigGeneral.qml
     RESOURCES
         res/main.xml
         res/org.cesar.kity.svg
@@ -101,3 +98,6 @@ install(TARGETS kity ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
 install(FILES org.cesar.kity.desktop
         DESTINATION ${KDE_INSTALL_APPDIR}
 )
+
+add_subdirectory(kcm)
+

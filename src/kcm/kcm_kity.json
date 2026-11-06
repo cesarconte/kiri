@@ -1,0 +1,19 @@
+{
+    "KPlugin": {
+        "Name": "Kity",
+        "Name[es]": "Kity",
+        "Description": "Asistente conversacional de inteligencia artificial y voz estilo Siri",
+        "Description[es]": "Asistente conversacional de inteligencia artificial y voz estilo Siri",
+        "Icon": "org.cesar.kity",
+        "Category": "Applications",
+        "Authors": [
+            {
+                "Name": "Cesar Conte",
+                "Email": "cesar@cesar.org"
+            }
+        ]
+    },
+    "X-KDE-ParentApp": "kcontrol",
+    "X-KDE-System-Settings-Parent-Category": "applications",
+    "X-KDE-Weight": 60
+}

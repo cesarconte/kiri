@@ -27,6 +27,7 @@ int main(int argc, char *argv[])
     app.setApplicationDisplayName(QStringLiteral("Kity"));
     app.setWindowIcon(QIcon::fromTheme(QStringLiteral("org.cesar.kity")));
     app.setDesktopFileName(QStringLiteral("org.cesar.kity"));
+    app.setQuitOnLastWindowClosed(false);
 
     QCommandLineParser parser;
     parser.setApplicationDescription(i18n("Asistente conversacional de inteligencia artificial estilo Siri"));

@@ -267,9 +267,9 @@ Window {
                     // Preferences Button
                     PlasmaComponents3.ToolButton {
                         icon.name: "configure"
-                        QQC2.ToolTip.text: i18n("Preferencias de Kity")
+                        QQC2.ToolTip.text: i18n("Preferencias de Kity (Preferencias del Sistema)")
                         QQC2.ToolTip.visible: hovered
-                        onClicked: root.showPreferences = !root.showPreferences
+                        onClicked: kityClient.openSettings()
                     }
                 }
             }

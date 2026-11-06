@@ -33,6 +33,7 @@ find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS
     CoreAddons
     DBusAddons
     I18n
+    KCMUtils
     Notifications
     Runner
     Service

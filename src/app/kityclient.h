@@ -128,6 +128,7 @@ public:
     Q_INVOKABLE void copyToClipboard(const QString &text) const;
     Q_INVOKABLE void executeCommandInKonsole(const QString &command);
     Q_INVOKABLE void openKnowledgeFolder() const;
+    Q_INVOKABLE void openSettings() const;
     Q_INVOKABLE void runVisualIntelligence(const QString &captureMode, const QString &action = QStringLiteral("ocr"), const QString &customQuestion = QString());
     Q_INVOKABLE void applyWritingTool(const QString &action, const QString &customSourceText = QString());
     Q_INVOKABLE QStringList evaluateMathNotes(const QString &text) const;

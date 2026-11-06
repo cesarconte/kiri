@@ -108,6 +108,8 @@ public:
     Q_INVOKABLE void stopWakeWordListener();
     Q_INVOKABLE void openUI();
     Q_INVOKABLE void toggleUI();
+    Q_INVOKABLE void openSettings();
+    Q_INVOKABLE void reloadConfig();
     Q_INVOKABLE void clearHistory();
     Q_INVOKABLE void refreshModels();
     Q_INVOKABLE void checkReadiness();

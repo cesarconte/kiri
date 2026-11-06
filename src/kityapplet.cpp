@@ -14,6 +14,7 @@
 #include <KConfigGroup>
 #include <KLocalizedString>
 #include <KNotification>
+#include <KSharedConfig>
 #include <KPluginFactory>
 #include <KService>
 
@@ -91,6 +92,17 @@ void KityApplet::init()
     bus.registerObject(QStringLiteral("/Kity"),
                        this,
                        QDBusConnection::ExportAllInvokables | QDBusConnection::ExportAllProperties | QDBusConnection::ExportAllSignals);
+
+    // Wire internal configure action to systemsettings kcm_kity
+    QAction *cfgAct = internalAction(QStringLiteral("configure"));
+    if (cfgAct) {
+        cfgAct->disconnect();
+        connect(cfgAct, &QAction::triggered, this, &KityApplet::openSettings);
+    } else {
+        cfgAct = new QAction(QIcon::fromTheme(QStringLiteral("preferences-system")), i18n("Configurar Kity…"), this);
+        connect(cfgAct, &QAction::triggered, this, &KityApplet::openSettings);
+        setInternalAction(QStringLiteral("configure"), cfgAct);
+    }
 }
 
 void KityApplet::configChanged()
@@ -127,6 +139,9 @@ void KityApplet::setWakeWordEnabled(bool enabled)
 {
     if (m_wakeWordEnabled != enabled) {
         m_wakeWordEnabled = enabled;
+        auto kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+        kityrc->group(QStringLiteral("General")).writeEntry(QStringLiteral("wakeWordEnabled"), enabled);
+        kityrc->sync();
         KConfigGroup cfg = config();
         cfg.group(QStringLiteral("General")).writeEntry(QStringLiteral("wakeWordEnabled"), enabled);
         cfg.sync();
@@ -177,6 +192,10 @@ void KityApplet::setState(const QString &newState, const QString &newStatus)
 
 QString KityApplet::readConfigString(const QString &key, const QString &def) const
 {
+    const KSharedConfig::Ptr kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+    if (kityrc->hasGroup(QStringLiteral("General")) && kityrc->group(QStringLiteral("General")).hasKey(key)) {
+        return kityrc->group(QStringLiteral("General")).readEntry(key, def);
+    }
     const KConfigGroup cfg = config();
     if (cfg.hasGroup(QStringLiteral("General")) && cfg.group(QStringLiteral("General")).hasKey(key)) {
         return cfg.group(QStringLiteral("General")).readEntry(key, def);
@@ -186,6 +205,10 @@ QString KityApplet::readConfigString(const QString &key, const QString &def) con
 
 int KityApplet::readConfigInt(const QString &key, int def) const
 {
+    const KSharedConfig::Ptr kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+    if (kityrc->hasGroup(QStringLiteral("General")) && kityrc->group(QStringLiteral("General")).hasKey(key)) {
+        return kityrc->group(QStringLiteral("General")).readEntry(key, def);
+    }
     const KConfigGroup cfg = config();
     if (cfg.hasGroup(QStringLiteral("General")) && cfg.group(QStringLiteral("General")).hasKey(key)) {
         return cfg.group(QStringLiteral("General")).readEntry(key, def);
@@ -195,6 +218,10 @@ int KityApplet::readConfigInt(const QString &key, int def) const
 
 double KityApplet::readConfigDouble(const QString &key, double def) const
 {
+    const KSharedConfig::Ptr kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+    if (kityrc->hasGroup(QStringLiteral("General")) && kityrc->group(QStringLiteral("General")).hasKey(key)) {
+        return kityrc->group(QStringLiteral("General")).readEntry(key, def);
+    }
     const KConfigGroup cfg = config();
     if (cfg.hasGroup(QStringLiteral("General")) && cfg.group(QStringLiteral("General")).hasKey(key)) {
         return cfg.group(QStringLiteral("General")).readEntry(key, def);
@@ -204,6 +231,10 @@ double KityApplet::readConfigDouble(const QString &key, double def) const
 
 bool KityApplet::readConfigBool(const QString &key, bool def) const
 {
+    const KSharedConfig::Ptr kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+    if (kityrc->hasGroup(QStringLiteral("General")) && kityrc->group(QStringLiteral("General")).hasKey(key)) {
+        return kityrc->group(QStringLiteral("General")).readEntry(key, def);
+    }
     const KConfigGroup cfg = config();
     if (cfg.hasGroup(QStringLiteral("General")) && cfg.group(QStringLiteral("General")).hasKey(key)) {
         return cfg.group(QStringLiteral("General")).readEntry(key, def);
@@ -228,6 +259,9 @@ QString KityApplet::resolveOllamaModel() const
 void KityApplet::setOllamaModel(const QString &model)
 {
     if (resolveOllamaModel() != model) {
+        auto kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+        kityrc->group(QStringLiteral("General")).writeEntry(QStringLiteral("ollamaModel"), model);
+        kityrc->sync();
         KConfigGroup cfg = config();
         cfg.group(QStringLiteral("General")).writeEntry(QStringLiteral("ollamaModel"), model);
         cfg.sync();
@@ -291,6 +325,9 @@ QString KityApplet::resolveSpeechOutputMode() const
 
 void KityApplet::setSpeechOutputMode(const QString &mode)
 {
+    auto kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+    kityrc->group(QStringLiteral("General")).writeEntry(QStringLiteral("speechOutputMode"), mode);
+    kityrc->sync();
     KConfigGroup cfg = config();
     cfg.group(QStringLiteral("General")).writeEntry(QStringLiteral("speechOutputMode"), mode);
     cfg.sync();
@@ -304,6 +341,9 @@ bool KityApplet::vadEnabled() const
 
 void KityApplet::setVadEnabled(bool enabled)
 {
+    auto kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+    kityrc->group(QStringLiteral("General")).writeEntry(QStringLiteral("vadEnabled"), enabled);
+    kityrc->sync();
     KConfigGroup cfg = config();
     cfg.group(QStringLiteral("General")).writeEntry(QStringLiteral("vadEnabled"), enabled);
     cfg.sync();
@@ -317,6 +357,9 @@ bool KityApplet::earconsEnabled() const
 
 void KityApplet::setEarconsEnabled(bool enabled)
 {
+    auto kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+    kityrc->group(QStringLiteral("General")).writeEntry(QStringLiteral("earconsEnabled"), enabled);
+    kityrc->sync();
     KConfigGroup cfg = config();
     cfg.group(QStringLiteral("General")).writeEntry(QStringLiteral("earconsEnabled"), enabled);
     cfg.sync();
@@ -757,6 +800,24 @@ void KityApplet::toggleUI()
         QProcess::startDetached(kityBin, QStringList() << QStringLiteral("-t"));
     }
     Q_EMIT toggleRequested();
+}
+
+void KityApplet::openSettings()
+{
+    QProcess::startDetached(QStringLiteral("systemsettings"), QStringList() << QStringLiteral("kcm_kity"));
+}
+
+void KityApplet::reloadConfig()
+{
+    KSharedConfig::openConfig(QStringLiteral("kityrc"))->reparseConfiguration();
+    const bool wakeEnabled = readConfigBool(QStringLiteral("wakeWordEnabled"), true);
+    setWakeWordEnabled(wakeEnabled);
+    Q_EMIT speechOutputModeChanged();
+    Q_EMIT vadEnabledChanged();
+    Q_EMIT earconsEnabledChanged();
+    Q_EMIT ollamaModelChanged();
+    checkReadiness();
+    refreshModels();
 }
 
 void KityApplet::clearHistory()
