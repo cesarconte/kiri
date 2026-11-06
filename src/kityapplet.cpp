@@ -743,11 +743,19 @@ void KityApplet::stopGeneration()
 
 void KityApplet::openUI()
 {
+    const QString kityBin = QStandardPaths::findExecutable(QStringLiteral("kity"));
+    if (!kityBin.isEmpty()) {
+        QProcess::startDetached(kityBin, QStringList());
+    }
     Q_EMIT openRequested();
 }
 
 void KityApplet::toggleUI()
 {
+    const QString kityBin = QStandardPaths::findExecutable(QStringLiteral("kity"));
+    if (!kityBin.isEmpty()) {
+        QProcess::startDetached(kityBin, QStringList() << QStringLiteral("-t"));
+    }
     Q_EMIT toggleRequested();
 }
 
@@ -1271,6 +1279,7 @@ void KityApplet::checkWakeWordTranscription(const QString &wavPath)
                                  i18n("¡Hola! Te escucho…"));
 
             stopWakeWordListener();
+            openUI();
             Q_EMIT wakeWordTriggered();
 
             QTimer::singleShot(250, this, [this]() {

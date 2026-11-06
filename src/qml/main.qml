@@ -16,7 +16,7 @@ import org.kde.plasma.plasmoid
 PlasmoidItem {
     id: root
 
-    hideOnWindowDeactivate: !Plasmoid.configuration.pin
+    preferredRepresentation: PlasmoidItem.CompactRepresentation
 
     Plasmoid.icon: {
         const isColor = Plasmoid.configuration.panelIconStyle === "color";
@@ -43,37 +43,17 @@ PlasmoidItem {
         return i18n("Haz clic para abrir Kity o clic central para hablar de inmediato");
     }
 
-    onExpandedChanged: {
-        if (root.expanded) {
-            if (Plasmoid.configuration.autoListenOnActivate === true && Plasmoid.whisperAvailable) {
-                Plasmoid.startRecording();
-            }
-        } else {
-            if (Plasmoid.isRecording) {
-                Plasmoid.stopRecording();
-            }
-        }
-    }
-
-    Connections {
-        target: Plasmoid
-        function onWakeWordTriggered() {
-            root.expanded = true;
-        }
-        function onOpenRequested() {
-            root.expanded = true;
-        }
-        function onToggleRequested() {
-            root.expanded = !root.expanded;
-        }
-    }
-
     Plasmoid.contextualActions: [
+        PlasmaCore.Action {
+            text: i18n("Abrir / Ocultar Kity")
+            icon.name: "kity"
+            onTriggered: Plasmoid.toggleUI()
+        },
         PlasmaCore.Action {
             text: Plasmoid.isRecording ? i18n("Detener escucha") : i18n("Hablar por voz")
             icon.name: "kity-symbolic"
             onTriggered: {
-                root.expanded = true;
+                Plasmoid.openUI();
                 Plasmoid.toggleRecording();
             }
         },
@@ -98,10 +78,10 @@ PlasmoidItem {
 
         onClicked: mouse => {
             if (mouse.button === Qt.MiddleButton) {
-                root.expanded = true;
+                Plasmoid.openUI();
                 Plasmoid.toggleRecording();
             } else {
-                root.expanded = !root.expanded;
+                Plasmoid.toggleUI();
             }
         }
 
@@ -121,9 +101,5 @@ PlasmoidItem {
             source: Plasmoid.icon
             active: compactMouse.containsMouse
         }
-    }
-
-    fullRepresentation: ExpandedRepresentation {
-        widget: root
     }
 }
