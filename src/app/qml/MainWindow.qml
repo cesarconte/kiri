@@ -1088,192 +1088,449 @@ Window {
                     Layout.fillWidth: true
                 }
 
-                // Scrollable Settings Form following KDE Plasma HIG
+                // Scrollable Settings Cards Container (macOS Golden Gate / KDE Plasma 6 FormCards)
                 QQC2.ScrollView {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
                     clip: true
 
-                    Kirigami.FormLayout {
+                    ColumnLayout {
                         width: parent.width
+                        spacing: Kirigami.Units.largeSpacing + 4
 
-                        // Section 1: Voice & Hands-Free Wake Word
-                        Kirigami.Separator {
-                            Kirigami.FormData.isSection: true
-                            Kirigami.FormData.label: i18n("Voz y Activación Manos Libres")
-                            Layout.topMargin: Kirigami.Units.smallSpacing
-                            Layout.bottomMargin: Kirigami.Units.mediumSpacing
-                        }
-
-                        PlasmaComponents3.CheckBox {
-                            Kirigami.FormData.label: i18n("Activación por voz:")
-                            text: i18n("Escuchar «¡Hola Kity!» u «Oye Kity» en segundo plano")
-                            checked: kityClient.wakeWordEnabled
-                            onToggled: kityClient.wakeWordEnabled = checked
-                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
-                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
-                        }
-
-                        QQC2.ComboBox {
-                            Kirigami.FormData.label: i18n("Respuestas habladas:")
+                        // =====================================================
+                        // Group 1: Voz y Activación Manos Libres
+                        // =====================================================
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            Layout.minimumWidth: 0
-                            Layout.preferredWidth: 0
-                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
-                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
-                            model: [
-                                { value: "always", text: i18n("Hablar siempre en voz alta (Recomendado)") },
-                                { value: "voice_only", text: i18n("Solo cuando preguntes con la voz") },
-                                { value: "manual", text: i18n("Solo manual (al pulsar el altavoz)") }
-                            ]
-                            textRole: "text"
-                            valueRole: "value"
-                            currentIndex: {
-                                if (kityClient.speechOutputMode === "always") return 0;
-                                if (kityClient.speechOutputMode === "voice_only") return 1;
-                                return 2;
-                            }
-                            onActivated: index => {
-                                kityClient.setSpeechOutputMode(model[index].value);
-                            }
-                        }
-
-                        PlasmaComponents3.CheckBox {
-                            Kirigami.FormData.label: i18n("Avisos acústicos:")
-                            text: i18n("Reproducir tono armónico al estilo Siri")
-                            checked: kityClient.earconsEnabled
-                            onToggled: kityClient.earconsEnabled = checked
-                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
-                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
-                        }
-
-                        PlasmaComponents3.CheckBox {
-                            Kirigami.FormData.label: i18n("Detección de silencio:")
-                            text: i18n("Detener grabación al terminar de hablar (VAD)")
-                            checked: kityClient.vadEnabled
-                            onToggled: kityClient.vadEnabled = checked
-                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
-                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
-                        }
-
-                        PlasmaComponents3.Label {
-                            Kirigami.FormData.label: i18n("Reconocimiento Whisper:")
-                            text: kityClient.whisperAvailable ? i18n("✓ Disponible (whisper.cpp base)") : i18n("✗ No detectado")
-                            color: kityClient.whisperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
-                            font.bold: true
-                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
-                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
-                        }
-
-                        PlasmaComponents3.Label {
-                            Kirigami.FormData.label: i18n("Síntesis Piper TTS:")
-                            text: kityClient.piperAvailable ? i18n("✓ Disponible (es_ES-sharvard-medium)") : i18n("✗ No detectado")
-                            color: kityClient.piperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
-                            font.bold: true
-                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
-                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
-                        }
-
-                        // Section 2: Artificial Intelligence
-                        Kirigami.Separator {
-                            Kirigami.FormData.isSection: true
-                            Kirigami.FormData.label: i18n("Inteligencia Artificial Local (Ollama)")
-                            Layout.topMargin: Kirigami.Units.largeSpacing * 1.8
-                            Layout.bottomMargin: Kirigami.Units.mediumSpacing
-                        }
-
-                        RowLayout {
-                            Kirigami.FormData.label: i18n("Estado de Ollama:")
                             spacing: Kirigami.Units.smallSpacing
-                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
-                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
-
-                            Rectangle {
-                                implicitWidth: 10
-                                implicitHeight: 10
-                                radius: 5
-                                color: kityClient.ollamaReachable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
-                            }
 
                             PlasmaComponents3.Label {
-                                Layout.fillWidth: true
-                                text: kityClient.ollamaReachable
-                                    ? i18n("Conectado en localhost:11434")
-                                    : i18n("No detectado en localhost:11434")
-                                color: kityClient.ollamaReachable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+                                text: i18n("🎙️ Voz y Activación Manos Libres")
+                                font.bold: true
+                                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                                color: Kirigami.Theme.highlightColor
                             }
 
-                            PlasmaComponents3.Button {
-                                text: i18n("Comprobar")
-                                icon.name: "view-refresh"
-                                onClicked: {
-                                    kityClient.checkReadiness();
-                                    kityClient.refreshModels();
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: g1Col.implicitHeight + Kirigami.Units.largeSpacing * 2
+                                radius: 12
+                                color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.03)
+                                border.width: 1
+                                border.color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08)
+
+                                ColumnLayout {
+                                    id: g1Col
+                                    anchors.fill: parent
+                                    anchors.margins: Kirigami.Units.largeSpacing
+                                    spacing: Kirigami.Units.mediumSpacing
+
+                                    // Row 1: Wake word
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Layout.minimumHeight: 38
+                                        spacing: Kirigami.Units.mediumSpacing
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Activación por voz «¡Hola Kity!»")
+                                                font.bold: true
+                                            }
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Escuchar en segundo plano sin usar el ratón ni el teclado")
+                                                font: Kirigami.Theme.smallFont
+                                                opacity: 0.75
+                                                wrapMode: Text.WordWrap
+                                            }
+                                        }
+                                        QQC2.Switch {
+                                            checked: kityClient.wakeWordEnabled
+                                            onToggled: kityClient.wakeWordEnabled = checked
+                                        }
+                                    }
+
+                                    Kirigami.Separator { Layout.fillWidth: true }
+
+                                    // Row 2: Speech output mode
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Layout.minimumHeight: 38
+                                        spacing: Kirigami.Units.mediumSpacing
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Respuestas habladas")
+                                                font.bold: true
+                                            }
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Modo de lectura en voz alta de las respuestas")
+                                                font: Kirigami.Theme.smallFont
+                                                opacity: 0.75
+                                                wrapMode: Text.WordWrap
+                                            }
+                                        }
+                                        QQC2.ComboBox {
+                                            Layout.preferredWidth: 200
+                                            model: [
+                                                { value: "always", text: i18n("Hablar siempre") },
+                                                { value: "voice_only", text: i18n("Solo si preguntas por voz") },
+                                                { value: "manual", text: i18n("Solo manual") }
+                                            ]
+                                            textRole: "text"
+                                            valueRole: "value"
+                                            currentIndex: {
+                                                if (kityClient.speechOutputMode === "always") return 0;
+                                                if (kityClient.speechOutputMode === "voice_only") return 1;
+                                                return 2;
+                                            }
+                                            onActivated: index => {
+                                                kityClient.setSpeechOutputMode(model[index].value);
+                                            }
+                                        }
+                                    }
+
+                                    Kirigami.Separator { Layout.fillWidth: true }
+
+                                    // Row 3: Earcons
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Layout.minimumHeight: 38
+                                        spacing: Kirigami.Units.mediumSpacing
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Avisos acústicos (Estilo Siri)")
+                                                font.bold: true
+                                            }
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Tono armónico sutil al activar o detener el micrófono")
+                                                font: Kirigami.Theme.smallFont
+                                                opacity: 0.75
+                                                wrapMode: Text.WordWrap
+                                            }
+                                        }
+                                        QQC2.Switch {
+                                            checked: kityClient.earconsEnabled
+                                            onToggled: kityClient.earconsEnabled = checked
+                                        }
+                                    }
+
+                                    Kirigami.Separator { Layout.fillWidth: true }
+
+                                    // Row 4: VAD Silence Detection
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Layout.minimumHeight: 38
+                                        spacing: Kirigami.Units.mediumSpacing
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Detección de fin de frase (VAD)")
+                                                font.bold: true
+                                            }
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Detener la grabación automáticamente cuando termines de hablar")
+                                                font: Kirigami.Theme.smallFont
+                                                opacity: 0.75
+                                                wrapMode: Text.WordWrap
+                                            }
+                                        }
+                                        QQC2.Switch {
+                                            checked: kityClient.vadEnabled
+                                            onToggled: kityClient.vadEnabled = checked
+                                        }
+                                    }
+
+                                    Kirigami.Separator { Layout.fillWidth: true }
+
+                                    // Row 5: Local Engines Status
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Layout.minimumHeight: 38
+                                        spacing: Kirigami.Units.mediumSpacing
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Motores de voz locales")
+                                                font.bold: true
+                                            }
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Whisper.cpp (STT) y Piper TTS (síntesis neuronal)")
+                                                font: Kirigami.Theme.smallFont
+                                                opacity: 0.75
+                                            }
+                                        }
+                                        RowLayout {
+                                            spacing: Kirigami.Units.smallSpacing
+                                            Rectangle {
+                                                implicitWidth: whisperBadgeText.implicitWidth + 14
+                                                implicitHeight: 24
+                                                radius: 12
+                                                color: kityClient.whisperAvailable ? Qt.rgba(0.18, 0.75, 0.35, 0.15) : Qt.rgba(0.9, 0.2, 0.2, 0.15)
+                                                border.width: 1
+                                                border.color: kityClient.whisperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+                                                PlasmaComponents3.Label {
+                                                    id: whisperBadgeText
+                                                    anchors.centerIn: parent
+                                                    text: kityClient.whisperAvailable ? i18n("✓ Whisper") : i18n("✗ Whisper")
+                                                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                                                    font.bold: true
+                                                    color: kityClient.whisperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+                                                }
+                                            }
+                                            Rectangle {
+                                                implicitWidth: piperBadgeText.implicitWidth + 14
+                                                implicitHeight: 24
+                                                radius: 12
+                                                color: kityClient.piperAvailable ? Qt.rgba(0.18, 0.75, 0.35, 0.15) : Qt.rgba(0.9, 0.2, 0.2, 0.15)
+                                                border.width: 1
+                                                border.color: kityClient.piperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+                                                PlasmaComponents3.Label {
+                                                    id: piperBadgeText
+                                                    anchors.centerIn: parent
+                                                    text: kityClient.piperAvailable ? i18n("✓ Piper TTS") : i18n("✗ Piper TTS")
+                                                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                                                    font.bold: true
+                                                    color: kityClient.piperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
 
-                        PlasmaComponents3.Label {
-                            Kirigami.FormData.label: i18n("Modelos instalados:")
-                            text: kityClient.availableModels.length > 0 ? kityClient.availableModels.join(", ") : i18n("Ningún modelo detectado")
-                            wrapMode: Text.WordWrap
+                        // =====================================================
+                        // Group 2: Inteligencia Artificial Local (Ollama)
+                        // =====================================================
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            font: Kirigami.Theme.smallFont
-                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
-                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
+                            spacing: Kirigami.Units.smallSpacing
+
+                            PlasmaComponents3.Label {
+                                text: i18n("🧠 Inteligencia Artificial Local (Ollama)")
+                                font.bold: true
+                                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                                color: Kirigami.Theme.highlightColor
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: g2Col.implicitHeight + Kirigami.Units.largeSpacing * 2
+                                radius: 12
+                                color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.03)
+                                border.width: 1
+                                border.color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08)
+
+                                ColumnLayout {
+                                    id: g2Col
+                                    anchors.fill: parent
+                                    anchors.margins: Kirigami.Units.largeSpacing
+                                    spacing: Kirigami.Units.mediumSpacing
+
+                                    // Row 1: Connection status
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Layout.minimumHeight: 38
+                                        spacing: Kirigami.Units.mediumSpacing
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Servidor Ollama")
+                                                font.bold: true
+                                            }
+                                            RowLayout {
+                                                spacing: 6
+                                                Rectangle {
+                                                    implicitWidth: 8
+                                                    implicitHeight: 8
+                                                    radius: 4
+                                                    color: kityClient.ollamaReachable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+                                                }
+                                                PlasmaComponents3.Label {
+                                                    text: kityClient.ollamaReachable
+                                                        ? i18n("Conectado en localhost:11434")
+                                                        : i18n("No detectado en localhost:11434")
+                                                    font: Kirigami.Theme.smallFont
+                                                    color: kityClient.ollamaReachable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+                                                }
+                                            }
+                                        }
+                                        PlasmaComponents3.Button {
+                                            text: i18n("Comprobar")
+                                            icon.name: "view-refresh"
+                                            onClicked: {
+                                                kityClient.checkReadiness();
+                                                kityClient.refreshModels();
+                                            }
+                                        }
+                                    }
+
+                                    Kirigami.Separator { Layout.fillWidth: true }
+
+                                    // Row 2: Models
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Layout.minimumHeight: 38
+                                        spacing: Kirigami.Units.mediumSpacing
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Modelos instalados")
+                                                font.bold: true
+                                            }
+                                            PlasmaComponents3.Label {
+                                                text: kityClient.availableModels.length > 0 ? kityClient.availableModels.join(", ") : i18n("Ningún modelo detectado")
+                                                font: Kirigami.Theme.smallFont
+                                                opacity: 0.75
+                                                wrapMode: Text.WordWrap
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
 
-                        // Section 3: Local Knowledge (RAG)
-                        Kirigami.Separator {
-                            Kirigami.FormData.isSection: true
-                            Kirigami.FormData.label: i18n("Conocimiento Local y Privacidad (RAG)")
-                            Layout.topMargin: Kirigami.Units.largeSpacing * 1.8
-                            Layout.bottomMargin: Kirigami.Units.mediumSpacing
-                        }
-
-                        PlasmaComponents3.Label {
-                            Kirigami.FormData.label: i18n("Base documental:")
-                            text: i18n("Kity consulta notas y documentos locales (~/.local/share/kity/knowledge/) para dar respuestas precisas y privadas.")
-                            wrapMode: Text.WordWrap
+                        // =====================================================
+                        // Group 3: Conocimiento Local y Privacidad (RAG)
+                        // =====================================================
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            font: Kirigami.Theme.smallFont
-                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
-                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
+                            spacing: Kirigami.Units.smallSpacing
+
+                            PlasmaComponents3.Label {
+                                text: i18n("📚 Conocimiento Local y Privacidad (RAG)")
+                                font.bold: true
+                                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                                color: Kirigami.Theme.highlightColor
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: g3Col.implicitHeight + Kirigami.Units.largeSpacing * 2
+                                radius: 12
+                                color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.03)
+                                border.width: 1
+                                border.color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08)
+
+                                ColumnLayout {
+                                    id: g3Col
+                                    anchors.fill: parent
+                                    anchors.margins: Kirigami.Units.largeSpacing
+                                    spacing: Kirigami.Units.mediumSpacing
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Layout.minimumHeight: 38
+                                        spacing: Kirigami.Units.mediumSpacing
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Base documental privada")
+                                                font.bold: true
+                                            }
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Kity consulta notas y documentos en tu carpeta local (~/.local/share/kity/knowledge/)")
+                                                font: Kirigami.Theme.smallFont
+                                                opacity: 0.75
+                                                wrapMode: Text.WordWrap
+                                            }
+                                        }
+                                        PlasmaComponents3.Button {
+                                            text: i18n("Abrir en Dolphin")
+                                            icon.name: "document-open-folder"
+                                            onClicked: kityClient.openKnowledgeFolder()
+                                        }
+                                    }
+                                }
+                            }
                         }
 
-                        PlasmaComponents3.Button {
-                            Kirigami.FormData.label: i18n("Carpeta de notas:")
-                            icon.name: "document-open-folder"
-                            text: i18n("Abrir carpeta en Dolphin")
-                            onClicked: kityClient.openKnowledgeFolder()
-                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
-                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
-                        }
+                        // =====================================================
+                        // Group 4: Ventana y Comportamiento
+                        // =====================================================
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
 
-                        // Section 4: Window & Appearance
-                        Kirigami.Separator {
-                            Kirigami.FormData.isSection: true
-                            Kirigami.FormData.label: i18n("Ventana y Comportamiento")
-                            Layout.topMargin: Kirigami.Units.largeSpacing * 1.8
-                            Layout.bottomMargin: Kirigami.Units.mediumSpacing
-                        }
+                            PlasmaComponents3.Label {
+                                text: i18n("🪟 Ventana y Comportamiento")
+                                font.bold: true
+                                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                                color: Kirigami.Theme.highlightColor
+                            }
 
-                        PlasmaComponents3.CheckBox {
-                            Kirigami.FormData.label: i18n("Primer plano:")
-                            text: i18n("Mantener ventana de Kity siempre encima")
-                            checked: root.isPinned
-                            onToggled: root.isPinned = checked
-                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
-                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
-                        }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: g4Col.implicitHeight + Kirigami.Units.largeSpacing * 2
+                                radius: 12
+                                color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.03)
+                                border.width: 1
+                                border.color: glassContainer.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08)
 
-                        PlasmaComponents3.Label {
-                            Kirigami.FormData.label: i18n("Atajos de teclado:")
-                            text: i18n("Ctrl+M / Alt+M: Activar voz · Esc: Detener o cerrar")
-                            font: Kirigami.Theme.smallFont
-                            Layout.topMargin: Kirigami.Units.smallSpacing * 1.5
-                            Layout.bottomMargin: Kirigami.Units.smallSpacing * 1.5
+                                ColumnLayout {
+                                    id: g4Col
+                                    anchors.fill: parent
+                                    anchors.margins: Kirigami.Units.largeSpacing
+                                    spacing: Kirigami.Units.mediumSpacing
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Layout.minimumHeight: 38
+                                        spacing: Kirigami.Units.mediumSpacing
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Fijar en primer plano")
+                                                font.bold: true
+                                            }
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Mantener la ventana de Kity siempre visible sobre las demás aplicaciones")
+                                                font: Kirigami.Theme.smallFont
+                                                opacity: 0.75
+                                                wrapMode: Text.WordWrap
+                                            }
+                                        }
+                                        QQC2.Switch {
+                                            checked: root.isPinned
+                                            onToggled: root.isPinned = checked
+                                        }
+                                    }
+
+                                    Kirigami.Separator { Layout.fillWidth: true }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Layout.minimumHeight: 38
+                                        spacing: Kirigami.Units.mediumSpacing
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Atajos de teclado rápidos")
+                                                font.bold: true
+                                            }
+                                            PlasmaComponents3.Label {
+                                                text: i18n("Ctrl+M o Alt+M: Activar/detener voz · Esc: Detener generación o cerrar")
+                                                font: Kirigami.Theme.smallFont
+                                                opacity: 0.75
+                                                wrapMode: Text.WordWrap
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
