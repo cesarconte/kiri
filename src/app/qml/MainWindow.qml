@@ -11,7 +11,7 @@ import QtQuick.Layouts
 import QtQuick.Window
 
 import org.kde.kirigami as Kirigami
-import org.kde.plasma.components as PlasmaComponents3
+import CachyOS.UI
 
 import "cards" as Cards
 
@@ -19,7 +19,7 @@ Window {
     id: root
 
     title: i18n("Kity")
-    width: 540
+    width: CachyTheme.windowWidthUtility
     height: 760
     color: "transparent"
     flags: Qt.Window | Qt.FramelessWindowHint
@@ -73,11 +73,6 @@ Window {
     }
 
     Shortcut {
-        sequences: ["Ctrl+I", "F2"]
-        onActivated: root.compactMode = !root.compactMode
-    }
-
-    Shortcut {
         sequences: ["Ctrl+Shift+W", "Alt+W"]
         onActivated: {
             root.showWritingTools = !root.showWritingTools;
@@ -117,20 +112,22 @@ Window {
     Rectangle {
         id: glassContainer
         anchors.fill: parent
-        radius: root.compactMode ? Math.round(height / 2) : 22
+        radius: root.compactMode ? Math.round(height / 2) : CachyTheme.radiusWindow
         Behavior on radius {
             NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
         }
 
         readonly property bool isVoiceActive: kityClient.state === "listening" || kityClient.state === "thinking" || kityClient.state === "speaking"
-        readonly property bool isDark: Kirigami.Theme.colorSet === Kirigami.Theme.Window && Kirigami.Theme.backgroundColor.hslLightness < 0.5
+        readonly property bool isDark: CachyTheme.isDark
 
-        // Translucent Liquid Glass Background
-        color: isDark ? Qt.rgba(0.09, 0.11, 0.15, 0.82) : Qt.rgba(0.96, 0.97, 0.99, 0.86)
+        // Translucent Liquid Glass Background adhering to system theme (macOS Golden Gate)
+        color: isDark
+            ? Qt.rgba(0.11, 0.11, 0.13, 0.88)
+            : Qt.rgba(0.96, 0.96, 0.98, 0.90)
 
         // Specular border when idle
         border.width: 1
-        border.color: isDark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.12)
+        border.color: CachyTheme.specularBorder
 
         // =====================================================================
         // Apple Intelligence Siri Iridescent Halo (GPU Shader from ksiriglow)
@@ -237,7 +234,7 @@ Window {
                         }
                     }
 
-                    PlasmaComponents3.Label {
+                    QQC2.Label {
                         text: {
                             if (kityClient.state === "listening") return i18n("Escuchando…");
                             if (kityClient.state === "transcribing") return i18n("Procesando voz…");
@@ -251,7 +248,7 @@ Window {
                     }
                 }
 
-                PlasmaComponents3.Label {
+                QQC2.Label {
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                     maximumLineCount: 1
@@ -279,27 +276,27 @@ Window {
                 spacing: 2
 
                 // Mic Quick Toggle Button
-                PlasmaComponents3.ToolButton {
+                QQC2.ToolButton {
                     icon.name: kityClient.isRecording ? "media-playback-stop" : "audio-input-microphone"
-                    display: PlasmaComponents3.AbstractButton.IconOnly
+                    display: QQC2.AbstractButton.IconOnly
                     QQC2.ToolTip.text: kityClient.isRecording ? i18n("Detener escucha") : i18n("Hablar por voz")
                     QQC2.ToolTip.visible: hovered
                     onClicked: kityClient.toggleRecording()
                 }
 
                 // Expand Button
-                PlasmaComponents3.ToolButton {
+                QQC2.ToolButton {
                     icon.name: "window-maximize"
-                    display: PlasmaComponents3.AbstractButton.IconOnly
+                    display: QQC2.AbstractButton.IconOnly
                     QQC2.ToolTip.text: i18n("Expandir a ventana completa")
                     QQC2.ToolTip.visible: hovered
                     onClicked: root.compactMode = false
                 }
 
                 // Close Button
-                PlasmaComponents3.ToolButton {
+                QQC2.ToolButton {
                     icon.name: "window-close"
-                    display: PlasmaComponents3.AbstractButton.IconOnly
+                    display: QQC2.AbstractButton.IconOnly
                     QQC2.ToolTip.text: i18n("Ocultar")
                     QQC2.ToolTip.visible: hovered
                     onClicked: root.close()
@@ -313,11 +310,11 @@ Window {
         ColumnLayout {
             id: mainContentColumn
             anchors.fill: parent
-            anchors.topMargin: Kirigami.Units.smallSpacing + 2
-            anchors.leftMargin: Kirigami.Units.largeSpacing + 4
-            anchors.rightMargin: Kirigami.Units.largeSpacing + 4
-            anchors.bottomMargin: Kirigami.Units.largeSpacing + 4
-            spacing: Kirigami.Units.mediumSpacing
+            anchors.topMargin: CachyTheme.spacingSmall
+            anchors.leftMargin: CachyTheme.marginWindow
+            anchors.rightMargin: CachyTheme.marginWindow
+            anchors.bottomMargin: CachyTheme.marginWindow
+            spacing: CachyTheme.spacingMedium
             visible: !root.showPreferences && !root.compactMode
 
             // -----------------------------------------------------------------
@@ -325,7 +322,8 @@ Window {
             // -----------------------------------------------------------------
             Item {
                 Layout.fillWidth: true
-                implicitHeight: 38
+                Layout.minimumWidth: 0
+                implicitHeight: CachyTheme.titleBarHeight
 
                 // Window Drag Handler
                 DragHandler {
@@ -335,80 +333,12 @@ Window {
                     }
                 }
 
-                // Left: Traffic Light Buttons
-                Row {
+                // Left: Official macOS Golden Gate Traffic Lights
+                CachyTrafficLights {
                     anchors.left: parent.left
-                    anchors.leftMargin: Kirigami.Units.smallSpacing
+                    anchors.leftMargin: CachyTheme.trafficLightMargin
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 8
-
-                    // Close (Red)
-                    Rectangle {
-                        width: 12
-                        height: 12
-                        radius: 6
-                        color: closeHover.hovered ? "#ff5f56" : "#ff5f57"
-                        border.width: 0.5
-                        border.color: "#e0443e"
-                        HoverHandler { id: closeHover }
-                        TapHandler { onTapped: root.close() }
-                        Text {
-                            anchors.centerIn: parent
-                            text: "×"
-                            font.pixelSize: 10
-                            font.bold: true
-                            color: "#4d0000"
-                            visible: closeHover.hovered
-                        }
-                    }
-
-                    // Minimize (Yellow)
-                    Rectangle {
-                        width: 12
-                        height: 12
-                        radius: 6
-                        color: minHover.hovered ? "#ffbd2e" : "#febc2e"
-                        border.width: 0.5
-                        border.color: "#dea123"
-                        HoverHandler { id: minHover }
-                        TapHandler { onTapped: root.showMinimized() }
-                        Text {
-                            anchors.centerIn: parent
-                            text: "–"
-                            font.pixelSize: 10
-                            font.bold: true
-                            color: "#593b00"
-                            visible: minHover.hovered
-                        }
-                    }
-
-                    // Maximize (Green)
-                    Rectangle {
-                        width: 12
-                        height: 12
-                        radius: 6
-                        color: maxHover.hovered ? "#27c93f" : "#28c840"
-                        border.width: 0.5
-                        border.color: "#1aab29"
-                        HoverHandler { id: maxHover }
-                        TapHandler {
-                            onTapped: {
-                                if (root.visibility === Window.Maximized) {
-                                    root.showNormal();
-                                } else {
-                                    root.showMaximized();
-                                }
-                            }
-                        }
-                        Text {
-                            anchors.centerIn: parent
-                            text: "+"
-                            font.pixelSize: 10
-                            font.bold: true
-                            color: "#004d11"
-                            visible: maxHover.hovered
-                        }
-                    }
+                    window: root
                 }
 
                 // Center: Glowing Iridescent Siri Pill
@@ -417,14 +347,9 @@ Window {
                     height: 26
                     width: siriPillRow.implicitWidth + 20
                     radius: 13
-                    color: centerPillHover.hovered ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.08)
+                    color: CachyTheme.cardBackground
                     border.width: 1
-                    border.color: Qt.rgba(1, 1, 1, 0.14)
-
-                    HoverHandler { id: centerPillHover; cursorShape: Qt.PointingHandCursor }
-                    TapHandler { onTapped: root.compactMode = true }
-                    QQC2.ToolTip.text: i18n("Reducir a píldora flotante (Siri Island)")
-                    QQC2.ToolTip.visible: centerPillHover.hovered
+                    border.color: CachyTheme.specularBorder
 
                     RowLayout {
                         id: siriPillRow
@@ -438,45 +363,38 @@ Window {
                             audioLevel: kityClient.audioLevel
                         }
 
-                        PlasmaComponents3.Label {
+                        QQC2.Label {
                             text: i18n("Kity")
                             font.bold: true
-                            font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                            font.pixelSize: 13
+                            color: CachyTheme.textPrimary
                         }
                     }
                 }
 
-                // Right: Compact Island Mode, Preferences & Pin
+                // Right: Preferences & Pin Window On Top
                 Row {
                     anchors.right: parent.right
-                    anchors.rightMargin: Kirigami.Units.smallSpacing
+                    anchors.rightMargin: CachyTheme.trafficLightMargin
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 4
 
-                    // Compact Island Button
-                    PlasmaComponents3.ToolButton {
-                        icon.name: "view-restore-symbolic"
-                        QQC2.ToolTip.text: i18n("Modo píldora flotante (Siri Island)")
+                    // Preferences Button
+                    QQC2.ToolButton {
+                        icon.name: "configure"
+                        QQC2.ToolTip.text: i18n("Preferencias de Kity (Preferencias del Sistema)")
                         QQC2.ToolTip.visible: hovered
-                        onClicked: root.compactMode = true
+                        onClicked: kityClient.openSettings()
                     }
 
                     // Pin Window On Top
-                    PlasmaComponents3.ToolButton {
+                    QQC2.ToolButton {
                         icon.name: root.isPinned ? "window-pin" : "window-unpin"
                         checkable: true
                         checked: root.isPinned
                         QQC2.ToolTip.text: root.isPinned ? i18n("Desanclar de primer plano") : i18n("Mantener siempre encima")
                         QQC2.ToolTip.visible: hovered
                         onClicked: root.isPinned = !root.isPinned
-                    }
-
-                    // Preferences Button
-                    PlasmaComponents3.ToolButton {
-                        icon.name: "configure"
-                        QQC2.ToolTip.text: i18n("Preferencias de Kity (Preferencias del Sistema)")
-                        QQC2.ToolTip.visible: hovered
-                        onClicked: kityClient.openSettings()
                     }
                 }
             }
@@ -500,11 +418,13 @@ Window {
                     }
                 }
 
-                PlasmaComponents3.Label {
+                QQC2.Label {
                     Layout.fillWidth: true
-                    font: Kirigami.Theme.smallFont
+                    Layout.minimumWidth: 0
+                    font.pixelSize: 11
+                    color: CachyTheme.textPrimary
                     opacity: 0.85
-                    elide: Text.ElideRight
+                    wrapMode: Text.WordWrap
                     text: {
                         if (!kityClient.ollamaReachable) return i18n("Sin conexión con Ollama");
                         if (kityClient.state === "listening") return i18n("Escuchando…");
@@ -517,7 +437,7 @@ Window {
                 }
 
                 // Quick Toggle for "¡Hola Kity!" Wake Word
-                PlasmaComponents3.ToolButton {
+                QQC2.ToolButton {
                     icon.name: kityClient.wakeWordEnabled ? "mic-on" : "mic-off"
                     checkable: true
                     checked: kityClient.wakeWordEnabled
@@ -529,14 +449,13 @@ Window {
                 }
 
                 // Speech Output Mode Selector Button
-                PlasmaComponents3.ToolButton {
+                QQC2.ToolButton {
                     icon.name: {
                         const mode = kityClient.speechOutputMode;
                         if (mode === "always") return "audio-volume-high-symbolic";
                         if (mode === "voice_only") return "audio-input-microphone-symbolic";
                         return "audio-volume-muted-symbolic";
                     }
-                    icon.color: Kirigami.Theme.textColor
                     onClicked: {
                         const current = kityClient.speechOutputMode;
                         if (current === "manual") {
@@ -558,9 +477,8 @@ Window {
                 }
 
                 // Writing Tools Drawer Toggle
-                PlasmaComponents3.ToolButton {
+                QQC2.ToolButton {
                     icon.name: "document-edit-symbolic"
-                    icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                     checkable: true
                     checked: root.showWritingTools
                     onClicked: {
@@ -575,9 +493,8 @@ Window {
                 }
 
                 // Visual Intelligence Drawer Toggle
-                PlasmaComponents3.ToolButton {
+                QQC2.ToolButton {
                     icon.name: "camera-photo-symbolic"
-                    icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                     checkable: true
                     checked: root.showVisualIntelligence
                     onClicked: {
@@ -592,9 +509,8 @@ Window {
                 }
 
                 // Math Notes Drawer Toggle
-                PlasmaComponents3.ToolButton {
+                QQC2.ToolButton {
                     icon.name: "view-time-schedule-calculus-symbolic"
-                    icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                     checkable: true
                     checked: root.showMathNotes
                     onClicked: {
@@ -610,10 +526,9 @@ Window {
                 }
 
                 // Kity Mobile Remote Button (Phone as Microphone via Apple Intelligence PWA & KDE Connect)
-                PlasmaComponents3.ToolButton {
+                QQC2.ToolButton {
                     id: mobileRemoteButton
                     icon.name: "kdeconnect-symbolic"
-                    icon.color: Kirigami.Theme.textColor
                     onClicked: {
                         var shared = kityClient.shareMobilePairingWithKdeConnect();
                         if (shared) {
@@ -627,9 +542,8 @@ Window {
                 }
 
                 // Clear Conversation Button
-                PlasmaComponents3.ToolButton {
+                QQC2.ToolButton {
                     icon.name: "edit-clear-history-symbolic"
-                    icon.color: Kirigami.Theme.textColor
                     visible: kityClient.messages.length > 0
                     onClicked: kityClient.clearHistory()
                     QQC2.ToolTip.visible: hovered
@@ -637,7 +551,7 @@ Window {
                 }
             }
 
-            Kirigami.Separator {
+            CachyDivider {
                 Layout.fillWidth: true
             }
 
@@ -647,11 +561,11 @@ Window {
             Rectangle {
                 Layout.fillWidth: true
                 visible: root.showWritingTools
-                implicitHeight: wtCol.implicitHeight + Kirigami.Units.smallSpacing * 2
-                radius: Kirigami.Units.smallSpacing
-                color: Kirigami.Theme.alternateBackgroundColor
+                implicitHeight: wtCol.implicitHeight + CachyTheme.spacingSmall * 2
+                radius: CachyTheme.radiusMedium
+                color: CachyTheme.cardBackground
                 border.width: 1
-                border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
+                border.color: CachyTheme.specularBorder
 
                 ColumnLayout {
                     id: wtCol
@@ -670,10 +584,11 @@ Window {
                             color: Kirigami.Theme.highlightColor
                         }
 
-                        PlasmaComponents3.Label {
+                        QQC2.Label {
                             Layout.fillWidth: true
                             font.bold: true
                             font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                            color: palette.windowText
                             text: promptField.text.trim().length > 0
                                 ? i18n("Herramientas de Escritura (usando caja de texto)")
                                 : i18n("Herramientas de Escritura (usando selección / portapapeles Wayland)")
@@ -688,84 +603,58 @@ Window {
                         rowSpacing: Kirigami.Units.smallSpacing
                         uniformCellWidths: true
 
-                        PlasmaComponents3.Button {
-                            Layout.fillWidth: true
-                            text: i18n("✍️ Corregir")
-                            onClicked: {
-                                kityClient.applyWritingTool("proofread", promptField.text);
-                                root.showWritingTools = false;
-                            }
-                        }
-                        PlasmaComponents3.Button {
-                            Layout.fillWidth: true
-                            text: i18n("📝 Reescribir")
-                            onClicked: {
-                                kityClient.applyWritingTool("rewrite", promptField.text);
-                                root.showWritingTools = false;
-                            }
-                        }
-                        PlasmaComponents3.Button {
-                            Layout.fillWidth: true
-                            text: i18n("😊 Amigable")
-                            onClicked: {
-                                kityClient.applyWritingTool("friendly", promptField.text);
-                                root.showWritingTools = false;
-                            }
-                        }
-                        PlasmaComponents3.Button {
-                            Layout.fillWidth: true
-                            text: i18n("👔 Profesional")
-                            onClicked: {
-                                kityClient.applyWritingTool("professional", promptField.text);
-                                root.showWritingTools = false;
-                            }
-                        }
-                        PlasmaComponents3.Button {
-                            Layout.fillWidth: true
-                            text: i18n("✂️ Conciso")
-                            onClicked: {
-                                kityClient.applyWritingTool("concise", promptField.text);
-                                root.showWritingTools = false;
-                            }
-                        }
-                        PlasmaComponents3.Button {
-                            Layout.fillWidth: true
-                            text: i18n("📊 Resumen")
-                            onClicked: {
-                                kityClient.applyWritingTool("summary", promptField.text);
-                                root.showWritingTools = false;
-                            }
-                        }
-                        PlasmaComponents3.Button {
-                            Layout.fillWidth: true
-                            text: i18n("📌 Claves")
-                            onClicked: {
-                                kityClient.applyWritingTool("keypoints", promptField.text);
-                                root.showWritingTools = false;
-                            }
-                        }
-                        PlasmaComponents3.Button {
-                            Layout.fillWidth: true
-                            text: i18n("📋 Tabla")
-                            onClicked: {
-                                kityClient.applyWritingTool("table", promptField.text);
-                                root.showWritingTools = false;
-                            }
-                        }
-                        PlasmaComponents3.Button {
-                            Layout.fillWidth: true
-                            text: i18n("🌐 A español")
-                            onClicked: {
-                                kityClient.applyWritingTool("translate:es", promptField.text);
-                                root.showWritingTools = false;
-                            }
-                        }
-                        PlasmaComponents3.Button {
-                            Layout.fillWidth: true
-                            text: i18n("🌐 To English")
-                            onClicked: {
-                                kityClient.applyWritingTool("translate:en", promptField.text);
-                                root.showWritingTools = false;
+                        Repeater {
+                            model: [
+                                { label: i18n("✍️ Corregir"), action: "proofread" },
+                                { label: i18n("📝 Reescribir"), action: "rewrite" },
+                                { label: i18n("😊 Amigable"), action: "friendly" },
+                                { label: i18n("👔 Profesional"), action: "professional" },
+                                { label: i18n("✂️ Conciso"), action: "concise" },
+                                { label: i18n("📊 Resumen"), action: "summary" },
+                                { label: i18n("📌 Claves"), action: "keypoints" },
+                                { label: i18n("📋 Tabla"), action: "table" },
+                                { label: i18n("🌐 A español"), action: "translate:es" },
+                                { label: i18n("🌐 To English"), action: "translate:en" }
+                            ]
+
+                            QQC2.Button {
+                                id: wtBtn
+                                required property var modelData
+                                Layout.fillWidth: true
+                                Layout.minimumHeight: Kirigami.Units.gridUnit * 2.2
+                                text: modelData.label
+                                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                                hoverEnabled: true
+
+                                contentItem: QQC2.Label {
+                                    text: wtBtn.text
+                                    color: wtBtn.down ? palette.highlight : palette.buttonText
+                                    font: wtBtn.font
+                                    elide: Text.ElideRight
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+
+                                background: Rectangle {
+                                    radius: 8
+                                    color: wtBtn.down
+                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
+                                        : (wtBtn.hovered
+                                            ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
+                                            : palette.button)
+                                    border.width: 1
+                                    border.color: wtBtn.hovered
+                                        ? palette.highlight
+                                        : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15)
+
+                                    Behavior on color { ColorAnimation { duration: 150 } }
+                                    Behavior on border.color { ColorAnimation { duration: 150 } }
+                                }
+
+                                onClicked: {
+                                    kityClient.applyWritingTool(modelData.action, promptField.text);
+                                    root.showWritingTools = false;
+                                }
                             }
                         }
                     }
@@ -778,11 +667,11 @@ Window {
             Rectangle {
                 Layout.fillWidth: true
                 visible: root.showVisualIntelligence
-                implicitHeight: viCol.implicitHeight + Kirigami.Units.smallSpacing * 2
-                radius: Kirigami.Units.smallSpacing
-                color: Kirigami.Theme.alternateBackgroundColor
+                implicitHeight: viCol.implicitHeight + CachyTheme.spacingSmall * 2
+                radius: CachyTheme.radiusMedium
+                color: CachyTheme.cardBackground
                 border.width: 1
-                border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
+                border.color: CachyTheme.specularBorder
 
                 ColumnLayout {
                     id: viCol
@@ -801,10 +690,11 @@ Window {
                             color: Kirigami.Theme.highlightColor
                         }
 
-                        PlasmaComponents3.Label {
+                        QQC2.Label {
                             Layout.fillWidth: true
                             font.bold: true
                             font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                            color: palette.windowText
                             text: i18n("Inteligencia Visual (Spectacle Wayland + Tesseract OCR)")
                             elide: Text.ElideRight
                         }
@@ -814,9 +704,10 @@ Window {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.smallSpacing
 
-                        PlasmaComponents3.Label {
+                        QQC2.Label {
                             text: i18n("Capturar:")
                             font: Kirigami.Theme.smallFont
+                            color: palette.windowText
                         }
 
                         QQC2.ComboBox {
@@ -831,18 +722,80 @@ Window {
                             onActivated: index => root.visualCaptureScope = model[index].scope
                         }
 
-                        PlasmaComponents3.Button {
+                        QQC2.Button {
+                            id: ocrBtn
                             text: i18n("📄 Extraer texto (OCR)")
                             icon.name: "document-edit-symbolic"
+                            hoverEnabled: true
+
+                            contentItem: RowLayout {
+                                spacing: Kirigami.Units.smallSpacing
+                                Kirigami.Icon {
+                                    source: ocrBtn.icon.name
+                                    implicitWidth: Kirigami.Units.iconSizes.small
+                                    implicitHeight: Kirigami.Units.iconSizes.small
+                                    color: ocrBtn.down ? palette.highlight : palette.buttonText
+                                }
+                                QQC2.Label {
+                                    text: ocrBtn.text
+                                    color: ocrBtn.down ? palette.highlight : palette.buttonText
+                                    font: ocrBtn.font
+                                }
+                            }
+
+                            background: Rectangle {
+                                radius: 8
+                                color: ocrBtn.down
+                                    ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
+                                    : (ocrBtn.hovered
+                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
+                                        : palette.button)
+                                border.width: 1
+                                border.color: ocrBtn.hovered
+                                    ? palette.highlight
+                                    : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15)
+                            }
+
                             onClicked: {
                                 kityClient.runVisualIntelligence(root.visualCaptureScope, "ocr");
                                 root.showVisualIntelligence = false;
                             }
                         }
 
-                        PlasmaComponents3.Button {
+                        QQC2.Button {
+                            id: descBtn
                             text: i18n("🔍 Describir")
                             icon.name: "image-x-generic-symbolic"
+                            hoverEnabled: true
+
+                            contentItem: RowLayout {
+                                spacing: Kirigami.Units.smallSpacing
+                                Kirigami.Icon {
+                                    source: descBtn.icon.name
+                                    implicitWidth: Kirigami.Units.iconSizes.small
+                                    implicitHeight: Kirigami.Units.iconSizes.small
+                                    color: descBtn.down ? palette.highlight : palette.buttonText
+                                }
+                                QQC2.Label {
+                                    text: descBtn.text
+                                    color: descBtn.down ? palette.highlight : palette.buttonText
+                                    font: descBtn.font
+                                }
+                            }
+
+                            background: Rectangle {
+                                radius: 8
+                                color: descBtn.down
+                                    ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
+                                    : (descBtn.hovered
+                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
+                                        : palette.button)
+                                border.width: 1
+                                border.color: descBtn.hovered
+                                    ? palette.highlight
+                                    : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15)
+                            }
+
                             onClicked: {
                                 kityClient.runVisualIntelligence(root.visualCaptureScope, "describe");
                                 root.showVisualIntelligence = false;
@@ -858,11 +811,11 @@ Window {
             Rectangle {
                 Layout.fillWidth: true
                 visible: root.showMathNotes
-                implicitHeight: mnCol.implicitHeight + Kirigami.Units.smallSpacing * 2
-                radius: Kirigami.Units.smallSpacing
-                color: Kirigami.Theme.alternateBackgroundColor
+                implicitHeight: mnCol.implicitHeight + CachyTheme.spacingSmall * 2
+                radius: CachyTheme.radiusMedium
+                color: CachyTheme.cardBackground
                 border.width: 1
-                border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
+                border.color: CachyTheme.specularBorder
 
                 ColumnLayout {
                     id: mnCol
@@ -881,10 +834,11 @@ Window {
                             color: Kirigami.Theme.highlightColor
                         }
 
-                        PlasmaComponents3.Label {
+                        QQC2.Label {
                             Layout.fillWidth: true
                             font.bold: true
                             font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                            color: palette.windowText
                             text: i18n("Notas matemáticas (escribe operaciones y pulsa =)")
                             elide: Text.ElideRight
                         }
@@ -894,10 +848,23 @@ Window {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.smallSpacing
 
-                        PlasmaComponents3.TextField {
+                        QQC2.TextField {
                             id: mathInput
                             Layout.fillWidth: true
+                            color: palette.text
+                            placeholderTextColor: palette.placeholderText
+                            selectionColor: palette.highlight
+                            selectedTextColor: palette.highlightedText
+                            font: Kirigami.Theme.defaultFont
                             placeholderText: i18n("Ejemplo: precio = 250 €, iva = precio * 0.21, total =")
+                            background: Rectangle {
+                                radius: 8
+                                color: palette.base
+                                border.width: mathInput.activeFocus ? 1.5 : 1
+                                border.color: mathInput.activeFocus
+                                    ? palette.highlight
+                                    : Kirigami.ColorUtils.linearInterpolation(palette.base, palette.text, 0.18)
+                            }
                             onAccepted: {
                                 if (text.trim().length > 0) {
                                     root.mathResults = kityClient.evaluateMathNotes(text);
@@ -905,9 +872,40 @@ Window {
                             }
                         }
 
-                        PlasmaComponents3.Button {
+                        QQC2.Button {
+                            id: calcBtn
                             text: i18n("Calcular")
                             icon.name: "checkmark"
+                            hoverEnabled: true
+
+                            contentItem: RowLayout {
+                                spacing: Kirigami.Units.smallSpacing
+                                Kirigami.Icon {
+                                    source: calcBtn.icon.name
+                                    implicitWidth: Kirigami.Units.iconSizes.small
+                                    implicitHeight: Kirigami.Units.iconSizes.small
+                                    color: calcBtn.down ? palette.highlight : palette.buttonText
+                                }
+                                QQC2.Label {
+                                    text: calcBtn.text
+                                    color: calcBtn.down ? palette.highlight : palette.buttonText
+                                    font: calcBtn.font
+                                }
+                            }
+
+                            background: Rectangle {
+                                radius: 8
+                                color: calcBtn.down
+                                    ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
+                                    : (calcBtn.hovered
+                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
+                                        : palette.button)
+                                border.width: 1
+                                border.color: calcBtn.hovered
+                                    ? palette.highlight
+                                    : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15)
+                            }
+
                             onClicked: {
                                 if (mathInput.text.trim().length > 0) {
                                     root.mathResults = kityClient.evaluateMathNotes(mathInput.text);
@@ -923,10 +921,11 @@ Window {
 
                         Repeater {
                             model: root.mathResults
-                            delegate: PlasmaComponents3.Label {
+                            delegate: QQC2.Label {
                                 required property string modelData
                                 Layout.fillWidth: true
                                 font.family: "monospace"
+                                color: palette.text
                                 text: modelData
                             }
                         }
@@ -960,19 +959,20 @@ Window {
                         wrapMode: Text.WordWrap
                     }
 
-                    PlasmaComponents3.Label {
+                    QQC2.Label {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
-                        opacity: 0.75
                         wrapMode: Text.WordWrap
                         text: i18n("Pulsa la esfera inferior o di «¡Hola Kity!» para hablar, o elige una acción rápida:")
+                        font: Kirigami.Theme.defaultFont
+                        color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.72)
                     }
 
                     GridLayout {
                         Layout.fillWidth: true
                         columns: 2
-                        columnSpacing: Kirigami.Units.smallSpacing
-                        rowSpacing: Kirigami.Units.smallSpacing
+                        columnSpacing: Kirigami.Units.smallSpacing + 2
+                        rowSpacing: Kirigami.Units.smallSpacing + 2
                         uniformCellWidths: true
 
                         Repeater {
@@ -985,12 +985,44 @@ Window {
                                 { label: "🌙 Modo oscuro", prompt: "Activa el modo oscuro", isWritingTool: false }
                             ]
 
-                            PlasmaComponents3.Button {
+                            QQC2.Button {
+                                id: actionBtn
                                 required property var modelData
                                 Layout.fillWidth: true
-                                Layout.minimumHeight: Kirigami.Units.gridUnit * 2.2
+                                Layout.minimumHeight: Kirigami.Units.gridUnit * 2.3
                                 text: modelData.label
-                                font: Kirigami.Theme.defaultFont
+                                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                                hoverEnabled: true
+
+                                contentItem: RowLayout {
+                                    spacing: Kirigami.Units.smallSpacing
+                                    QQC2.Label {
+                                        Layout.fillWidth: true
+                                        text: actionBtn.text
+                                        color: actionBtn.down ? palette.highlight : palette.buttonText
+                                        font: actionBtn.font
+                                        elide: Text.ElideRight
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+
+                                background: Rectangle {
+                                    radius: 10
+                                    color: actionBtn.down
+                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
+                                        : (actionBtn.hovered
+                                            ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
+                                            : palette.button)
+                                    border.width: 1
+                                    border.color: actionBtn.hovered
+                                        ? palette.highlight
+                                        : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15)
+
+                                    Behavior on color { ColorAnimation { duration: 150 } }
+                                    Behavior on border.color { ColorAnimation { duration: 150 } }
+                                }
+
                                 onClicked: {
                                     if (modelData.isWritingTool) {
                                         root.showWritingTools = true;
@@ -1035,14 +1067,14 @@ Window {
                             Rectangle {
                                 id: streamBubble
                                 width: parent.width * 0.92
-                                height: streamText.implicitHeight + Kirigami.Units.mediumSpacing * 2
+                                height: streamText.implicitHeight + CachyTheme.spacingMedium * 2
                                 anchors.left: parent.left
                                 anchors.top: parent.top
-                                anchors.topMargin: Kirigami.Units.smallSpacing
-                                radius: Kirigami.Units.smallSpacing
-                                color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.alternateBackgroundColor, 0.6)
+                                anchors.topMargin: CachyTheme.spacingSmall
+                                radius: CachyTheme.radiusMedium
+                                color: CachyTheme.cardBackground
                                 border.width: 1
-                                border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
+                                border.color: CachyTheme.specularBorder
 
                                 TextEdit {
                                     id: streamText
@@ -1078,19 +1110,19 @@ Window {
                             Rectangle {
                                 id: bubbleRect
                                 width: msgDelegate.isUser
-                                    ? Math.min(parent.width * 0.88, Math.max(Kirigami.Units.gridUnit * 6, msgColumn.implicitWidth + Kirigami.Units.mediumSpacing * 2))
+                                    ? Math.min(parent.width * 0.88, Math.max(120, msgColumn.implicitWidth + CachyTheme.spacingMedium * 2))
                                     : parent.width * 0.92
-                                height: msgColumn.implicitHeight + Kirigami.Units.mediumSpacing * 2
+                                height: msgColumn.implicitHeight + CachyTheme.spacingMedium * 2
                                 anchors.right: msgDelegate.isUser ? parent.right : undefined
                                 anchors.left: msgDelegate.isUser ? undefined : parent.left
-                                radius: Kirigami.Units.smallSpacing
+                                radius: CachyTheme.radiusMedium
                                 color: msgDelegate.isUser
-                                    ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.18)
-                                    : Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.alternateBackgroundColor, 0.6)
+                                    ? CachyTheme.withAlpha(CachyTheme.accentColor, 0.22)
+                                    : CachyTheme.cardBackground
                                 border.width: 1
                                 border.color: msgDelegate.isUser
-                                    ? Kirigami.Theme.highlightColor
-                                    : Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
+                                    ? CachyTheme.accentColor
+                                    : CachyTheme.specularBorder
 
                                 ColumnLayout {
                                     id: msgColumn
@@ -1132,14 +1164,15 @@ Window {
                                                 Layout.fillWidth: true
                                                 spacing: Kirigami.Units.smallSpacing
 
-                                                PlasmaComponents3.Label {
+                                                QQC2.Label {
                                                     Layout.fillWidth: true
                                                     font.family: "monospace"
+                                                    color: palette.text
                                                     text: modelData
                                                     elide: Text.ElideRight
                                                 }
 
-                                                PlasmaComponents3.Button {
+                                                QQC2.Button {
                                                     icon.name: "system-run"
                                                     text: i18n("Ejecutar en Konsole")
                                                     onClicked: kityClient.executeCommandInKonsole(modelData)
@@ -1178,7 +1211,7 @@ Window {
                                         Repeater {
                                             model: msgDelegate.modelData.sources || []
 
-                                            PlasmaComponents3.Button {
+                                            QQC2.Button {
                                                 required property var modelData
                                                 icon.name: "globe"
                                                 text: modelData.title || i18n("Fuente")
@@ -1195,14 +1228,14 @@ Window {
                                         Layout.fillWidth: true
                                         spacing: Kirigami.Units.smallSpacing
 
-                                        PlasmaComponents3.ToolButton {
+                                        QQC2.ToolButton {
                                             icon.name: "edit-copy"
                                             QQC2.ToolTip.visible: hovered
                                             QQC2.ToolTip.text: i18n("Copiar al portapapeles")
                                             onClicked: kityClient.copyToClipboard(msgDelegate.modelData.content)
                                         }
 
-                                        PlasmaComponents3.ToolButton {
+                                        QQC2.ToolButton {
                                             icon.name: "audio-volume-high"
                                             QQC2.ToolTip.visible: hovered
                                             QQC2.ToolTip.text: i18n("Escuchar respuesta con voz")
@@ -1217,7 +1250,7 @@ Window {
             }
 
             // Dynamic status bar when recording, transcribing, thinking, or speaking (collapses when empty)
-            PlasmaComponents3.Label {
+            QQC2.Label {
                 Layout.fillWidth: true
                 visible: kityClient.statusMessage.length > 0 && kityClient.state !== "idle"
                 horizontalAlignment: Text.AlignHCenter
@@ -1275,55 +1308,103 @@ Window {
                         }
                     }
 
-                    // Bottom Text Input & Send Bar
-                    RowLayout {
+                    // Bottom Text Input & Send Bar (Cajón de escribir nativo estilo Liquid Glass)
+                    Rectangle {
+                        id: promptInputBox
                         Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
+                        implicitHeight: Math.max(promptInputRow.implicitHeight + CachyTheme.spacingSmall * 2, 44)
+                        radius: CachyTheme.radiusMedium
+                        color: CachyTheme.cardBackground
+                        border.width: promptField.activeFocus ? 1.5 : 1
+                        border.color: promptField.activeFocus
+                            ? CachyTheme.accentColor
+                            : CachyTheme.specularBorder
 
-                        PlasmaComponents3.ScrollView {
-                            id: promptScrollView
-                            Layout.fillWidth: true
-                            Layout.alignment: Qt.AlignBottom
-                            Layout.maximumHeight: Kirigami.Units.gridUnit * 6
-                            QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
+                        Behavior on border.color { ColorAnimation { duration: 150 } }
 
-                            PlasmaComponents3.TextArea {
-                                id: promptField
-                                focus: true
-                                placeholderText: kityClient.isRecording
-                                    ? i18n("Escuchando tu voz…")
-                                    : i18n("Pregúntale o pídele cualquier cosa a Kity…")
-                                enabled: !kityClient.isRecording
-                                wrapMode: TextEdit.Wrap
+                        RowLayout {
+                            id: promptInputRow
+                            anchors.fill: parent
+                            anchors.leftMargin: Kirigami.Units.mediumSpacing
+                            anchors.rightMargin: Kirigami.Units.smallSpacing
+                            anchors.topMargin: Kirigami.Units.smallSpacing
+                            anchors.bottomMargin: Kirigami.Units.smallSpacing
+                            spacing: Kirigami.Units.smallSpacing
 
-                                Keys.onPressed: event => {
-                                    if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) {
-                                        if (kityClient.state !== "thinking" && text.trim().length > 0) {
-                                            kityClient.sendMessage(text, false);
-                                            text = "";
+                            QQC2.ScrollView {
+                                id: promptScrollView
+                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
+                                Layout.maximumHeight: Kirigami.Units.gridUnit * 6
+                                QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
+
+                                QQC2.TextArea {
+                                    id: promptField
+                                    focus: true
+                                    color: palette.text
+                                    placeholderTextColor: palette.placeholderText
+                                    selectionColor: palette.highlight
+                                    selectedTextColor: palette.highlightedText
+                                    font: Kirigami.Theme.defaultFont
+                                    background: null
+                                    placeholderText: kityClient.isRecording
+                                        ? i18n("Escuchando tu voz…")
+                                        : i18n("Pregúntale o pídele cualquier cosa a Kity…")
+                                    enabled: !kityClient.isRecording
+                                    wrapMode: TextEdit.Wrap
+
+                                    Keys.onPressed: event => {
+                                        if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) {
+                                            if (kityClient.state !== "thinking" && text.trim().length > 0) {
+                                                kityClient.sendMessage(text, false);
+                                                text = "";
+                                            }
+                                            event.accepted = true;
                                         }
-                                        event.accepted = true;
                                     }
                                 }
                             }
-                        }
 
-                        PlasmaComponents3.Button {
-                            Layout.alignment: Qt.AlignBottom
-                            Layout.minimumHeight: Kirigami.Units.gridUnit * 2.2
-                            icon.name: kityClient.state === "thinking" ? "process-stop-symbolic" : "document-send-symbolic"
-                            icon.color: enabled ? (kityClient.state === "thinking" ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor) : Kirigami.Theme.disabledTextColor
-                            enabled: kityClient.state === "thinking" || promptField.text.trim().length > 0
-                            onClicked: {
-                                if (kityClient.state === "thinking") {
-                                    kityClient.stopGeneration();
-                                } else if (promptField.text.trim().length > 0) {
-                                    kityClient.sendMessage(promptField.text, false);
-                                    promptField.text = "";
+                            QQC2.Button {
+                                id: sendBtn
+                                Layout.alignment: Qt.AlignBottom
+                                Layout.preferredWidth: Kirigami.Units.gridUnit * 2.2
+                                Layout.preferredHeight: Kirigami.Units.gridUnit * 2.2
+                                hoverEnabled: true
+                                enabled: kityClient.state === "thinking" || promptField.text.trim().length > 0
+
+                                contentItem: Kirigami.Icon {
+                                    anchors.centerIn: parent
+                                    source: kityClient.state === "thinking" ? "process-stop-symbolic" : "document-send-symbolic"
+                                    color: sendBtn.enabled
+                                        ? (kityClient.state === "thinking" ? Kirigami.Theme.negativeTextColor : (sendBtn.hovered ? palette.highlight : palette.buttonText))
+                                        : palette.placeholderText
                                 }
+
+                                background: Rectangle {
+                                    radius: 8
+                                    color: sendBtn.down
+                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
+                                        : (sendBtn.hovered
+                                            ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
+                                            : (sendBtn.enabled ? palette.button : "transparent"))
+                                    border.width: 1
+                                    border.color: sendBtn.enabled
+                                        ? (sendBtn.hovered ? palette.highlight : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15))
+                                        : "transparent"
+                                }
+
+                                onClicked: {
+                                    if (kityClient.state === "thinking") {
+                                        kityClient.stopGeneration();
+                                    } else if (promptField.text.trim().length > 0) {
+                                        kityClient.sendMessage(promptField.text, false);
+                                        promptField.text = "";
+                                    }
+                                }
+                                QQC2.ToolTip.visible: hovered
+                                QQC2.ToolTip.text: kityClient.state === "thinking" ? i18n("Detener generación") : i18n("Enviar mensaje")
                             }
-                            QQC2.ToolTip.visible: hovered
-                            QQC2.ToolTip.text: kityClient.state === "thinking" ? i18n("Detener generación") : i18n("Enviar mensaje")
                         }
                     }
                 }
@@ -1367,7 +1448,7 @@ Window {
 
                     Item { Layout.fillWidth: true }
 
-                    PlasmaComponents3.ToolButton {
+                    QQC2.ToolButton {
                         icon.name: "window-close"
                         onClicked: root.showPreferences = false
                         QQC2.ToolTip.visible: hovered
@@ -1399,7 +1480,7 @@ Window {
                             Layout.fillWidth: true
                             spacing: Kirigami.Units.smallSpacing
 
-                            PlasmaComponents3.Label {
+                            QQC2.Label {
                                 text: i18n("🎙️ Voz y Activación Manos Libres")
                                 font.bold: true
                                 font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
@@ -1422,12 +1503,12 @@ Window {
                                             Layout.minimumWidth: 0
                                             Layout.preferredWidth: 0
                                             spacing: 2
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Activación por voz «¡Hola Kity!»")
                                                 font.bold: true
                                                 Layout.fillWidth: true
                                             }
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Escuchar en segundo plano sin usar el ratón ni el teclado")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
@@ -1454,12 +1535,12 @@ Window {
                                             Layout.minimumWidth: 0
                                             Layout.preferredWidth: 0
                                             spacing: 2
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Respuestas habladas")
                                                 font.bold: true
                                                 Layout.fillWidth: true
                                             }
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Modo de lectura en voz alta de las respuestas")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
@@ -1500,12 +1581,12 @@ Window {
                                             Layout.minimumWidth: 0
                                             Layout.preferredWidth: 0
                                             spacing: 2
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Avisos acústicos (Estilo Siri)")
                                                 font.bold: true
                                                 Layout.fillWidth: true
                                             }
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Tono armónico sutil al activar o detener el micrófono")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
@@ -1532,12 +1613,12 @@ Window {
                                             Layout.minimumWidth: 0
                                             Layout.preferredWidth: 0
                                             spacing: 2
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Detección de fin de frase (VAD)")
                                                 font.bold: true
                                                 Layout.fillWidth: true
                                             }
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Detener la grabación automáticamente cuando termines de hablar")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
@@ -1564,12 +1645,12 @@ Window {
                                             Layout.minimumWidth: 0
                                             Layout.preferredWidth: 0
                                             spacing: 2
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Motores de voz locales")
                                                 font.bold: true
                                                 Layout.fillWidth: true
                                             }
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Whisper.cpp (STT) y Piper TTS (síntesis neuronal)")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
@@ -1588,7 +1669,7 @@ Window {
                                                 color: kityClient.whisperAvailable ? Qt.rgba(0.18, 0.75, 0.35, 0.15) : Qt.rgba(0.9, 0.2, 0.2, 0.15)
                                                 border.width: 1
                                                 border.color: kityClient.whisperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
-                                                PlasmaComponents3.Label {
+                                                QQC2.Label {
                                                     id: whisperBadgeText
                                                     anchors.centerIn: parent
                                                     text: kityClient.whisperAvailable ? i18n("✓ Whisper") : i18n("✗ Whisper")
@@ -1604,7 +1685,7 @@ Window {
                                                 color: kityClient.piperAvailable ? Qt.rgba(0.18, 0.75, 0.35, 0.15) : Qt.rgba(0.9, 0.2, 0.2, 0.15)
                                                 border.width: 1
                                                 border.color: kityClient.piperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
-                                                PlasmaComponents3.Label {
+                                                QQC2.Label {
                                                     id: piperBadgeText
                                                     anchors.centerIn: parent
                                                     text: kityClient.piperAvailable ? i18n("✓ Piper TTS") : i18n("✗ Piper TTS")
@@ -1626,7 +1707,7 @@ Window {
                             Layout.fillWidth: true
                             spacing: Kirigami.Units.smallSpacing
 
-                            PlasmaComponents3.Label {
+                            QQC2.Label {
                                 text: i18n("🧠 Inteligencia Artificial Local (Ollama)")
                                 font.bold: true
                                 font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
@@ -1649,7 +1730,7 @@ Window {
                                             Layout.minimumWidth: 0
                                             Layout.preferredWidth: 0
                                             spacing: 2
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Servidor Ollama")
                                                 font.bold: true
                                                 Layout.fillWidth: true
@@ -1663,7 +1744,7 @@ Window {
                                                     radius: 4
                                                     color: kityClient.ollamaReachable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
                                                 }
-                                                PlasmaComponents3.Label {
+                                                QQC2.Label {
                                                     text: kityClient.ollamaReachable
                                                         ? i18n("Conectado en localhost:11434")
                                                         : i18n("No detectado en localhost:11434")
@@ -1675,7 +1756,7 @@ Window {
                                                 }
                                             }
                                         }
-                                        PlasmaComponents3.Button {
+                                        QQC2.Button {
                                             id: checkBtn
                                             Layout.alignment: Qt.AlignVCenter
                                             property bool isChecking: false
@@ -1699,7 +1780,7 @@ Window {
                                                         running: checkBtn.isChecking
                                                     }
                                                 }
-                                                PlasmaComponents3.Label {
+                                                QQC2.Label {
                                                     text: checkBtn.isChecking ? i18n("Comprobando…") : i18n("Comprobar")
                                                     Layout.alignment: Qt.AlignVCenter
                                                 }
@@ -1732,12 +1813,12 @@ Window {
                                             Layout.minimumWidth: 0
                                             Layout.preferredWidth: 0
                                             spacing: 2
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Modelo activo de lenguaje (LLM)")
                                                 font.bold: true
                                                 Layout.fillWidth: true
                                             }
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: kityClient.availableModels.length > 0
                                                     ? i18n("Modelo local de Ollama que procesará tus preguntas y tareas")
                                                     : i18n("Inicia Ollama y pulsa «Comprobar» para detectar tus modelos")
@@ -1789,7 +1870,7 @@ Window {
                             Layout.fillWidth: true
                             spacing: Kirigami.Units.smallSpacing
 
-                            PlasmaComponents3.Label {
+                            QQC2.Label {
                                 text: i18n("📚 Conocimiento Local y Privacidad (RAG)")
                                 font.bold: true
                                 font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
@@ -1811,12 +1892,12 @@ Window {
                                             Layout.minimumWidth: 0
                                             Layout.preferredWidth: 0
                                             spacing: 2
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Base documental privada")
                                                 font.bold: true
                                                 Layout.fillWidth: true
                                             }
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Kity consulta notas y documentos en tu carpeta local (~/.local/share/kity/knowledge/)")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
@@ -1825,7 +1906,7 @@ Window {
                                                 Layout.minimumWidth: 0
                                             }
                                         }
-                                        PlasmaComponents3.Button {
+                                        QQC2.Button {
                                             text: i18n("Abrir carpeta")
                                             icon.name: "document-open-folder"
                                             Layout.alignment: Qt.AlignVCenter
@@ -1843,7 +1924,7 @@ Window {
                             Layout.fillWidth: true
                             spacing: Kirigami.Units.smallSpacing
 
-                            PlasmaComponents3.Label {
+                            QQC2.Label {
                                 text: i18n("🪟 Ventana y Comportamiento")
                                 font.bold: true
                                 font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
@@ -1865,12 +1946,12 @@ Window {
                                             Layout.minimumWidth: 0
                                             Layout.preferredWidth: 0
                                             spacing: 2
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Fijar en primer plano")
                                                 font.bold: true
                                                 Layout.fillWidth: true
                                             }
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Mantener la ventana de Kity siempre visible sobre las demás aplicaciones")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
@@ -1896,12 +1977,12 @@ Window {
                                             Layout.minimumWidth: 0
                                             Layout.preferredWidth: 0
                                             spacing: 2
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Atajos de teclado rápidos")
                                                 font.bold: true
                                                 Layout.fillWidth: true
                                             }
-                                            PlasmaComponents3.Label {
+                                            QQC2.Label {
                                                 text: i18n("Ctrl+M o Alt+M: Activar/detener voz · Esc: Detener generación o cerrar")
                                                 font: Kirigami.Theme.smallFont
                                                 opacity: 0.75
