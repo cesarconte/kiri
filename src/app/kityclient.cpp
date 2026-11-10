@@ -647,8 +647,12 @@ QString KityClient::mobilePairingUrl() const
 bool KityClient::shareMobilePairingWithKdeConnect(const QString &deviceId) const
 {
     if (!m_iface || !m_iface->isValid()) {
+        copyToClipboard(mobilePairingUrl());
         return false;
     }
     QDBusReply<bool> reply = m_iface->call(QStringLiteral("shareMobilePairingWithKdeConnect"), deviceId);
+    if (!reply.isValid() || !reply.value()) {
+        copyToClipboard(mobilePairingUrl());
+    }
     return reply.isValid() ? reply.value() : false;
 }

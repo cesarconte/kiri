@@ -212,10 +212,11 @@ bool KityMobileServer::sendPairingUrlViaKdeConnect(const QString &deviceId) cons
 
     QDBusInterface shareIface(QStringLiteral("org.kde.kdeconnect"),
                               QStringLiteral("/modules/kdeconnect/devices/") + deviceId + QStringLiteral("/share"),
-                              QStringLiteral("org.kde.kdeconnect.device.share"));
+                              QStringLiteral("org.kde.kdeconnect.device.share"),
+                              QDBusConnection::sessionBus());
 
     if (shareIface.isValid()) {
-        shareIface.call(QStringLiteral("openUrl"), pairingUrl());
+        shareIface.call(QStringLiteral("shareUrl"), pairingUrl());
         return true;
     }
 

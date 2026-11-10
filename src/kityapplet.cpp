@@ -5733,7 +5733,23 @@ bool KityApplet::shareMobilePairingWithKdeConnect(const QString &deviceId) const
             targetDev = devices.first().id;
         }
     }
-    return m_mobileServer->sendPairingUrlViaKdeConnect(targetDev);
+
+    bool ok = false;
+    if (!targetDev.isEmpty()) {
+        ok = m_mobileServer->sendPairingUrlViaKdeConnect(targetDev);
+    }
+
+    if (ok) {
+        KNotification::event(QStringLiteral("notification"),
+                             i18n("Kity Remote"),
+                             i18n("Enlace de emparejamiento enviado a tu teléfono por KDE Connect"));
+    } else {
+        copyToClipboard(mobilePairingUrl());
+        KNotification::event(QStringLiteral("notification"),
+                             i18n("Kity Remote"),
+                             i18n("Enlace de emparejamiento copiado al portapapeles"));
+    }
+    return ok;
 }
 
 #include "kityapplet.moc"
