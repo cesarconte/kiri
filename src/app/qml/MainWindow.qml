@@ -336,7 +336,7 @@ Window {
                 // Left: Official macOS Golden Gate Traffic Lights
                 CachyTrafficLights {
                     anchors.left: parent.left
-                    anchors.leftMargin: CachyTheme.trafficLightMargin
+                    anchors.leftMargin: 0
                     anchors.verticalCenter: parent.verticalCenter
                     window: root
                 }
@@ -372,22 +372,14 @@ Window {
                     }
                 }
 
-                // Right: Preferences & Pin Window On Top
+                // Right: Pin & Preferences Window Buttons (Alineados al borde del contenido; Pin antecede a Preferencias en el extremo derecho)
                 Row {
                     anchors.right: parent.right
-                    anchors.rightMargin: CachyTheme.trafficLightMargin
+                    anchors.rightMargin: 0
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 4
 
-                    // Preferences Button
-                    QQC2.ToolButton {
-                        icon.name: "configure"
-                        QQC2.ToolTip.text: i18n("Preferencias de Kity (Preferencias del Sistema)")
-                        QQC2.ToolTip.visible: hovered
-                        onClicked: kityClient.openSettings()
-                    }
-
-                    // Pin Window On Top
+                    // Pin Window On Top (Antecediendo a Preferencias)
                     QQC2.ToolButton {
                         icon.name: root.isPinned ? "window-pin" : "window-unpin"
                         checkable: true
@@ -395,6 +387,14 @@ Window {
                         QQC2.ToolTip.text: root.isPinned ? i18n("Desanclar de primer plano") : i18n("Mantener siempre encima")
                         QQC2.ToolTip.visible: hovered
                         onClicked: root.isPinned = !root.isPinned
+                    }
+
+                    // Preferences Button (A la derecha del todo)
+                    QQC2.ToolButton {
+                        icon.name: "configure"
+                        QQC2.ToolTip.text: i18n("Preferencias de Kity (Preferencias del Sistema)")
+                        QQC2.ToolTip.visible: hovered
+                        onClicked: kityClient.openSettings()
                     }
                 }
             }
