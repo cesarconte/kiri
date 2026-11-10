@@ -60,6 +60,33 @@
     </footer>
   </main>
 
+  <!-- Secure Context Setup Notice Modal -->
+  <dialog id="secureNoticeDialog" class="frosted-dialog">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h3>🔒 Autorizar Micrófono Local</h3>
+        <button id="btnCloseSecureNotice" class="close-btn">&times;</button>
+      </div>
+      <div class="dialog-body" style="font-size: 13px; line-height: 1.5; color: #cbd5e1;">
+        <p>Brave y Chrome bloquean el micrófono en redes Wi-Fi HTTP locales por seguridad, salvo que autorices la dirección del PC:</p>
+        <div style="background: rgba(0,0,0,0.4); padding: 12px; border-radius: 12px; margin-top: 8px; line-height: 1.6;">
+          <b>1.</b> Abre una nueva pestaña y escribe:<br>
+          <code style="color: var(--accent-cyan); font-weight: bold;">brave://flags</code> (o <code style="color: var(--accent-cyan); font-weight: bold;">chrome://flags</code>)<br>
+          <b>2.</b> Busca: <i>Insecure origins</i><br>
+          <b>3.</b> Elige <b>Enabled</b> y pega la dirección:<br>
+          <div style="display: flex; gap: 6px; margin-top: 6px;">
+            <input type="text" id="originUrlInput" readonly style="flex: 1; background: #0c0d14; color: var(--accent-cyan); border: 1px solid var(--glass-border); border-radius: 8px; padding: 6px 10px; font-size: 12px;">
+            <button id="btnCopyOrigin" class="btn-primary" style="padding: 6px 12px; font-size: 12px;">Copiar</button>
+          </div>
+          <b>4.</b> Pulsa <b>Relaunch</b> (Reiniciar) al pie de la pantalla.
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button id="btnDismissSecureNotice" class="btn-primary" style="width: 100%;">Entendido</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Settings Dialog (Frosted Glass Sheet) -->
   <dialog id="settingsDialog" class="frosted-dialog">
     <div class="dialog-content">

@@ -177,9 +177,53 @@
     }
   }
 
+  // Secure Context Modal Elements
+  const secureNoticeDialog = document.getElementById('secureNoticeDialog');
+  const btnCloseSecureNotice = document.getElementById('btnCloseSecureNotice');
+  const btnDismissSecureNotice = document.getElementById('btnDismissSecureNotice');
+  const originUrlInput = document.getElementById('originUrlInput');
+  const btnCopyOrigin = document.getElementById('btnCopyOrigin');
+
+  function showSecureContextNotice() {
+    const origin = window.location.protocol + '//' + window.location.host;
+    if (originUrlInput) {
+      originUrlInput.value = origin;
+    }
+    if (secureNoticeDialog) {
+      secureNoticeDialog.showModal();
+    }
+  }
+
+  if (btnCloseSecureNotice) {
+    btnCloseSecureNotice.addEventListener('click', () => secureNoticeDialog.close());
+  }
+  if (btnDismissSecureNotice) {
+    btnDismissSecureNotice.addEventListener('click', () => secureNoticeDialog.close());
+  }
+  if (btnCopyOrigin) {
+    btnCopyOrigin.addEventListener('click', () => {
+      if (originUrlInput) {
+        originUrlInput.select();
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(originUrlInput.value);
+        } else {
+          document.execCommand('copy');
+        }
+        btnCopyOrigin.textContent = '¡Copiado!';
+        setTimeout(() => { btnCopyOrigin.textContent = 'Copiar'; }, 2000);
+      }
+    });
+  }
+
   // Voice Recognition (Web Speech API) & Audio RMS Analysis
   async function startRecording() {
     if (isRecording) return;
+
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showSecureContextNotice();
+      return;
+    }
+
     triggerHaptic(25);
 
     try {
@@ -280,6 +324,7 @@
       console.error('Failed to access microphone:', err);
       statusSubEl.textContent = 'Permiso de micrófono denegado';
       stopRecording(false);
+      showSecureContextNotice();
     }
   }
 
