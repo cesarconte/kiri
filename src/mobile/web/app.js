@@ -27,11 +27,15 @@
   let audioContext = null;
   let analyser = null;
   let micStream = null;
+  let mediaRecorder = null;
+  let audioChunks = [];
   let recognition = null;
   let reconnectTimer = null;
   let rmsTimer = null;
   let lastFinalTranscript = '';
   let speechSilenceTimer = null;
+  let vadSilenceTimer = null;
+  let maxRecordingTimer = null;
 
   // Initialize Siri Orb Canvas
   const orb = new window.SiriOrb(orbCanvas);
@@ -242,8 +246,23 @@
       const source = audioContext.createMediaStreamSource(micStream);
       source.connect(analyser);
 
-      // Start RMS monitoring loop
+      // Start RMS monitoring loop and Voice Activity Detection (VAD)
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      let speechDetected = false;
+      let speechFrames = 0;
+      if (vadSilenceTimer) {
+        clearTimeout(vadSilenceTimer);
+        vadSilenceTimer = null;
+      }
+      if (maxRecordingTimer) {
+        clearTimeout(maxRecordingTimer);
+      }
+      maxRecordingTimer = setTimeout(() => {
+        if (isRecording) {
+          stopRecording(true);
+        }
+      }, 15000);
+
       const updateRms = () => {
         if (!isRecording) return;
         analyser.getByteFrequencyData(dataArray);
@@ -254,11 +273,60 @@
         const avg = sum / dataArray.length;
         const normalizedRms = Math.min(1.0, avg / 128.0);
         orb.setAudioLevel(normalizedRms);
+
+        // VAD: detect user voice even when browser disables Web Speech API
+        if (normalizedRms > 0.07) {
+          speechFrames++;
+          if (speechFrames >= 3) {
+            speechDetected = true;
+            if (!lastFinalTranscript && transcriptEl.textContent.startsWith('Escuchando')) {
+              transcriptEl.textContent = 'Grabando voz... (toca para enviar)';
+            }
+          }
+          if (vadSilenceTimer) {
+            clearTimeout(vadSilenceTimer);
+            vadSilenceTimer = null;
+          }
+        } else if (speechDetected && autoSendToggle.checked) {
+          if (!vadSilenceTimer) {
+            vadSilenceTimer = setTimeout(() => {
+              if (isRecording) {
+                stopRecording(true);
+              }
+            }, 1200);
+          }
+        }
+
         rmsTimer = requestAnimationFrame(updateRms);
       };
       updateRms();
 
-      // 2. Initialize Web Speech API
+      // 2. Initialize MediaRecorder as resilient raw-audio pipeline (for Brave / privacy browsers)
+      audioChunks = [];
+      try {
+        let mimeType = 'audio/webm';
+        if (typeof MediaRecorder !== 'undefined') {
+          if (!MediaRecorder.isTypeSupported('audio/webm')) {
+            if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+            else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+          }
+          mediaRecorder = new MediaRecorder(micStream, { mimeType: mimeType });
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) {
+              audioChunks.push(e.data);
+            }
+          };
+          mediaRecorder.start(100);
+        }
+      } catch (recErr) {
+        console.warn('MediaRecorder error:', recErr);
+      }
+
+      // 3. Initialize Web Speech API (if supported and allowed by browser)
+      isRecording = true;
+      btnMic.classList.add('recording');
+      updateUIState('listening');
+
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (SpeechRecognition) {
         recognition = new SpeechRecognition();
@@ -267,12 +335,6 @@
         recognition.interimResults = true;
 
         lastFinalTranscript = '';
-
-        recognition.onstart = () => {
-          isRecording = true;
-          btnMic.classList.add('recording');
-          updateUIState('listening');
-        };
 
         recognition.onresult = (event) => {
           let interimTranscript = '';
@@ -301,24 +363,14 @@
         };
 
         recognition.onerror = (e) => {
-          console.warn('Speech recognition error:', e.error);
-          if (e.error !== 'no-speech') {
-            stopRecording(false);
-          }
+          console.warn('Speech recognition warning:', e.error);
         };
 
-        recognition.onend = () => {
-          if (isRecording) {
-            stopRecording(true);
-          }
-        };
-
-        recognition.start();
-      } else {
-        // Fallback if browser lacks Web Speech API
-        isRecording = true;
-        btnMic.classList.add('recording');
-        updateUIState('listening', 'Escuchando audio...');
+        try {
+          recognition.start();
+        } catch (e) {
+          console.warn('Recognition start error:', e);
+        }
       }
     } catch (err) {
       console.error('Failed to access microphone:', err);
@@ -339,14 +391,19 @@
       speechSilenceTimer = null;
     }
 
+    if (vadSilenceTimer) {
+      clearTimeout(vadSilenceTimer);
+      vadSilenceTimer = null;
+    }
+
+    if (maxRecordingTimer) {
+      clearTimeout(maxRecordingTimer);
+      maxRecordingTimer = null;
+    }
+
     if (rmsTimer) {
       cancelAnimationFrame(rmsTimer);
       rmsTimer = null;
-    }
-
-    if (micStream) {
-      micStream.getTracks().forEach(track => track.stop());
-      micStream = null;
     }
 
     if (recognition) {
@@ -358,13 +415,51 @@
       recognition = null;
     }
 
-    const commandText = (lastFinalTranscript || transcriptEl.textContent || '').trim();
+    const deliverPayload = () => {
+      const commandText = (lastFinalTranscript || '').trim();
 
-    if (send && commandText && commandText !== 'Toca el orbe para hablar' && commandText !== 'Escuchando...') {
-      sendCommand(commandText);
-      updateUIState('thinking', commandText);
+      if (send && commandText) {
+        sendCommand(commandText);
+        updateUIState('thinking', commandText);
+      } else if (send && audioChunks.length > 0) {
+        // Brave / Privacy browser fallback: send raw audio directly to local Whisper on PC
+        updateUIState('thinking', 'Transcribiendo audio en PC...');
+        const mime = (mediaRecorder && mediaRecorder.mimeType) ? mediaRecorder.mimeType : 'audio/webm';
+        const audioBlob = new Blob(audioChunks, { type: mime });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const parts = reader.result.split(',');
+          const base64Data = parts.length > 1 ? parts[1] : parts[0];
+          if (base64Data && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'audio',
+              data: base64Data,
+              format: 'webm'
+            }));
+          }
+        };
+        reader.readAsDataURL(audioBlob);
+      } else {
+        updateUIState('idle');
+      }
+
+      if (micStream) {
+        micStream.getTracks().forEach(track => track.stop());
+        micStream = null;
+      }
+    };
+
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.onstop = () => {
+        deliverPayload();
+      };
+      try {
+        mediaRecorder.stop();
+      } catch (e) {
+        deliverPayload();
+      }
     } else {
-      updateUIState('idle');
+      deliverPayload();
     }
   }
 

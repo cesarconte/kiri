@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkInterface>
+#include <QProcess>
 #include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -409,6 +410,36 @@ void KityMobileServer::onWebSocketTextMessage(const QString &message)
 
         if (!text.isEmpty()) {
             Q_EMIT voiceCommandReceived(text, fromVoice);
+        }
+    } else if (type == QStringLiteral("audio")) {
+        const QString b64Data = obj.value(QStringLiteral("data")).toString();
+        if (!b64Data.isEmpty()) {
+            const QByteArray audioBytes = QByteArray::fromBase64(b64Data.toLatin1());
+            const QString tempBase = QStringLiteral("/dev/shm/kity_mobile_%1").arg(QDateTime::currentMSecsSinceEpoch());
+            const QString webmPath = tempBase + QStringLiteral(".webm");
+            const QString wavPath = tempBase + QStringLiteral(".wav");
+
+            QFile f(webmPath);
+            if (f.open(QIODevice::WriteOnly)) {
+                f.write(audioBytes);
+                f.close();
+
+                // Convert to 16kHz Mono 16-bit PCM WAV for Whisper-cpp
+                QProcess::execute(QStringLiteral("ffmpeg"), {
+                    QStringLiteral("-y"),
+                    QStringLiteral("-i"), webmPath,
+                    QStringLiteral("-ar"), QStringLiteral("16000"),
+                    QStringLiteral("-ac"), QStringLiteral("1"),
+                    QStringLiteral("-c:a"), QStringLiteral("pcm_s16le"),
+                    wavPath
+                });
+
+                QFile::remove(webmPath);
+
+                if (QFileInfo::exists(wavPath) && QFileInfo(wavPath).size() > 100) {
+                    Q_EMIT voiceAudioReceived(wavPath);
+                }
+            }
         }
     }
 }

@@ -41,6 +41,7 @@
 #include <QOperatingSystemVersion>
 #include <QProcess>
 #include <QScreen>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QStorageInfo>
 #include <QTextStream>
@@ -111,6 +112,9 @@ void KityApplet::init()
     m_mobileServer = new KityMobileServer(1740, this);
     connect(m_mobileServer, &KityMobileServer::voiceCommandReceived, this, [this](const QString &text, bool fromVoice) {
         sendMessage(text, fromVoice);
+    });
+    connect(m_mobileServer, &KityMobileServer::voiceAudioReceived, this, [this](const QString &wavPath) {
+        transcribeAndExecuteAudio(wavPath);
     });
     connect(this, &KityApplet::stateChanged, this, [this]() {
         if (m_mobileServer) {
@@ -2262,6 +2266,56 @@ void KityApplet::runWhisperTranscription()
 
         QString text = QString::fromUtf8(whisperProc->readAllStandardOutput()).trimmed();
         // Clean bracketed artifacts like [BLANK_AUDIO] or (música)
+        static const QRegularExpression bracketRegex(QStringLiteral("\\[.*?\\]|\\(.*?\\)"));
+        text.remove(bracketRegex);
+        text = text.trimmed();
+
+        if (text.isEmpty()) {
+            setState(QStringLiteral("idle"), i18n("No se reconoció ninguna frase."));
+            return;
+        }
+
+        Q_EMIT transcriptionReady(text);
+        sendMessage(text, true);
+    });
+
+    whisperProc->start(whisperCli, args);
+}
+
+void KityApplet::transcribeAndExecuteAudio(const QString &wavPath)
+{
+    QString whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper-cli"));
+    if (whisperCli.isEmpty()) {
+        whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper"));
+    }
+    const QString modelPath = resolveWhisperModelPath();
+
+    if (whisperCli.isEmpty() || modelPath.isEmpty()) {
+        setState(QStringLiteral("error"), i18n("Whisper.cpp no disponible."));
+        QFile::remove(wavPath);
+        return;
+    }
+
+    setState(QStringLiteral("transcribing"), i18n("Transcribiendo audio del móvil…"));
+
+    QProcess *whisperProc = new QProcess(this);
+    QStringList args;
+    args << QStringLiteral("-m") << modelPath
+         << QStringLiteral("-f") << wavPath
+         << QStringLiteral("-t") << QStringLiteral("6")
+         << QStringLiteral("--no-timestamps")
+         << QStringLiteral("-l") << resolveWhisperLanguage();
+
+    connect(whisperProc, &QProcess::finished, this, [this, whisperProc, wavPath](int exitCode, QProcess::ExitStatus) {
+        whisperProc->deleteLater();
+        QFile::remove(wavPath);
+
+        if (exitCode != 0) {
+            setState(QStringLiteral("error"), i18n("Error al transcribir el audio del móvil."));
+            return;
+        }
+
+        QString text = QString::fromUtf8(whisperProc->readAllStandardOutput()).trimmed();
         static const QRegularExpression bracketRegex(QStringLiteral("\\[.*?\\]|\\(.*?\\)"));
         text.remove(bracketRegex);
         text = text.trimmed();
@@ -5736,6 +5790,18 @@ bool KityApplet::shareMobilePairingWithKdeConnect(const QString &deviceId) const
 
     bool ok = false;
     if (!targetDev.isEmpty()) {
+        // Register persistent "Abrir Kity Remote" RunCommand on the device
+        const QString runCmdConfigPath = QStringLiteral("%1/.config/kdeconnect/%2/kdeconnect_runcommand/config")
+                                             .arg(QDir::homePath(), targetDev);
+        QSettings s(runCmdConfigPath, QSettings::IniFormat);
+        QJsonObject cmds = QJsonDocument::fromJson(s.value(QStringLiteral("commands")).toByteArray()).object();
+        QJsonObject kityEntry;
+        kityEntry[QStringLiteral("name")] = QString::fromUtf8("🔮 Abrir Kity Remote");
+        kityEntry[QStringLiteral("command")] =
+            QStringLiteral("/usr/bin/qdbus6 org.cesar.kity /Kity org.cesar.kity.shareMobilePairingWithKdeConnect \"\"");
+        cmds[QStringLiteral("kity_remote_open")] = kityEntry;
+        s.setValue(QStringLiteral("commands"), QJsonDocument(cmds).toJson(QJsonDocument::Compact));
+
         ok = m_mobileServer->sendPairingUrlViaKdeConnect(targetDev);
     }
 

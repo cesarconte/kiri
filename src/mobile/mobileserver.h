@@ -40,6 +40,7 @@ public Q_SLOTS:
 
 Q_SIGNALS:
     void voiceCommandReceived(const QString &text, bool fromVoice);
+    void voiceAudioReceived(const QString &wavPath);
     void serverStarted(quint16 port);
     void serverStopped();
     void clientConnected(const QString &peerAddress);
