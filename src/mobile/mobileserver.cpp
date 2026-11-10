@@ -61,28 +61,16 @@ void KityMobileServer::loadOrCreateAuthToken()
 
 bool KityMobileServer::isAllowedClient(const QHostAddress &address) const
 {
-    if (address.isLoopback()) {
+    if (address.isLoopback() || address == QHostAddress::LocalHost || address == QHostAddress::LocalHostIPv6
+        || address == QHostAddress(QStringLiteral("127.0.0.1")) || address == QHostAddress(QStringLiteral("::1"))) {
         return true;
     }
 
-    // Convert IPv4-mapped IPv6 address to standard IPv4 if needed
-    QHostAddress ipv4Address(address.toIPv4Address());
-    if (ipv4Address.isNull()) {
-        ipv4Address = address;
-    }
-
-    const quint32 ip = ipv4Address.toIPv4Address();
-    if (ip == 0) {
-        return false;
-    }
-
-    // RFC 1918 Private Subnets:
-    // 10.0.0.0/8     -> 0x0A000000 - 0x0AFFFFFF
-    // 172.16.0.0/12  -> 0xAC100000 - 0xAC1FFFFF
-    // 192.168.0.0/16 -> 0xC0A80000 - 0xC0A8FFFF
-    if ((ip >= 0x0A000000 && ip <= 0x0AFFFFFF) ||
-        (ip >= 0xAC100000 && ip <= 0xAC1FFFFF) ||
-        (ip >= 0xC0A80000 && ip <= 0xC0A8FFFF)) {
+    const QString clientIpStr = address.toString();
+    // Allow private LAN ranges (RFC 1918) and IPv4-mapped IPv6 (e.g. ::ffff:192.168.1.12)
+    if (clientIpStr.contains(QStringLiteral("192.168.")) ||
+        clientIpStr.contains(QStringLiteral("10.")) ||
+        clientIpStr.contains(QStringLiteral("172."))) {
         return true;
     }
 
@@ -176,19 +164,19 @@ QString KityMobileServer::authToken() const
 QString KityMobileServer::localIpAddress() const
 {
     const auto interfaces = QNetworkInterface::allInterfaces();
-    for (const QNetworkInterface &iface : interfaces) {
-        // Skip loopback, virtual or down interfaces
-        if (iface.flags().testFlag(QNetworkInterface::IsLoopBack) ||
-            !iface.flags().testFlag(QNetworkInterface::IsUp) ||
-            !iface.flags().testFlag(QNetworkInterface::IsRunning)) {
+    for (const auto &iface : interfaces) {
+        if (!(iface.flags() & QNetworkInterface::IsUp) || (iface.flags() & QNetworkInterface::IsLoopBack)) {
             continue;
         }
 
         const auto entries = iface.addressEntries();
-        for (const QNetworkAddressEntry &entry : entries) {
+        for (const auto &entry : entries) {
             const QHostAddress addr = entry.ip();
-            if (addr.protocol() == QAbstractSocket::IPv4Protocol && isAllowedClient(addr) && !addr.isLoopback()) {
-                return addr.toString();
+            if (addr.protocol() == QAbstractSocket::IPv4Protocol) {
+                const QString ip = addr.toString();
+                if (ip.startsWith(QLatin1String("192.168."))) {
+                    return ip;
+                }
             }
         }
     }

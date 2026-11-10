@@ -107,8 +107,8 @@ void KityApplet::init()
                        this,
                        QDBusConnection::ExportAllInvokables | QDBusConnection::ExportAllProperties | QDBusConnection::ExportAllSignals);
 
-    // Initialize Kity Mobile Remote Web/WebSocket Server (Apple Intelligence PWA)
-    m_mobileServer = new KityMobileServer(8765, this);
+    // Initialize Kity Mobile Remote Web/WebSocket Server (Apple Intelligence PWA - Ports 1740/1741 in KDE Connect Firewall Range)
+    m_mobileServer = new KityMobileServer(1740, this);
     connect(m_mobileServer, &KityMobileServer::voiceCommandReceived, this, [this](const QString &text, bool fromVoice) {
         sendMessage(text, fromVoice);
     });

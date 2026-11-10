@@ -19,7 +19,7 @@ class KityMobileServer : public QObject
     Q_OBJECT
 
 public:
-    explicit KityMobileServer(quint16 port = 8765, QObject *parent = nullptr);
+    explicit KityMobileServer(quint16 port = 1740, QObject *parent = nullptr);
     ~KityMobileServer() override;
 
     bool start();
