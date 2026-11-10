@@ -13,24 +13,28 @@ import QtQuick.Window
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PlasmaComponents3
 
+import "cards" as Cards
+
 Window {
     id: root
 
     title: i18n("Kity")
     width: 540
     height: 760
-    minimumWidth: 440
-    minimumHeight: 580
     color: "transparent"
     flags: Qt.Window | Qt.FramelessWindowHint
 
     property bool isPinned: false
+    property bool compactMode: false
     property bool showWritingTools: false
     property bool showVisualIntelligence: false
     property bool showMathNotes: false
     property bool showPreferences: false
     property var mathResults: []
     property string visualCaptureScope: "region"
+
+    minimumWidth: compactMode ? 360 : 440
+    minimumHeight: compactMode ? 64 : 580
 
     property real animTime: 0.0
     NumberAnimation on animTime {
@@ -41,8 +45,20 @@ Window {
         running: glassContainer.isVoiceActive
     }
 
-    onIsPinnedChanged: {
-        if (isPinned) {
+    onIsPinnedChanged: updateWindowFlags()
+    onCompactModeChanged: {
+        if (compactMode) {
+            root.width = 440;
+            root.height = 76;
+        } else {
+            root.width = 540;
+            root.height = 760;
+        }
+        updateWindowFlags();
+    }
+
+    function updateWindowFlags() {
+        if (compactMode || isPinned) {
             root.flags = Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint;
         } else {
             root.flags = Qt.Window | Qt.FramelessWindowHint;
@@ -57,9 +73,33 @@ Window {
     }
 
     Shortcut {
+        sequences: ["Ctrl+I", "F2"]
+        onActivated: root.compactMode = !root.compactMode
+    }
+
+    Shortcut {
+        sequences: ["Ctrl+Shift+W", "Alt+W"]
+        onActivated: {
+            root.showWritingTools = !root.showWritingTools;
+            if (root.showWritingTools) {
+                root.showVisualIntelligence = false;
+                root.showMathNotes = false;
+            }
+        }
+    }
+
+    Shortcut {
         sequence: "Escape"
         onActivated: {
-            if (root.showPreferences) {
+            if (root.compactMode) {
+                if (kityClient.state === "listening") {
+                    kityClient.stopRecording();
+                } else if (kityClient.isSpeaking) {
+                    kityClient.stopSpeaking();
+                } else {
+                    root.close();
+                }
+            } else if (root.showPreferences) {
                 root.showPreferences = false;
             } else if (kityClient.state === "thinking") {
                 kityClient.stopGeneration();
@@ -77,7 +117,10 @@ Window {
     Rectangle {
         id: glassContainer
         anchors.fill: parent
-        radius: 22
+        radius: root.compactMode ? Math.round(height / 2) : 22
+        Behavior on radius {
+            NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+        }
 
         readonly property bool isVoiceActive: kityClient.state === "listening" || kityClient.state === "thinking" || kityClient.state === "speaking"
         readonly property bool isDark: Kirigami.Theme.colorSet === Kirigami.Theme.Window && Kirigami.Theme.backgroundColor.hslLightness < 0.5
@@ -114,6 +157,157 @@ Window {
         }
 
         // =====================================================================
+        // Siri Floating Dynamic Island Layout (Compact Mode)
+        // =====================================================================
+        RowLayout {
+            id: compactIslandLayout
+            anchors.fill: parent
+            anchors.leftMargin: 12
+            anchors.rightMargin: 12
+            anchors.topMargin: 8
+            anchors.bottomMargin: 8
+            spacing: 10
+            visible: root.compactMode
+
+            // Drag handler so user can grab and reposition the floating island anywhere
+            DragHandler {
+                target: null
+                onActiveChanged: {
+                    if (active) root.startSystemMove();
+                }
+            }
+
+            // Left: Siri Orb Animation (Interactive)
+            Item {
+                Layout.preferredWidth: 46
+                Layout.preferredHeight: 46
+                Layout.alignment: Qt.AlignVCenter
+
+                SiriOrbAnimation {
+                    anchors.centerIn: parent
+                    width: parent.width
+                    height: parent.height
+                    assistantState: kityClient.state
+                    audioLevel: kityClient.audioLevel
+                }
+
+                // Click on the orb toggles recording
+                HoverHandler { id: orbHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler {
+                    onTapped: {
+                        if (kityClient.state === "listening") {
+                            kityClient.stopRecording();
+                        } else if (kityClient.isSpeaking) {
+                            kityClient.stopSpeaking();
+                        } else {
+                            kityClient.toggleRecording();
+                        }
+                    }
+                }
+                QQC2.ToolTip.text: kityClient.state === "listening" ? i18n("Detener escucha") : i18n("Hablar por voz")
+                QQC2.ToolTip.visible: orbHover.hovered
+            }
+
+            // Center: Dynamic state and speech ticker
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
+                spacing: 1
+
+                HoverHandler { id: centerHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler {
+                    onTapped: root.compactMode = false
+                }
+                QQC2.ToolTip.text: i18n("Clic para expandir a conversación completa")
+                QQC2.ToolTip.visible: centerHover.hovered
+
+                RowLayout {
+                    spacing: 6
+
+                    // Mini glowing dot for status
+                    Rectangle {
+                        implicitWidth: 6
+                        implicitHeight: 6
+                        radius: 3
+                        color: {
+                            if (kityClient.state === "listening") return "#00e5ff";
+                            if (kityClient.state === "thinking") return "#b388ff";
+                            if (kityClient.state === "speaking") return "#00e676";
+                            return Kirigami.Theme.highlightColor;
+                        }
+                    }
+
+                    PlasmaComponents3.Label {
+                        text: {
+                            if (kityClient.state === "listening") return i18n("Escuchando…");
+                            if (kityClient.state === "transcribing") return i18n("Procesando voz…");
+                            if (kityClient.state === "thinking") return i18n("Pensando…");
+                            if (kityClient.state === "speaking") return i18n("Kity");
+                            return i18n("Kity · Asistente");
+                        }
+                        font.bold: true
+                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                        opacity: 0.95
+                    }
+                }
+
+                PlasmaComponents3.Label {
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                    maximumLineCount: 1
+                    font.pixelSize: Kirigami.Theme.defaultFont.pixelSize - 1
+                    opacity: 0.75
+                    text: {
+                        if (kityClient.streamingText.length > 0) {
+                            return kityClient.streamingText;
+                        }
+                        if (kityClient.statusMessage.length > 0 && kityClient.state !== "idle") {
+                            return kityClient.statusMessage;
+                        }
+                        if (kityClient.messages.length > 0) {
+                            const last = kityClient.messages[kityClient.messages.length - 1];
+                            return (last.role === "assistant" ? "" : "Tú: ") + (last.content || "");
+                        }
+                        return i18n("Toca el orbe para hablar o expandir…");
+                    }
+                }
+            }
+
+            // Right: Actions (Mic toggle, Expand to full chat, Close)
+            RowLayout {
+                Layout.alignment: Qt.AlignVCenter
+                spacing: 2
+
+                // Mic Quick Toggle Button
+                PlasmaComponents3.ToolButton {
+                    icon.name: kityClient.isRecording ? "media-playback-stop" : "audio-input-microphone"
+                    display: PlasmaComponents3.AbstractButton.IconOnly
+                    QQC2.ToolTip.text: kityClient.isRecording ? i18n("Detener escucha") : i18n("Hablar por voz")
+                    QQC2.ToolTip.visible: hovered
+                    onClicked: kityClient.toggleRecording()
+                }
+
+                // Expand Button
+                PlasmaComponents3.ToolButton {
+                    icon.name: "window-maximize"
+                    display: PlasmaComponents3.AbstractButton.IconOnly
+                    QQC2.ToolTip.text: i18n("Expandir a ventana completa")
+                    QQC2.ToolTip.visible: hovered
+                    onClicked: root.compactMode = false
+                }
+
+                // Close Button
+                PlasmaComponents3.ToolButton {
+                    icon.name: "window-close"
+                    display: PlasmaComponents3.AbstractButton.IconOnly
+                    QQC2.ToolTip.text: i18n("Ocultar")
+                    QQC2.ToolTip.visible: hovered
+                    onClicked: root.close()
+                }
+            }
+        }
+
+        // =====================================================================
         // Window Content Layout
         // =====================================================================
         ColumnLayout {
@@ -124,7 +318,7 @@ Window {
             anchors.rightMargin: Kirigami.Units.largeSpacing + 4
             anchors.bottomMargin: Kirigami.Units.largeSpacing + 4
             spacing: Kirigami.Units.mediumSpacing
-            visible: !root.showPreferences
+            visible: !root.showPreferences && !root.compactMode
 
             // -----------------------------------------------------------------
             // Top Window Bar: Traffic Lights, Siri Status Pill, Preferences & Pin
@@ -223,9 +417,14 @@ Window {
                     height: 26
                     width: siriPillRow.implicitWidth + 20
                     radius: 13
-                    color: Qt.rgba(1, 1, 1, 0.08)
+                    color: centerPillHover.hovered ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.08)
                     border.width: 1
                     border.color: Qt.rgba(1, 1, 1, 0.14)
+
+                    HoverHandler { id: centerPillHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: root.compactMode = true }
+                    QQC2.ToolTip.text: i18n("Reducir a píldora flotante (Siri Island)")
+                    QQC2.ToolTip.visible: centerPillHover.hovered
 
                     RowLayout {
                         id: siriPillRow
@@ -247,12 +446,20 @@ Window {
                     }
                 }
 
-                // Right: Preferences & Pin
+                // Right: Compact Island Mode, Preferences & Pin
                 Row {
                     anchors.right: parent.right
                     anchors.rightMargin: Kirigami.Units.smallSpacing
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 4
+
+                    // Compact Island Button
+                    PlasmaComponents3.ToolButton {
+                        icon.name: "view-restore-symbolic"
+                        QQC2.ToolTip.text: i18n("Modo píldora flotante (Siri Island)")
+                        QQC2.ToolTip.visible: hovered
+                        onClicked: root.compactMode = true
+                    }
 
                     // Pin Window On Top
                     PlasmaComponents3.ToolButton {
@@ -329,6 +536,7 @@ Window {
                         if (mode === "voice_only") return "audio-input-microphone-symbolic";
                         return "audio-volume-muted-symbolic";
                     }
+                    icon.color: Kirigami.Theme.textColor
                     onClicked: {
                         const current = kityClient.speechOutputMode;
                         if (current === "manual") {
@@ -352,6 +560,7 @@ Window {
                 // Writing Tools Drawer Toggle
                 PlasmaComponents3.ToolButton {
                     icon.name: "document-edit-symbolic"
+                    icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                     checkable: true
                     checked: root.showWritingTools
                     onClicked: {
@@ -368,6 +577,7 @@ Window {
                 // Visual Intelligence Drawer Toggle
                 PlasmaComponents3.ToolButton {
                     icon.name: "camera-photo-symbolic"
+                    icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                     checkable: true
                     checked: root.showVisualIntelligence
                     onClicked: {
@@ -384,6 +594,7 @@ Window {
                 // Math Notes Drawer Toggle
                 PlasmaComponents3.ToolButton {
                     icon.name: "view-time-schedule-calculus-symbolic"
+                    icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                     checkable: true
                     checked: root.showMathNotes
                     onClicked: {
@@ -398,9 +609,27 @@ Window {
                     QQC2.ToolTip.text: i18n("Notas matemáticas (cálculo en vivo con variables)")
                 }
 
+                // Kity Mobile Remote Button (Phone as Microphone via Apple Intelligence PWA & KDE Connect)
+                PlasmaComponents3.ToolButton {
+                    id: mobileRemoteButton
+                    icon.name: "kdeconnect-symbolic"
+                    icon.color: Kirigami.Theme.textColor
+                    onClicked: {
+                        var shared = kityClient.shareMobilePairingWithKdeConnect();
+                        if (shared) {
+                            kityClient.statusMessage = i18n("Enlace de Kity Remote enviado a tu teléfono por KDE Connect");
+                        } else {
+                            Qt.openUrlExternally(kityClient.mobilePairingUrl);
+                        }
+                    }
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: i18n("Conectar teléfono como micrófono (Kity Mobile Portal)")
+                }
+
                 // Clear Conversation Button
                 PlasmaComponents3.ToolButton {
                     icon.name: "edit-clear-history-symbolic"
+                    icon.color: Kirigami.Theme.textColor
                     visible: kityClient.messages.length > 0
                     onClicked: kityClient.clearHistory()
                     QQC2.ToolTip.visible: hovered
@@ -454,7 +683,7 @@ Window {
 
                     GridLayout {
                         Layout.fillWidth: true
-                        columns: 4
+                        columns: 5
                         columnSpacing: Kirigami.Units.smallSpacing
                         rowSpacing: Kirigami.Units.smallSpacing
                         uniformCellWidths: true
@@ -520,6 +749,22 @@ Window {
                             text: i18n("📋 Tabla")
                             onClicked: {
                                 kityClient.applyWritingTool("table", promptField.text);
+                                root.showWritingTools = false;
+                            }
+                        }
+                        PlasmaComponents3.Button {
+                            Layout.fillWidth: true
+                            text: i18n("🌐 A español")
+                            onClicked: {
+                                kityClient.applyWritingTool("translate:es", promptField.text);
+                                root.showWritingTools = false;
+                            }
+                        }
+                        PlasmaComponents3.Button {
+                            Layout.fillWidth: true
+                            text: i18n("🌐 To English")
+                            onClicked: {
+                                kityClient.applyWritingTool("translate:en", promptField.text);
                                 root.showWritingTools = false;
                             }
                         }
@@ -903,6 +1148,48 @@ Window {
                                         }
                                     }
 
+                                    // Generative Interactive Cards (Phase 5 - UI Generativa)
+                                    Cards.WeatherCard {
+                                        visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "weather" && msgDelegate.modelData.cardData !== undefined
+                                        Layout.fillWidth: true
+                                        cardData: msgDelegate.modelData.cardData || ({})
+                                    }
+
+                                    Cards.MediaCard {
+                                        visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "media" && msgDelegate.modelData.cardData !== undefined
+                                        Layout.fillWidth: true
+                                        cardData: msgDelegate.modelData.cardData || ({})
+                                        onMediaActionTriggered: action => kityClient.controlMedia(action)
+                                    }
+
+                                    Cards.EventCard {
+                                        visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "event" && msgDelegate.modelData.cardData !== undefined
+                                        Layout.fillWidth: true
+                                        cardData: msgDelegate.modelData.cardData || ({})
+                                        onOpenCalendarRequested: kityClient.openKOrganizer()
+                                    }
+
+                                    // Interactive Source Chips (Phase 3 - Deep Web Research & Citations)
+                                    Flow {
+                                        visible: !msgDelegate.isUser && msgDelegate.modelData.sources !== undefined && msgDelegate.modelData.sources.length > 0
+                                        Layout.fillWidth: true
+                                        spacing: Kirigami.Units.smallSpacing
+
+                                        Repeater {
+                                            model: msgDelegate.modelData.sources || []
+
+                                            PlasmaComponents3.Button {
+                                                required property var modelData
+                                                icon.name: "globe"
+                                                text: modelData.title || i18n("Fuente")
+                                                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                                                onClicked: Qt.openUrlExternally(modelData.url)
+                                                QQC2.ToolTip.visible: hovered
+                                                QQC2.ToolTip.text: modelData.url || ""
+                                            }
+                                        }
+                                    }
+
                                     RowLayout {
                                         visible: !msgDelegate.isUser
                                         Layout.fillWidth: true
@@ -932,7 +1219,7 @@ Window {
             // Dynamic status bar when recording, transcribing, thinking, or speaking (collapses when empty)
             PlasmaComponents3.Label {
                 Layout.fillWidth: true
-                visible: kityClient.statusMessage.length > 0
+                visible: kityClient.statusMessage.length > 0 && kityClient.state !== "idle"
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 text: kityClient.statusMessage
@@ -946,7 +1233,7 @@ Window {
             // -----------------------------------------------------------------
             Rectangle {
                 Layout.fillWidth: true
-                implicitHeight: dockCol.implicitHeight + Kirigami.Units.smallSpacing * 2
+                implicitHeight: dockCol.implicitHeight + Kirigami.Units.mediumSpacing * 2
                 radius: Kirigami.Units.smallSpacing * 1.5
                 color: (kityClient.state === "listening")
                     ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.14)
@@ -959,14 +1246,17 @@ Window {
                 ColumnLayout {
                     id: dockCol
                     anchors.fill: parent
-                    anchors.margins: Kirigami.Units.smallSpacing
-                    spacing: Kirigami.Units.smallSpacing
+                    anchors.topMargin: Kirigami.Units.mediumSpacing
+                    anchors.bottomMargin: Kirigami.Units.mediumSpacing
+                    anchors.leftMargin: Kirigami.Units.mediumSpacing
+                    anchors.rightMargin: Kirigami.Units.mediumSpacing
+                    spacing: Kirigami.Units.mediumSpacing
 
                     // Siri Orb Centered Interactive Voice Control (Dynamic Audio Reactivity)
                     Item {
                         Layout.fillWidth: true
-                        implicitHeight: Kirigami.Units.gridUnit * 3.8
-                        clip: true
+                        implicitHeight: siriOrb.implicitHeight + Kirigami.Units.smallSpacing * 2
+                        clip: false
 
                         SiriOrbAnimation {
                             id: siriOrb
@@ -1022,6 +1312,7 @@ Window {
                             Layout.alignment: Qt.AlignBottom
                             Layout.minimumHeight: Kirigami.Units.gridUnit * 2.2
                             icon.name: kityClient.state === "thinking" ? "process-stop-symbolic" : "document-send-symbolic"
+                            icon.color: enabled ? (kityClient.state === "thinking" ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor) : Kirigami.Theme.disabledTextColor
                             enabled: kityClient.state === "thinking" || promptField.text.trim().length > 0
                             onClicked: {
                                 if (kityClient.state === "thinking") {

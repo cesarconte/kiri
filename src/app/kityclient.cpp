@@ -8,6 +8,8 @@
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
 #include <QDBusReply>
+#include <QDBusArgument>
+#include <QDBusVariant>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
@@ -238,6 +240,41 @@ void KityClient::onServiceUnregistered(const QString &service)
     Q_EMIT connectionChanged();
 }
 
+static QVariant cleanDbusItem(const QVariant &item)
+{
+    if (item.canConvert<QDBusVariant>()) {
+        return cleanDbusItem(item.value<QDBusVariant>().variant());
+    }
+    if (item.canConvert<QDBusArgument>()) {
+        const QDBusArgument arg = item.value<QDBusArgument>();
+        if (arg.currentType() == QDBusArgument::MapType) {
+            QVariantMap map;
+            arg.beginMap();
+            while (!arg.atEnd()) {
+                QString key;
+                QVariant val;
+                arg.beginMapEntry();
+                arg >> key >> val;
+                arg.endMapEntry();
+                map.insert(key, cleanDbusItem(val));
+            }
+            arg.endMap();
+            return map;
+        } else if (arg.currentType() == QDBusArgument::ArrayType) {
+            QVariantList list;
+            arg.beginArray();
+            while (!arg.atEnd()) {
+                QVariant elem;
+                arg >> elem;
+                list.append(cleanDbusItem(elem));
+            }
+            arg.endArray();
+            return list;
+        }
+    }
+    return item;
+}
+
 void KityClient::syncFromDBus()
 {
     if (!m_iface || !m_iface->isValid()) {
@@ -332,7 +369,12 @@ void KityClient::syncFromDBus()
 
     const QVariant msgsVar = m_iface->property("messages");
     if (msgsVar.isValid() && msgsVar.canConvert<QVariantList>()) {
-        const QVariantList nextMsgs = msgsVar.toList();
+        const QVariantList rawMsgs = msgsVar.toList();
+        QVariantList nextMsgs;
+        nextMsgs.reserve(rawMsgs.size());
+        for (const QVariant &item : rawMsgs) {
+            nextMsgs.append(cleanDbusItem(item));
+        }
         if (m_messages.size() != nextMsgs.size() || m_messages != nextMsgs) {
             m_messages = nextMsgs;
             Q_EMIT messagesChanged();
@@ -564,4 +606,49 @@ QStringList KityClient::extractTerminalCommands(const QString &markdown) const
         commands.append(m.captured(1).trimmed());
     }
     return commands;
+}
+
+void KityClient::controlMedia(const QString &action)
+{
+    if (m_iface && m_iface->isValid()) {
+        m_iface->asyncCall(QStringLiteral("controlMedia"), action);
+    } else {
+        const QString act = action.trimmed().toLower();
+        if (act == QStringLiteral("play-pause")) {
+            QProcess::execute(QStringLiteral("playerctl"), {QStringLiteral("play-pause")});
+        } else if (act == QStringLiteral("next")) {
+            QProcess::execute(QStringLiteral("playerctl"), {QStringLiteral("next")});
+        } else if (act == QStringLiteral("previous")) {
+            QProcess::execute(QStringLiteral("playerctl"), {QStringLiteral("previous")});
+        }
+    }
+}
+
+void KityClient::openKOrganizer() const
+{
+    if (m_iface && m_iface->isValid()) {
+        m_iface->asyncCall(QStringLiteral("openKOrganizer"));
+    } else {
+        const QString korganizer = QStandardPaths::findExecutable(QStringLiteral("korganizer"));
+        if (!korganizer.isEmpty()) {
+            QProcess::startDetached(korganizer, QStringList());
+        }
+    }
+}
+
+QString KityClient::mobilePairingUrl() const
+{
+    if (!m_iface || !m_iface->isValid()) {
+        return QString();
+    }
+    return m_iface->property("mobilePairingUrl").toString();
+}
+
+bool KityClient::shareMobilePairingWithKdeConnect(const QString &deviceId) const
+{
+    if (!m_iface || !m_iface->isValid()) {
+        return false;
+    }
+    QDBusReply<bool> reply = m_iface->call(QStringLiteral("shareMobilePairingWithKdeConnect"), deviceId);
+    return reply.isValid() ? reply.value() : false;
 }

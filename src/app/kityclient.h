@@ -83,6 +83,7 @@ class KityClient : public QObject
     Q_PROPERTY(bool earconsEnabled READ earconsEnabled WRITE setEarconsEnabled NOTIFY earconsEnabledChanged)
     Q_PROPERTY(QString ollamaModel READ ollamaModel WRITE setOllamaModel NOTIFY ollamaModelChanged)
     Q_PROPERTY(bool connected READ isConnected NOTIFY connectionChanged)
+    Q_PROPERTY(QString mobilePairingUrl READ mobilePairingUrl NOTIFY mobilePairingUrlChanged)
     Q_PROPERTY(QObject *configuration READ configuration CONSTANT)
 
 public:
@@ -135,6 +136,10 @@ public:
     Q_INVOKABLE QString renderMarkdown(const QString &markdown) const;
     Q_INVOKABLE void speakText(const QString &text);
     Q_INVOKABLE QStringList extractTerminalCommands(const QString &markdown) const;
+    Q_INVOKABLE void controlMedia(const QString &action);
+    Q_INVOKABLE void openKOrganizer() const;
+    Q_INVOKABLE QString mobilePairingUrl() const;
+    Q_INVOKABLE bool shareMobilePairingWithKdeConnect(const QString &deviceId = QString()) const;
 
 public Q_SLOTS:
     void syncFromDBus();
@@ -154,6 +159,7 @@ Q_SIGNALS:
     void ollamaModelChanged();
     void connectionChanged();
     void transcriptionReady(const QString &text);
+    void mobilePairingUrlChanged();
 
 private Q_SLOTS:
     void onServiceRegistered(const QString &service);
