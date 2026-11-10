@@ -264,9 +264,10 @@ void KityMobileServer::processHttpRequest(QTcpSocket *socket)
 
     const QString method = requestLine.at(0);
     const QString pathWithQuery = requestLine.at(1);
+    const bool isHead = (method == QStringLiteral("HEAD"));
 
-    if (method != QStringLiteral("GET")) {
-        sendHttpResponse(socket, 405, QStringLiteral("Method Not Allowed"), QStringLiteral("text/plain"), "Solo método GET permitido.");
+    if (method != QStringLiteral("GET") && !isHead) {
+        sendHttpResponse(socket, 405, QStringLiteral("Method Not Allowed"), QStringLiteral("text/plain"), "Solo métodos GET y HEAD permitidos.");
         return;
     }
 
@@ -276,9 +277,23 @@ void KityMobileServer::processHttpRequest(QTcpSocket *socket)
         path = QStringLiteral("/index.html");
     }
 
-    // Static Resource Routing from Qt Embedded Resources (Zero Disk I/O)
+    // 1. Try static resource routing from Qt Embedded Resources (Zero Disk I/O)
     QString resourcePath = QStringLiteral(":/kity/mobile/web") + path;
     QFile file(resourcePath);
+
+    // 2. Fallback to filesystem if not yet loaded in resource cache
+    if (!file.exists()) {
+        const QString devPath = QStringLiteral("/home/cesar/Proyectos/kiri/src/mobile/web") + path;
+        if (QFile::exists(devPath)) {
+            file.setFileName(devPath);
+        } else {
+            const QString installedPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation,
+                                                                 QStringLiteral("kity/mobile/web") + path);
+            if (!installedPath.isEmpty()) {
+                file.setFileName(installedPath);
+            }
+        }
+    }
 
     if (!file.exists()) {
         sendHttpResponse(socket, 404, QStringLiteral("Not Found"), QStringLiteral("text/plain"), "Archivo no encontrado.");
@@ -308,7 +323,11 @@ void KityMobileServer::processHttpRequest(QTcpSocket *socket)
             content.prepend(wsPortInject.toUtf8());
         }
 
-        sendHttpResponse(socket, 200, QStringLiteral("OK"), contentType, content);
+        if (isHead) {
+            sendHttpResponse(socket, 200, QStringLiteral("OK"), contentType, QByteArray());
+        } else {
+            sendHttpResponse(socket, 200, QStringLiteral("OK"), contentType, content);
+        }
     } else {
         sendHttpResponse(socket, 500, QStringLiteral("Internal Server Error"), QStringLiteral("text/plain"), "Error al leer recurso.");
     }

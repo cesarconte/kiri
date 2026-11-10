@@ -31,7 +31,10 @@ plasma_add_applet(org.cesar.kity
         res/kity-symbolic.svg
         res/kity-listening.svg
         res/kity-listening-symbolic.svg
-        mobile/mobile_resources.qrc
+)
+
+qt6_add_resources(org.cesar.kity "mobile_resources"
+    FILES mobile/mobile_resources.qrc
 )
 
 target_include_directories(org.cesar.kity PRIVATE
@@ -142,6 +145,10 @@ install(FILES org.cesar.kity.desktop
 install(FILES kity_dolphin.desktop
         DESTINATION ${KDE_INSTALL_DATADIR}/kio/servicemenus
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+)
+
+install(DIRECTORY mobile/web/
+        DESTINATION ${KDE_INSTALL_DATADIR}/kity/mobile/web
 )
 
 add_subdirectory(kcm)
