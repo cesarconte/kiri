@@ -15,10 +15,15 @@ plasma_add_applet(org.cesar.kity
         kityapplet.cpp
         mathnotes.cpp
         mathnotes.h
+        mobile/mobileserver.cpp
+        mobile/mobileserver.h
         ${kity_SRCS}
     QML_SOURCES
         qml/main.qml
         qml/SiriOrbAnimation.qml
+        qml/cards/WeatherCard.qml
+        qml/cards/MediaCard.qml
+        qml/cards/EventCard.qml
     RESOURCES
         res/main.xml
         res/org.cesar.kity.svg
@@ -26,9 +31,13 @@ plasma_add_applet(org.cesar.kity
         res/kity-symbolic.svg
         res/kity-listening.svg
         res/kity-listening-symbolic.svg
+        mobile/mobile_resources.qrc
 )
 
-target_include_directories(org.cesar.kity PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(org.cesar.kity PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/mobile
+)
 
 target_link_libraries(org.cesar.kity PRIVATE
     Qt6::Core
@@ -36,6 +45,7 @@ target_link_libraries(org.cesar.kity PRIVATE
     Qt6::Gui
     Qt6::Network
     Qt6::Quick
+    Qt6::WebSockets
     KF6::ConfigCore
     KF6::CoreAddons
     KF6::I18n
@@ -53,6 +63,35 @@ install(FILES res/org.cesar.kity.svg
               res/kity-listening-symbolic.svg
         DESTINATION ${KDE_INSTALL_ICONDIR}/hicolor/scalable/apps
 )
+
+install(FILES res/kity-symbolic.svg
+              res/kity-listening-symbolic.svg
+        DESTINATION ${KDE_INSTALL_ICONDIR}/hicolor/symbolic/apps
+)
+
+install(FILES res/kity-symbolic.svg
+              res/kity-listening-symbolic.svg
+        DESTINATION ${KDE_INSTALL_ICONDIR}/hicolor/scalable/status
+)
+
+# Also ensure macOS-GoldenGate theme variants receive the symbolic and full-color icons
+install(CODE "
+    set(THEME_NAMES macOS-GoldenGate macOS-GoldenGate-dark macOS-GoldenGate-light)
+    foreach(theme \${THEME_NAMES})
+        set(THEME_DIR \"\$ENV{HOME}/.local/share/icons/\${theme}\")
+        if(IS_DIRECTORY \"\${THEME_DIR}\")
+            file(MAKE_DIRECTORY \"\${THEME_DIR}/apps/symbolic\" \"\${THEME_DIR}/status/symbolic\" \"\${THEME_DIR}/apps/scalable\")
+            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/kity-symbolic.svg\" DESTINATION \"\${THEME_DIR}/apps/symbolic\")
+            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/kity-symbolic.svg\" DESTINATION \"\${THEME_DIR}/status/symbolic\")
+            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/kity-listening-symbolic.svg\" DESTINATION \"\${THEME_DIR}/apps/symbolic\")
+            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/kity-listening-symbolic.svg\" DESTINATION \"\${THEME_DIR}/status/symbolic\")
+            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/kity.svg\" DESTINATION \"\${THEME_DIR}/apps/scalable\")
+            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/kity-listening.svg\" DESTINATION \"\${THEME_DIR}/apps/scalable\")
+            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/org.cesar.kity.svg\" DESTINATION \"\${THEME_DIR}/apps/scalable\")
+            execute_process(COMMAND gtk-update-icon-cache -f -t \"\${THEME_DIR}\" ERROR_QUIET OUTPUT_QUIET)
+        endif()
+    endforeach()
+")
 
 # Spotlight / KRunner Plugin (Phase 4)
 kcoreaddons_add_plugin(krunner_kity
@@ -90,6 +129,7 @@ target_link_libraries(kity PRIVATE
     KF6::CoreAddons
     KF6::DBusAddons
     KF6::I18n
+    KF6::Notifications
     KF6::WindowSystem
 )
 
@@ -97,6 +137,11 @@ install(TARGETS kity ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
 
 install(FILES org.cesar.kity.desktop
         DESTINATION ${KDE_INSTALL_APPDIR}
+)
+
+install(FILES kity_dolphin.desktop
+        DESTINATION ${KDE_INSTALL_DATADIR}/kio/servicemenus
+        PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 )
 
 add_subdirectory(kcm)

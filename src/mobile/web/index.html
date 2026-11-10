@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kity">
+  <meta name="theme-color" content="#06070a">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icons/kity-icon-192.svg">
+  <link rel="apple-touch-icon" href="icons/kity-icon-192.svg">
+  <title>Kity Voice</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Apple Intelligence Edge Glow -->
+  <div id="screenGlow" class="screen-glow"></div>
+
+  <main class="app-container">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="brand">
+        <span class="brand-dot" id="statusDot"></span>
+        <span class="brand-title">Kity Remote</span>
+      </div>
+      <div class="top-actions">
+        <button id="btnSettings" class="icon-btn" aria-label="Ajustes">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Center Stage: Orb and Status -->
+    <section class="stage">
+      <div class="orb-wrapper" id="orbWrapper">
+        <canvas id="orbCanvas" width="340" height="340"></canvas>
+      </div>
+
+      <div class="text-stage">
+        <div id="transcript" class="transcript">Toca el orbe para hablar</div>
+        <div id="statusSub" class="status-sub">Conectado a CachyOS Plasma 6</div>
+      </div>
+    </section>
+
+    <!-- Bottom Controls -->
+    <footer class="bottom-bar">
+      <button id="btnMic" class="mic-button" aria-label="Activar micrófono">
+        <svg class="mic-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+          <line x1="12" y1="19" x2="12" y2="23"></line>
+          <line x1="8" y1="23" x2="16" y2="23"></line>
+        </svg>
+      </button>
+      <div class="hint-text" id="hintText">Pulsa para hablar o mantén pulsado</div>
+    </footer>
+  </main>
+
+  <!-- Settings Dialog (Frosted Glass Sheet) -->
+  <dialog id="settingsDialog" class="frosted-dialog">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h3>Ajustes de Kity Mobile</h3>
+        <button id="btnCloseSettings" class="close-btn">&times;</button>
+      </div>
+      <div class="dialog-body">
+        <div class="form-group">
+          <label for="tokenInput">Token de Seguridad:</label>
+          <input type="password" id="tokenInput" placeholder="Token de 64 caracteres">
+        </div>
+        <div class="form-group toggle-group">
+          <label for="hapticToggle">Vibración háptica:</label>
+          <input type="checkbox" id="hapticToggle" checked>
+        </div>
+        <div class="form-group toggle-group">
+          <label for="autoSendToggle">Envío automático al pausar voz:</label>
+          <input type="checkbox" id="autoSendToggle" checked>
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button id="btnSaveSettings" class="btn-primary">Guardar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="orb.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

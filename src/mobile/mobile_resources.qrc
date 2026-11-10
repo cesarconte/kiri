@@ -1,0 +1,12 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/kity/mobile/web">
+        <file alias="index.html">web/index.html</file>
+        <file alias="style.css">web/style.css</file>
+        <file alias="orb.js">web/orb.js</file>
+        <file alias="app.js">web/app.js</file>
+        <file alias="manifest.json">web/manifest.json</file>
+        <file alias="icons/kity-icon-192.svg">web/icons/kity-icon-192.svg</file>
+        <file alias="icons/kity-icon-512.svg">web/icons/kity-icon-512.svg</file>
+    </qresource>
+</RCC>

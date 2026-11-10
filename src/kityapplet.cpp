@@ -5,6 +5,7 @@
 
 #include "kityapplet.h"
 #include "mathnotes.h"
+#include "mobileserver.h"
 
 #include <QHash>
 #include "debug.h"
@@ -25,6 +26,7 @@
 #include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDBusReply>
+#include <QDBusMessage>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -41,8 +43,10 @@
 #include <QScreen>
 #include <QStandardPaths>
 #include <QStorageInfo>
+#include <QTextStream>
 #include <QSysInfo>
 #include <QUrlQuery>
+#include <QUuid>
 
 K_PLUGIN_CLASS_WITH_JSON(KityApplet, "metadata.json")
 
@@ -60,6 +64,16 @@ KityApplet::~KityApplet()
     stopRecording();
     stopSpeaking();
     stopWakeWordListener();
+    if (m_currentOllamaReply) {
+        m_currentOllamaReply->abort();
+        m_currentOllamaReply->deleteLater();
+        m_currentOllamaReply = nullptr;
+    }
+    if (m_currentGeminiReply) {
+        m_currentGeminiReply->abort();
+        m_currentGeminiReply->deleteLater();
+        m_currentGeminiReply = nullptr;
+    }
 }
 
 void KityApplet::init()
@@ -92,6 +106,23 @@ void KityApplet::init()
     bus.registerObject(QStringLiteral("/Kity"),
                        this,
                        QDBusConnection::ExportAllInvokables | QDBusConnection::ExportAllProperties | QDBusConnection::ExportAllSignals);
+
+    // Initialize Kity Mobile Remote Web/WebSocket Server (Apple Intelligence PWA)
+    m_mobileServer = new KityMobileServer(8765, this);
+    connect(m_mobileServer, &KityMobileServer::voiceCommandReceived, this, [this](const QString &text, bool fromVoice) {
+        sendMessage(text, fromVoice);
+    });
+    connect(this, &KityApplet::stateChanged, this, [this]() {
+        if (m_mobileServer) {
+            m_mobileServer->broadcastState(state(), m_statusMessage);
+        }
+    });
+    connect(this, &KityApplet::audioLevelChanged, this, [this]() {
+        if (m_mobileServer) {
+            m_mobileServer->broadcastAudioLevel(m_audioLevel);
+        }
+    });
+    m_mobileServer->start();
 
     // Wire internal configure action to systemsettings kcm_kity with macOS-style naming
     QAction *cfgAct = internalAction(QStringLiteral("configure"));
@@ -159,12 +190,26 @@ void KityApplet::setWakeWordEnabled(bool enabled)
 void KityApplet::setState(const QString &newState, const QString &newStatus)
 {
     const bool stateChangedFlag = (m_state != newState);
-    const bool statusChangedFlag = (m_statusMessage != newStatus);
+    const QString oldStatus = m_statusMessage;
 
     m_state = newState;
-    if (!newStatus.isNull()) {
+    if (!newStatus.isEmpty()) {
         m_statusMessage = newStatus;
+    } else if (newState == QLatin1String("idle")) {
+        m_statusMessage.clear();
+    } else if (newState == QLatin1String("listening")) {
+        m_statusMessage = i18n("Escuchando…");
+    } else if (newState == QLatin1String("transcribing")) {
+        m_statusMessage = i18n("Transcribiendo voz…");
+    } else if (newState == QLatin1String("thinking")) {
+        m_statusMessage = i18n("Generando respuesta…");
+    } else if (newState == QLatin1String("speaking")) {
+        m_statusMessage = i18n("Reproduciendo respuesta…");
+    } else {
+        m_statusMessage.clear();
     }
+
+    const bool statusChangedFlag = (oldStatus != m_statusMessage);
 
     if (stateChangedFlag) {
         Q_EMIT stateChanged();
@@ -173,15 +218,25 @@ void KityApplet::setState(const QString &newState, const QString &newStatus)
         Q_EMIT statusMessageChanged();
     }
 
-    if (newState == QLatin1String("idle") && m_wakeWordEnabled) {
-        QTimer::singleShot(450, this, [this]() {
-            if (m_state == QLatin1String("idle") && m_wakeWordEnabled) {
-                startWakeWordListener();
-            }
-        });
-    } else if (newState == QLatin1String("error") && m_wakeWordEnabled) {
+    if (newState == QLatin1String("idle")) {
+        if (!m_statusMessage.isEmpty()) {
+            QTimer::singleShot(3500, this, [this]() {
+                if (m_state == QLatin1String("idle") && !m_statusMessage.isEmpty()) {
+                    m_statusMessage.clear();
+                    Q_EMIT statusMessageChanged();
+                }
+            });
+        }
+        if (m_wakeWordEnabled) {
+            QTimer::singleShot(450, this, [this]() {
+                if (m_state == QLatin1String("idle") && m_wakeWordEnabled) {
+                    startWakeWordListener();
+                }
+            });
+        }
+    } else if (newState == QLatin1String("error")) {
         QTimer::singleShot(3500, this, [this]() {
-            if (m_state == QLatin1String("error") && m_wakeWordEnabled) {
+            if (m_state == QLatin1String("error")) {
                 setState(QStringLiteral("idle"), QString());
             }
         });
@@ -276,6 +331,23 @@ QString KityApplet::resolveVisionModel() const
     return readConfigString(QStringLiteral("ollamaVisionModel"), resolveOllamaModel());
 }
 
+QString KityApplet::resolveGeminiApiKey() const
+{
+    QString key = readConfigString(QStringLiteral("geminiApiKey")).trimmed();
+    if (key.isEmpty()) {
+        key = readConfigString(QStringLiteral("googleApiKey")).trimmed();
+    }
+    if (key.isEmpty()) {
+        key = qEnvironmentVariable("GEMINI_API_KEY").trimmed();
+    }
+    return key;
+}
+
+QString KityApplet::resolveGeminiModel() const
+{
+    return readConfigString(QStringLiteral("geminiModel"), QStringLiteral("gemini-2.0-flash")).trimmed();
+}
+
 QString KityApplet::resolveSystemPrompt() const
 {
     return readConfigString(QStringLiteral("systemPrompt"),
@@ -336,6 +408,22 @@ void KityApplet::setSpeechOutputMode(const QString &mode)
     Q_EMIT speechOutputModeChanged();
 }
 
+QString KityApplet::panelIconStyle() const
+{
+    return readConfigString(QStringLiteral("panelIconStyle"), QStringLiteral("symbolic"));
+}
+
+void KityApplet::setPanelIconStyle(const QString &style)
+{
+    auto kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+    kityrc->group(QStringLiteral("General")).writeEntry(QStringLiteral("panelIconStyle"), style);
+    kityrc->sync();
+    KConfigGroup cfg = config();
+    cfg.group(QStringLiteral("General")).writeEntry(QStringLiteral("panelIconStyle"), style);
+    cfg.sync();
+    Q_EMIT panelIconStyleChanged();
+}
+
 bool KityApplet::vadEnabled() const
 {
     return readConfigBool(QStringLiteral("vadEnabled"), true);
@@ -381,11 +469,13 @@ void KityApplet::checkReadiness()
     const bool hasWhisperModel = !resolveWhisperModelPath().isEmpty();
     const bool newWhisperAvailable = hasPwRecord && hasWhisperCli && hasWhisperModel;
 
-    // 2. Piper check
+    // 2. TTS engine check (Google Cloud, Edge Neural, Kokoro-82M, Piper)
     const bool hasPiperCli = !QStandardPaths::findExecutable(QStringLiteral("piper")).isEmpty();
     const bool hasPiperVoice = !resolvePiperVoicePath().isEmpty();
+    const bool hasKokoroCli = !QStandardPaths::findExecutable(QStringLiteral("kity-kokoro-tts")).isEmpty();
+    const bool hasEdgeCli = !QStandardPaths::findExecutable(QStringLiteral("kity-edge-tts")).isEmpty();
     const bool hasPwPlay = !QStandardPaths::findExecutable(QStringLiteral("pw-play")).isEmpty();
-    const bool newPiperAvailable = hasPiperCli && hasPiperVoice && hasPwPlay;
+    const bool newPiperAvailable = ((hasPiperCli && hasPiperVoice) || hasKokoroCli || hasEdgeCli) && hasPwPlay;
 
     // 3. Ollama check (GET /api/tags)
     const QUrl tagsUrl(resolveOllamaUrl() + QStringLiteral("/api/tags"));
@@ -451,6 +541,15 @@ void KityApplet::appendAssistantMessage(const QString &text, bool speakIfAppropr
     assistantMsg[QStringLiteral("role")] = QStringLiteral("assistant");
     assistantMsg[QStringLiteral("content")] = trimmed;
     assistantMsg[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
+
+    // Attach generative UI card if pending
+    if (!m_pendingCardType.isEmpty() && !m_pendingCardData.isEmpty()) {
+        assistantMsg[QStringLiteral("cardType")] = m_pendingCardType;
+        assistantMsg[QStringLiteral("cardData")] = m_pendingCardData;
+        m_pendingCardType.clear();
+        m_pendingCardData.clear();
+    }
+
     m_messages.append(assistantMsg);
     Q_EMIT messagesChanged();
     saveConversationHistory();
@@ -519,14 +618,23 @@ void KityApplet::sendMessage(const QString &text, bool fromVoice)
     QString context;
     QString effectivePrompt = trimmed;
 
+    // Weather context pre-injection if query asks about weather
     const QString weatherCtx = fetchWeatherContext(trimmed);
     if (!weatherCtx.isEmpty()) {
         context.append(weatherCtx + QStringLiteral("\n\n"));
     }
 
-    const QString webCtx = fetchWebSearchContext(trimmed);
-    if (!webCtx.isEmpty()) {
-        context.append(webCtx + QStringLiteral("\n\n"));
+    // Proactive Web Search grounding (like Gemini and Apple Intelligence):
+    // Pre-inject fresh web knowledge if query asks about dates/years (2024-2030), elections, upcoming events,
+    // current affairs, news, who/when/where/which, etc.
+    static const QRegularExpression webSignalRx(
+        QStringLiteral("(202[4-9]|203\\d|noticias?|elecci[oó]n|elecciones|gobierno|presidente|gan[oó]|ganador|partido|campe[oó]n|cu[aá]ndo|qui[eé]n|d[oó]nde|cu[aá]l|precio|estreno|actualidad|pr[oó]xim[ao]s?|hoy|ayer|mañana|suceso|falleci[oó]|resultado)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(webSignalRx)) {
+        const QString webCtx = fetchWebSearchContext(trimmed);
+        if (!webCtx.isEmpty()) {
+            context.append(webCtx + QStringLiteral("\n\n"));
+        }
     }
 
     const QString localCtx = fetchDynamicLocalContext(trimmed, QStringLiteral("auto"));
@@ -563,9 +671,9 @@ void KityApplet::sendMessage(const QString &text, bool fromVoice)
     // 3. Check vision action (screen vision request)
     QString base64Image;
     static const QRegularExpression screenRegex(
-        QStringLiteral("(pantalla|screen|captura|escritorio|mira lo que|analiza(?:r)?\\s+(?:mi\\s+|la\\s+)?pantalla|qu[eé] hay en|qu[eé] ves en|qu[eé]\\s+aplicaci[oó]n\\s+se\\s+muestra)"),
+        QStringLiteral("(?:(?:mi|la)\\s+pantalla|en\\s+(?:mi\\s+|la\\s+)?pantalla|captura(?:r)?\\s+(?:de\\s+pantalla|la\\s+pantalla)|analiza(?:r)?\\s+(?:mi\\s+|la\\s+)?pantalla|qu[eé]\\s+hay\\s+en\\s+(?:pantalla|el\\s+escritorio)|qu[eé]\\s+ves\\s+en\\s+pantalla|qu[eé]\\s+aplicaci[oó]n\\s+se\\s+muestra)"),
         QRegularExpression::CaseInsensitiveOption);
-    if (trimmed.contains(screenRegex)) {
+    if (!trimmed.contains(QLatin1String("\"\"\"")) && trimmed.contains(screenRegex)) {
         setState(QStringLiteral("thinking"), i18n("Analizando las ventanas y el contenido de tu pantalla…"));
         QCoreApplication::processEvents();
 
@@ -611,7 +719,36 @@ void KityApplet::sendMessage(const QString &text, bool fromVoice)
             .arg(screenFacts.join(QStringLiteral("\n\n")), trimmed);
     }
 
-    sendToOllama(effectivePrompt, context, base64Image);
+    const QString aiBackend = readConfigString(QStringLiteral("aiBackend"), QStringLiteral("hybrid")).toLower();
+    bool useGemini = false;
+    const QString geminiApiKey = resolveGeminiApiKey();
+
+    if (aiBackend == QLatin1String("gemini")) {
+        useGemini = true;
+    } else if (aiBackend == QLatin1String("hybrid")) {
+        // Hybrid intelligence:
+        // Use local Ollama if prompt is a local KDE system command (volume, brightness, power, app launching, timer)
+        // AND Ollama is reachable; otherwise use Google Gemini for internet, world knowledge, and deep reasoning
+        static const QRegularExpression localActionSignal(
+            QStringLiteral("^(?:sube|baja|ajusta|pon|silencia|abre|abrir|ejecuta|cierra|temporizador|alarma|bater[ií]a|brillo|volumen)"),
+            QRegularExpression::CaseInsensitiveOption);
+        const bool isLocalAction = trimmed.contains(localActionSignal);
+        if (isLocalAction && m_ollamaReachable) {
+            useGemini = false;
+        } else if (!geminiApiKey.isEmpty()) {
+            useGemini = true;
+        } else {
+            useGemini = false;
+        }
+    } else {
+        useGemini = false;
+    }
+
+    if (useGemini) {
+        sendToGemini(effectivePrompt, context, base64Image);
+    } else {
+        sendToOllama(effectivePrompt, context, base64Image);
+    }
 }
 
 void KityApplet::sendToOllama(const QString &userPrompt, const QString &injectedContext, const QString &base64Image)
@@ -642,6 +779,15 @@ void KityApplet::sendToOllama(const QString &userPrompt, const QString &injected
     if (!fullSysPrompt.contains(QStringLiteral("español"), Qt::CaseInsensitive)) {
         fullSysPrompt.prepend(QStringLiteral("REGLA ESTRICTA DE IDIOMA: Responde SIEMPRE y exclusivamente en español de España (castellano).\n\n"));
     }
+    const QString currentDateStr = QLocale(QLocale::Spanish, QLocale::Spain).toString(QDateTime::currentDateTime(), QStringLiteral("dddd, d 'de' MMMM 'de' yyyy, HH:mm"));
+    fullSysPrompt.append(QStringLiteral("\n[Fecha y hora actual del sistema: %1]").arg(currentDateStr));
+    fullSysPrompt.append(QStringLiteral(
+        "\n[Acceso a Internet en tiempo real:]\n"
+        "Dispones de acceso directo a Internet mediante búsqueda web ('web_search') y mediante el contexto web provisto en tiempo real. "
+        "Cuando el usuario pregunte por fechas, noticias, acontecimientos actuales o futuros (año 2026 en adelante), "
+        "resultados electorales o deportivos, personas o cualquier dato de actualidad, "
+        "basa tu respuesta en la información de internet provista o invoca la herramienta 'web_search'. "
+        "NUNCA digas que no tienes información actualizada sin antes consultar la búsqueda web."));
     const QString vitals = collectSystemVitals();
     if (!vitals.isEmpty()) {
         fullSysPrompt.append(QStringLiteral("\n[System Environment: %1]").arg(vitals));
@@ -684,12 +830,23 @@ void KityApplet::sendToOllama(const QString &userPrompt, const QString &injected
     opts[QStringLiteral("num_thread")] = readConfigInt(QStringLiteral("ollamaNumThread"), 6);
     opts[QStringLiteral("num_predict")] = readConfigInt(QStringLiteral("ollamaNumPredict"), 384);
 
+    m_currentChatMessages = chatMsgs;
+    m_pendingToolCalls = QJsonArray();
+    m_isToolFollowUpRound = false;
+
     QJsonObject reqPayload;
     reqPayload[QStringLiteral("model")] = modelToUse;
     reqPayload[QStringLiteral("messages")] = chatMsgs;
     reqPayload[QStringLiteral("stream")] = true;
     reqPayload[QStringLiteral("options")] = opts;
     reqPayload[QStringLiteral("keep_alive")] = readConfigString(QStringLiteral("ollamaKeepAlive"), QStringLiteral("24h"));
+
+    if (!hasVision) {
+        const QJsonArray tools = buildAvailableTools(userPrompt);
+        if (!tools.isEmpty()) {
+            reqPayload[QStringLiteral("tools")] = tools;
+        }
+    }
 
     const QUrl chatUrl(resolveOllamaUrl() + QStringLiteral("/api/chat"));
     QNetworkRequest req(chatUrl);
@@ -717,7 +874,32 @@ void KityApplet::handleOllamaStreamChunk()
         if (!doc.isObject()) continue;
 
         const QJsonObject obj = doc.object();
+        if (obj.contains(QStringLiteral("error"))) {
+            const QString err = obj.value(QStringLiteral("error")).toString();
+            setState(QStringLiteral("error"), i18n("Error de Ollama: %1", err));
+            return;
+        }
+
         const QJsonObject msgObj = obj.value(QStringLiteral("message")).toObject();
+
+        if (msgObj.contains(QStringLiteral("tool_calls"))) {
+            const QJsonArray tCalls = msgObj.value(QStringLiteral("tool_calls")).toArray();
+            for (const QJsonValue &tcVal : tCalls) {
+                const QJsonObject tc = tcVal.toObject();
+                const QString tcId = tc.value(QStringLiteral("id")).toString();
+                bool exists = false;
+                for (const QJsonValue &existing : std::as_const(m_pendingToolCalls)) {
+                    if (!tcId.isEmpty() && existing.toObject().value(QStringLiteral("id")).toString() == tcId) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    m_pendingToolCalls.append(tc);
+                }
+            }
+        }
+
         const QString chunk = msgObj.value(QStringLiteral("content")).toString();
 
         if (!chunk.isEmpty()) {
@@ -735,11 +917,66 @@ void KityApplet::handleOllamaFinished()
     const bool error = (m_currentOllamaReply->error() != QNetworkReply::NoError &&
                         m_currentOllamaReply->error() != QNetworkReply::OperationCanceledError);
 
+    const QString httpError = m_currentOllamaReply->errorString();
     m_currentOllamaReply->deleteLater();
     m_currentOllamaReply = nullptr;
 
     if (error) {
-        setState(QStringLiteral("error"), i18n("Error al comunicarse con Ollama."));
+        setState(QStringLiteral("error"), i18n("Error al comunicarse con Ollama: %1", httpError));
+        return;
+    }
+
+    // Check if tools were invoked by the model
+    if (!m_pendingToolCalls.isEmpty()) {
+        // Assistant tool_calls message
+        QJsonObject asstMsg;
+        asstMsg[QStringLiteral("role")] = QStringLiteral("assistant");
+        asstMsg[QStringLiteral("content")] = QStringLiteral("");
+        asstMsg[QStringLiteral("tool_calls")] = m_pendingToolCalls;
+        m_currentChatMessages.append(asstMsg);
+
+        // Execute each tool and append tool result message
+        for (const QJsonValue &tcVal : m_pendingToolCalls) {
+            const QJsonObject tcObj = tcVal.toObject();
+            const QString callId = tcObj.value(QStringLiteral("id")).toString();
+            const QJsonObject funcObj = tcObj.value(QStringLiteral("function")).toObject();
+            const QString toolName = funcObj.value(QStringLiteral("name")).toString();
+            const QJsonObject toolArgs = funcObj.value(QStringLiteral("arguments")).toObject();
+
+            if (toolName == QLatin1String("get_weather")) {
+                setState(QStringLiteral("thinking"), i18n("Consultando el tiempo meteorológico…"));
+            } else if (toolName == QLatin1String("media_control")) {
+                setState(QStringLiteral("thinking"), i18n("Ajustando la reproducción multimedia…"));
+            } else if (toolName == QLatin1String("set_timer")) {
+                setState(QStringLiteral("thinking"), i18n("Configurando recordatorio o temporizador…"));
+            } else if (toolName == QLatin1String("get_system_vitals")) {
+                setState(QStringLiteral("thinking"), i18n("Comprobando el rendimiento y recursos del sistema…"));
+            } else if (toolName == QLatin1String("launch_application")) {
+                const QString app = toolArgs.value(QStringLiteral("app_name")).toString();
+                setState(QStringLiteral("thinking"), app.isEmpty() ? i18n("Abriendo aplicación…") : i18n("Abriendo %1…", app));
+            } else if (toolName == QLatin1String("web_search")) {
+                setState(QStringLiteral("thinking"), i18n("Buscando información actualizada en la web…"));
+            } else if (toolName == QLatin1String("inspect_screen")) {
+                setState(QStringLiteral("thinking"), i18n("Inspeccionando el contenido de la pantalla…"));
+            } else {
+                setState(QStringLiteral("thinking"), i18n("Ejecutando acción del sistema…"));
+            }
+
+            const QJsonObject result = executeToolCall(toolName, toolArgs);
+
+            QJsonObject toolMsg;
+            toolMsg[QStringLiteral("role")] = QStringLiteral("tool");
+            if (!callId.isEmpty()) {
+                toolMsg[QStringLiteral("tool_call_id")] = callId;
+            }
+            toolMsg[QStringLiteral("content")] = QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
+            m_currentChatMessages.append(toolMsg);
+        }
+
+        m_pendingToolCalls = QJsonArray();
+        m_streamingText.clear();
+
+        sendOllamaToolFollowUp(m_currentChatMessages);
         return;
     }
 
@@ -749,11 +986,56 @@ void KityApplet::handleOllamaFinished()
     finalResponse.remove(thinkRegex);
     finalResponse = finalResponse.trimmed();
 
+    // If the model wrapped its response in a pseudo JSON tool call (e.g. {"name":"...","parameters":{"text":"..."}})
+    if (finalResponse.startsWith(QLatin1Char('{')) && finalResponse.contains(QStringLiteral("\"parameters\""))) {
+        QJsonParseError parseErr;
+        const QJsonDocument doc = QJsonDocument::fromJson(finalResponse.toUtf8(), &parseErr);
+        if (parseErr.error == QJsonParseError::NoError && doc.isObject()) {
+            const QJsonObject obj = doc.object();
+            if (obj.contains(QStringLiteral("parameters")) && obj.value(QStringLiteral("parameters")).isObject()) {
+                const QJsonObject params = obj.value(QStringLiteral("parameters")).toObject();
+                if (params.contains(QStringLiteral("text"))) {
+                    finalResponse = params.value(QStringLiteral("text")).toString().trimmed();
+                }
+            }
+        }
+    }
+
     if (!finalResponse.isEmpty()) {
         QVariantMap assistantMsg;
         assistantMsg[QStringLiteral("role")] = QStringLiteral("assistant");
         assistantMsg[QStringLiteral("content")] = finalResponse;
         assistantMsg[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
+
+        // Extract any Markdown links as structured sources
+        static const QRegularExpression mdLinkRx(QStringLiteral("\\[([^\\]]+)\\]\\((https?://[^\\)]+)\\)"));
+        auto linkIt = mdLinkRx.globalMatch(finalResponse);
+        QVariantList srcList;
+        QStringList seenUrls;
+        while (linkIt.hasNext()) {
+            auto m = linkIt.next();
+            const QString title = m.captured(1).trimmed();
+            const QString url = m.captured(2).trimmed();
+            if (!seenUrls.contains(url)) {
+                seenUrls.append(url);
+                QVariantMap s;
+                s[QStringLiteral("title")] = title;
+                s[QStringLiteral("url")] = url;
+                srcList.append(s);
+            }
+        }
+        if (!srcList.isEmpty()) {
+            assistantMsg[QStringLiteral("sources")] = srcList;
+        }
+
+        // Attach generative UI card if pending
+        if (!m_pendingCardType.isEmpty() && !m_pendingCardData.isEmpty()) {
+            assistantMsg[QStringLiteral("cardType")] = m_pendingCardType;
+            assistantMsg[QStringLiteral("cardData")] = m_pendingCardData;
+            m_pendingCardType.clear();
+            m_pendingCardData.clear();
+        }
+
         m_messages.append(assistantMsg);
         Q_EMIT messagesChanged();
         saveConversationHistory();
@@ -775,6 +1057,312 @@ void KityApplet::handleOllamaFinished()
     }
 }
 
+void KityApplet::sendOllamaToolFollowUp(const QJsonArray &messages)
+{
+    if (!m_ollamaReachable) {
+        setState(QStringLiteral("error"), i18n("No se puede conectar con el servidor Ollama en %1.", resolveOllamaUrl()));
+        return;
+    }
+
+    setState(QStringLiteral("thinking"), i18n("Generando respuesta…"));
+    m_streamingText.clear();
+    m_ttsSpeechBuffer.clear();
+    Q_EMIT streamingTextChanged();
+
+    const QString modelToUse = resolveOllamaModel();
+
+    QJsonObject opts;
+    opts[QStringLiteral("temperature")] = readConfigDouble(QStringLiteral("ollamaTemperature"), 0.2);
+    opts[QStringLiteral("num_ctx")] = readConfigInt(QStringLiteral("ollamaNumCtx"), 4096);
+    opts[QStringLiteral("num_thread")] = readConfigInt(QStringLiteral("ollamaNumThread"), 6);
+    opts[QStringLiteral("num_predict")] = readConfigInt(QStringLiteral("ollamaNumPredict"), 384);
+
+    QJsonObject reqPayload;
+    reqPayload[QStringLiteral("model")] = modelToUse;
+    reqPayload[QStringLiteral("messages")] = messages;
+    reqPayload[QStringLiteral("stream")] = true;
+    reqPayload[QStringLiteral("options")] = opts;
+    reqPayload[QStringLiteral("keep_alive")] = readConfigString(QStringLiteral("ollamaKeepAlive"), QStringLiteral("24h"));
+
+    const QJsonArray tools = buildAvailableTools(QString());
+    if (!tools.isEmpty()) {
+        reqPayload[QStringLiteral("tools")] = tools;
+    }
+
+    const QUrl chatUrl(resolveOllamaUrl() + QStringLiteral("/api/chat"));
+    QNetworkRequest req(chatUrl);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+
+    if (m_currentOllamaReply) {
+        m_currentOllamaReply->abort();
+        m_currentOllamaReply->deleteLater();
+    }
+
+    m_currentOllamaReply = m_nam->post(req, QJsonDocument(reqPayload).toJson(QJsonDocument::Compact));
+    connect(m_currentOllamaReply, &QNetworkReply::readyRead, this, &KityApplet::handleOllamaStreamChunk);
+    connect(m_currentOllamaReply, &QNetworkReply::finished, this, &KityApplet::handleOllamaFinished);
+}
+
+void KityApplet::sendToGemini(const QString &userPrompt, const QString &injectedContext, const QString &base64Image)
+{
+    const QString apiKey = resolveGeminiApiKey();
+    if (apiKey.isEmpty()) {
+        setState(QStringLiteral("error"), i18n("No se ha configurado la clave API de Google Gemini. Añádela en las Preferencias de Kity."));
+        return;
+    }
+
+    setState(QStringLiteral("thinking"), i18n("Consultando con Google Gemini…"));
+    m_streamingText.clear();
+    m_ttsSpeechBuffer.clear();
+    m_geminiSources.clear();
+    Q_EMIT streamingTextChanged();
+
+    const QString modelToUse = resolveGeminiModel();
+    const bool hasVision = !base64Image.isEmpty();
+
+    // 1. System instruction
+    QString fullSysPrompt = resolveSystemPrompt();
+    if (!fullSysPrompt.contains(QStringLiteral("español"), Qt::CaseInsensitive)) {
+        fullSysPrompt.prepend(QStringLiteral("REGLA ESTRICTA DE IDIOMA: Responde SIEMPRE y exclusivamente en español de España (castellano).\n\n"));
+    }
+    const QString currentDateStr = QLocale(QLocale::Spanish, QLocale::Spain).toString(QDateTime::currentDateTime(), QStringLiteral("dddd, d 'de' MMMM 'de' yyyy, HH:mm"));
+    fullSysPrompt.append(QStringLiteral("\n[Fecha y hora actual del sistema: %1]").arg(currentDateStr));
+    const QString vitals = collectSystemVitals();
+    if (!vitals.isEmpty()) {
+        fullSysPrompt.append(QStringLiteral("\n[Entorno del sistema: %1]").arg(vitals));
+    }
+    if (!injectedContext.isEmpty()) {
+        fullSysPrompt.append(QStringLiteral("\n[Contexto relevante:\n%1]").arg(injectedContext.trimmed()));
+    }
+
+    QJsonObject sysInstruction;
+    QJsonArray sysParts;
+    QJsonObject sysPart;
+    sysPart[QStringLiteral("text")] = fullSysPrompt;
+    sysParts.append(sysPart);
+    sysInstruction[QStringLiteral("parts")] = sysParts;
+
+    // 2. Chat contents
+    QJsonArray contents;
+    const int startIdx = qMax(0, m_messages.size() - 8);
+    for (int i = startIdx; i < m_messages.size() - 1; ++i) {
+        const QVariantMap vm = m_messages.at(i).toMap();
+        const QString role = vm.value(QStringLiteral("role")).toString();
+        const QString content = vm.value(QStringLiteral("content")).toString();
+        if (content.trimmed().isEmpty()) continue;
+
+        QJsonObject msgObj;
+        msgObj[QStringLiteral("role")] = (role == QLatin1String("assistant")) ? QStringLiteral("model") : QStringLiteral("user");
+        QJsonArray parts;
+        QJsonObject textPart;
+        textPart[QStringLiteral("text")] = content;
+        parts.append(textPart);
+        msgObj[QStringLiteral("parts")] = parts;
+        contents.append(msgObj);
+    }
+
+    // Current turn
+    QJsonObject currentTurn;
+    currentTurn[QStringLiteral("role")] = QStringLiteral("user");
+    QJsonArray currentParts;
+    QJsonObject userTextPart;
+    userTextPart[QStringLiteral("text")] = userPrompt;
+    currentParts.append(userTextPart);
+
+    if (hasVision) {
+        QJsonObject inlineData;
+        inlineData[QStringLiteral("mime_type")] = QStringLiteral("image/png");
+        inlineData[QStringLiteral("data")] = base64Image;
+        QJsonObject imgPart;
+        imgPart[QStringLiteral("inline_data")] = inlineData;
+        currentParts.append(imgPart);
+    }
+    currentTurn[QStringLiteral("parts")] = currentParts;
+    contents.append(currentTurn);
+
+    // 3. Payload
+    QJsonObject payload;
+    payload[QStringLiteral("system_instruction")] = sysInstruction;
+    payload[QStringLiteral("contents")] = contents;
+
+    QJsonObject genConfig;
+    genConfig[QStringLiteral("temperature")] = readConfigDouble(QStringLiteral("ollamaTemperature"), 0.2);
+    genConfig[QStringLiteral("maxOutputTokens")] = 2048;
+    payload[QStringLiteral("generationConfig")] = genConfig;
+
+    // Native Google Search Grounding tool
+    QJsonArray tools;
+    QJsonObject searchTool;
+    searchTool[QStringLiteral("google_search")] = QJsonObject();
+    tools.append(searchTool);
+    payload[QStringLiteral("tools")] = tools;
+
+    const QUrl geminiUrl(QStringLiteral("https://generativelanguage.googleapis.com/v1beta/models/%1:streamGenerateContent?key=%2&alt=sse")
+        .arg(modelToUse, apiKey));
+
+    QNetworkRequest req(geminiUrl);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+
+    if (m_currentGeminiReply) {
+        m_currentGeminiReply->abort();
+        m_currentGeminiReply->deleteLater();
+        m_currentGeminiReply = nullptr;
+    }
+
+    m_currentGeminiReply = m_nam->post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    connect(m_currentGeminiReply, &QNetworkReply::readyRead, this, &KityApplet::handleGeminiStreamChunk);
+    connect(m_currentGeminiReply, &QNetworkReply::finished, this, &KityApplet::handleGeminiFinished);
+}
+
+void KityApplet::handleGeminiStreamChunk()
+{
+    if (!m_currentGeminiReply) return;
+
+    while (m_currentGeminiReply->canReadLine()) {
+        QByteArray line = m_currentGeminiReply->readLine().trimmed();
+        if (line.isEmpty()) continue;
+
+        if (line.startsWith("data: ")) {
+            line = line.mid(6).trimmed();
+        }
+
+        const QJsonDocument doc = QJsonDocument::fromJson(line);
+        if (!doc.isObject()) continue;
+
+        const QJsonObject obj = doc.object();
+        if (obj.contains(QStringLiteral("error"))) {
+            const QJsonObject errObj = obj.value(QStringLiteral("error")).toObject();
+            const QString errMsg = errObj.value(QStringLiteral("message")).toString();
+            setState(QStringLiteral("error"), i18n("Error de Google Gemini: %1", errMsg));
+            return;
+        }
+
+        const QJsonArray candidates = obj.value(QStringLiteral("candidates")).toArray();
+        if (candidates.isEmpty()) continue;
+
+        const QJsonObject candidate = candidates.first().toObject();
+
+        // Extract Google Search Grounding metadata and source citations
+        if (candidate.contains(QStringLiteral("groundingMetadata"))) {
+            const QJsonObject gMeta = candidate.value(QStringLiteral("groundingMetadata")).toObject();
+            if (gMeta.contains(QStringLiteral("groundingChunks"))) {
+                const QJsonArray chunks = gMeta.value(QStringLiteral("groundingChunks")).toArray();
+                for (const QJsonValue &chunkVal : chunks) {
+                    const QJsonObject webObj = chunkVal.toObject().value(QStringLiteral("web")).toObject();
+                    const QString uri = webObj.value(QStringLiteral("uri")).toString();
+                    QString title = webObj.value(QStringLiteral("title")).toString();
+                    if (title.isEmpty()) {
+                        title = QUrl(uri).host();
+                    }
+                    if (!uri.isEmpty()) {
+                        bool exists = false;
+                        for (const auto &pair : m_geminiSources) {
+                            if (pair.second == uri) {
+                                exists = true;
+                                break;
+                            }
+                        }
+                        if (!exists) {
+                            m_geminiSources.append(qMakePair(title, uri));
+                        }
+                    }
+                }
+            }
+        }
+
+        const QJsonObject content = candidate.value(QStringLiteral("content")).toObject();
+        const QJsonArray parts = content.value(QStringLiteral("parts")).toArray();
+        for (const QJsonValue &partVal : parts) {
+            const QJsonObject partObj = partVal.toObject();
+            const QString textChunk = partObj.value(QStringLiteral("text")).toString();
+            if (!textChunk.isEmpty()) {
+                m_streamingText.append(textChunk);
+                Q_EMIT streamingTextChanged();
+                processStreamingTtsChunk(textChunk);
+            }
+        }
+    }
+}
+
+void KityApplet::handleGeminiFinished()
+{
+    if (!m_currentGeminiReply) return;
+
+    const bool error = (m_currentGeminiReply->error() != QNetworkReply::NoError &&
+                        m_currentGeminiReply->error() != QNetworkReply::OperationCanceledError);
+
+    const QString httpError = m_currentGeminiReply->errorString();
+    m_currentGeminiReply->deleteLater();
+    m_currentGeminiReply = nullptr;
+
+    if (error) {
+        setState(QStringLiteral("error"), i18n("Error al comunicarse con Google Gemini: %1", httpError));
+        return;
+    }
+
+    QString finalResponse = m_streamingText.trimmed();
+    static const QRegularExpression thinkRegex(QStringLiteral("<think>.*?</think>"), QRegularExpression::DotMatchesEverythingOption);
+    finalResponse.remove(thinkRegex);
+    finalResponse = finalResponse.trimmed();
+
+    if (!m_geminiSources.isEmpty()) {
+        static const QRegularExpression fuentesSignal(
+            QStringLiteral("(?:fuentes|referencias|enlaces|sources):"),
+            QRegularExpression::CaseInsensitiveOption);
+        if (!finalResponse.contains(fuentesSignal)) {
+            QString sourcesBlock = QStringLiteral("\n\n🌐 **Fuentes consultadas:**\n");
+            for (const auto &pair : m_geminiSources) {
+                sourcesBlock.append(QStringLiteral("- [%1](%2)\n").arg(pair.first, pair.second));
+            }
+            finalResponse.append(sourcesBlock.trimmed());
+        }
+    }
+
+    if (!finalResponse.isEmpty()) {
+        QVariantMap assistantMsg;
+        assistantMsg[QStringLiteral("role")] = QStringLiteral("assistant");
+        assistantMsg[QStringLiteral("content")] = finalResponse;
+        assistantMsg[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
+
+        QVariantList srcList;
+        for (const auto &pair : m_geminiSources) {
+            QVariantMap s;
+            s[QStringLiteral("title")] = pair.first;
+            s[QStringLiteral("url")] = pair.second;
+            srcList.append(s);
+        }
+        if (!srcList.isEmpty()) {
+            assistantMsg[QStringLiteral("sources")] = srcList;
+        }
+
+        // Attach generative UI card if pending
+        if (!m_pendingCardType.isEmpty() && !m_pendingCardData.isEmpty()) {
+            assistantMsg[QStringLiteral("cardType")] = m_pendingCardType;
+            assistantMsg[QStringLiteral("cardData")] = m_pendingCardData;
+            m_pendingCardType.clear();
+            m_pendingCardData.clear();
+        }
+
+        m_messages.append(assistantMsg);
+        Q_EMIT messagesChanged();
+        saveConversationHistory();
+
+        if (!m_ttsSpeechBuffer.isEmpty()) {
+            enqueueSentenceForSpeech(m_ttsSpeechBuffer.trimmed());
+            m_ttsSpeechBuffer.clear();
+        }
+    }
+
+    m_streamingText.clear();
+    Q_EMIT streamingTextChanged();
+
+    if (m_isSpeakingSentence || !m_ttsQueue.isEmpty()) {
+        setState(QStringLiteral("speaking"), i18n("Reproduciendo respuesta…"));
+    } else {
+        setState(QStringLiteral("idle"), QString());
+    }
+}
+
 void KityApplet::stopGeneration()
 {
     if (m_currentOllamaReply) {
@@ -782,8 +1370,633 @@ void KityApplet::stopGeneration()
         m_currentOllamaReply->deleteLater();
         m_currentOllamaReply = nullptr;
     }
+    if (m_currentGeminiReply) {
+        m_currentGeminiReply->abort();
+        m_currentGeminiReply->deleteLater();
+        m_currentGeminiReply = nullptr;
+    }
+    m_pendingToolCalls = QJsonArray();
+    m_currentChatMessages = QJsonArray();
+    m_isToolFollowUpRound = false;
     stopSpeaking();
-    setState(QStringLiteral("idle"), QString());
+    setState(QStringLiteral("idle"), i18n("Generación cancelada."));
+}
+
+QJsonArray KityApplet::buildAvailableTools(const QString &userPrompt) const
+{
+    QJsonArray tools;
+
+    // Do not inject function tools for writing tools or text transformation prompts
+    if (userPrompt.contains(QStringLiteral("Texto original:\n\"\"\"")) || userPrompt.startsWith(QStringLiteral("Eres un asistente"))) {
+        return tools;
+    }
+
+    auto createTool = [](const QString &name, const QString &description, const QJsonObject &parameters) {
+        QJsonObject fn;
+        fn[QStringLiteral("name")] = name;
+        fn[QStringLiteral("description")] = description;
+        fn[QStringLiteral("parameters")] = parameters;
+
+        QJsonObject tool;
+        tool[QStringLiteral("type")] = QStringLiteral("function");
+        tool[QStringLiteral("function")] = fn;
+        return tool;
+    };
+
+    const QString model = resolveOllamaModel().toLower();
+    const bool isLlama32 = model.contains(QStringLiteral("llama3.2"));
+    const QString q = userPrompt.toLower().trimmed();
+
+    // Tool 1: get_weather
+    static const QRegularExpression weatherSignal(
+        QStringLiteral("(tiempo|clima|temperatura|llueve|llover|lluvia|fr[ií]o|calor|grados|pron[oó]stico|viento|soleado|nublado)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (!isLlama32 || q.isEmpty() || q.contains(weatherSignal)) {
+        QJsonObject props;
+        QJsonObject cityProp;
+        cityProp[QStringLiteral("type")] = QStringLiteral("string");
+        cityProp[QStringLiteral("description")] = QStringLiteral("Nombre de la ciudad o localidad (ej. Gijón, Oviedo, Madrid, París). Si el usuario no menciona ciudad, omitir.");
+        props[QStringLiteral("city")] = cityProp;
+
+        QJsonObject params;
+        params[QStringLiteral("type")] = QStringLiteral("object");
+        params[QStringLiteral("properties")] = props;
+
+        tools.append(createTool(
+            QStringLiteral("get_weather"),
+            QStringLiteral("Obtiene las condiciones meteorológicas y previsión del tiempo actual para una ciudad o localidad."),
+            params
+        ));
+    }
+
+    // Tool 2: media_control
+    static const QRegularExpression mediaSignal(
+        QStringLiteral("(m[uú]sica|canci[oó]n|reproduce|reproducir|pausa|pausar|player|spotify|cancion|tema|pista|volumen|sonido)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (!isLlama32 || q.isEmpty() || q.contains(mediaSignal)) {
+        QJsonObject props;
+        QJsonObject actProp;
+        actProp[QStringLiteral("type")] = QStringLiteral("string");
+        QJsonArray actEnum;
+        actEnum.append(QStringLiteral("play"));
+        actEnum.append(QStringLiteral("pause"));
+        actEnum.append(QStringLiteral("play_pause"));
+        actEnum.append(QStringLiteral("next"));
+        actEnum.append(QStringLiteral("previous"));
+        actEnum.append(QStringLiteral("status"));
+        actProp[QStringLiteral("enum")] = actEnum;
+        actProp[QStringLiteral("description")] = QStringLiteral("Acción multimedia a ejecutar.");
+        props[QStringLiteral("action")] = actProp;
+
+        QJsonObject params;
+        params[QStringLiteral("type")] = QStringLiteral("object");
+        params[QStringLiteral("properties")] = props;
+        QJsonArray req;
+        req.append(QStringLiteral("action"));
+        params[QStringLiteral("required")] = req;
+
+        tools.append(createTool(
+            QStringLiteral("media_control"),
+            QStringLiteral("Controla la reproducción multimedia activa en el sistema (reproducir, pausar, siguiente pista, pista anterior o consultar qué suena)."),
+            params
+        ));
+    }
+
+    // Tool 3: set_timer
+    static const QRegularExpression timerSignal(
+        QStringLiteral("(temporizador|alarma|av[ií]same|cuenta\\s+atr[aá]s|recu[eé]rdame|minuto|segundo|recordatorio)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (!isLlama32 || q.isEmpty() || q.contains(timerSignal)) {
+        QJsonObject props;
+        QJsonObject secProp;
+        secProp[QStringLiteral("type")] = QStringLiteral("integer");
+        secProp[QStringLiteral("description")] = QStringLiteral("Duración del temporizador en segundos totales (por ejemplo 300 para 5 minutos).");
+        props[QStringLiteral("seconds")] = secProp;
+
+        QJsonObject lblProp;
+        lblProp[QStringLiteral("type")] = QStringLiteral("string");
+        lblProp[QStringLiteral("description")] = QStringLiteral("Motivo o etiqueta del temporizador (ej. 'pizza', 'pasta', 'reunión').");
+        props[QStringLiteral("label")] = lblProp;
+
+        QJsonObject params;
+        params[QStringLiteral("type")] = QStringLiteral("object");
+        params[QStringLiteral("properties")] = props;
+        QJsonArray req;
+        req.append(QStringLiteral("seconds"));
+        params[QStringLiteral("required")] = req;
+
+        tools.append(createTool(
+            QStringLiteral("set_timer"),
+            QStringLiteral("Programa un temporizador o alarma en el sistema para que avise al usuario tras un número de segundos."),
+            params
+        ));
+    }
+
+    // Tool 4: get_system_vitals
+    static const QRegularExpression sysSignal(
+        QStringLiteral("(sistema|bater[ií]a|memoria|ram|cpu|temperatura\\s+del\\s+pc|rendimiento|recursos|hardware)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (!isLlama32 || q.isEmpty() || q.contains(sysSignal)) {
+        QJsonObject params;
+        params[QStringLiteral("type")] = QStringLiteral("object");
+        params[QStringLiteral("properties")] = QJsonObject();
+
+        tools.append(createTool(
+            QStringLiteral("get_system_vitals"),
+            QStringLiteral("Consulta el estado en tiempo real de los recursos del equipo: memoria RAM libre y total, uso de CPU, batería y perfil de energía."),
+            params
+        ));
+    }
+
+    // Tool 5: launch_application
+    static const QRegularExpression appSignal(
+        QStringLiteral("(abre|abrir|ejecuta|ejecutar|inicia|iniciar|lanza|lanzar|arranca|arrancar)\\s+"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (!isLlama32 || q.isEmpty() || q.contains(appSignal)) {
+        QJsonObject props;
+        QJsonObject appProp;
+        appProp[QStringLiteral("type")] = QStringLiteral("string");
+        appProp[QStringLiteral("description")] = QStringLiteral("Nombre común o ejecutable de la aplicación a abrir (ej. 'firefox', 'spotify', 'dolphin', 'konsole', 'kate').");
+        props[QStringLiteral("app_name")] = appProp;
+
+        QJsonObject params;
+        params[QStringLiteral("type")] = QStringLiteral("object");
+        params[QStringLiteral("properties")] = props;
+        QJsonArray req;
+        req.append(QStringLiteral("app_name"));
+        params[QStringLiteral("required")] = req;
+
+        tools.append(createTool(
+            QStringLiteral("launch_application"),
+            QStringLiteral("Abre o ejecuta una aplicación de escritorio instalada en el sistema KDE Plasma."),
+            params
+        ));
+    }
+
+    // Tool 6: web_search (Always available, just like Siri and Gemini)
+    {
+        QJsonObject props;
+        QJsonObject qProp;
+        qProp[QStringLiteral("type")] = QStringLiteral("string");
+        qProp[QStringLiteral("description")] = QStringLiteral("Términos o palabras clave de la búsqueda en la web.");
+        props[QStringLiteral("query")] = qProp;
+
+        QJsonObject params;
+        params[QStringLiteral("type")] = QStringLiteral("object");
+        params[QStringLiteral("properties")] = props;
+        QJsonArray req;
+        req.append(QStringLiteral("query"));
+        params[QStringLiteral("required")] = req;
+
+        tools.append(createTool(
+            QStringLiteral("web_search"),
+            QStringLiteral("Busca en Internet en tiempo real noticias, fechas, elecciones, eventos, datos de 2024 a 2026 en adelante, personas, resultados deportivos o cualquier información actualizada cuando no esté en la memoria local."),
+            params
+        ));
+    }
+
+    // Tool 7: inspect_screen
+    static const QRegularExpression screenSignal(
+        QStringLiteral("(pantalla|screen|ventana|captura|escritorio|lee|texto|c[oó]digo|error|abiert[ao]|viendo)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (!isLlama32 || q.isEmpty() || q.contains(screenSignal)) {
+        QJsonObject props;
+        QJsonObject modeProp;
+        modeProp[QStringLiteral("type")] = QStringLiteral("string");
+        QJsonArray modeEnum;
+        modeEnum.append(QStringLiteral("active_window"));
+        modeEnum.append(QStringLiteral("fullscreen"));
+        modeProp[QStringLiteral("enum")] = modeEnum;
+        modeProp[QStringLiteral("description")] = QStringLiteral("Modo de inspección: 'active_window' para la ventana enfocada o activa, o 'fullscreen' para todo el escritorio.");
+        props[QStringLiteral("mode")] = modeProp;
+
+        QJsonObject params;
+        params[QStringLiteral("type")] = QStringLiteral("object");
+        params[QStringLiteral("properties")] = props;
+
+        tools.append(createTool(
+            QStringLiteral("inspect_screen"),
+            QStringLiteral("Captura e inspecciona la pantalla o la ventana activa mediante OCR y metadatos del compositor KWin Wayland para leer texto visible, código fuente, errores de consola o averiguar qué aplicaciones y ventanas tiene abiertas el usuario."),
+            params
+        ));
+    }
+
+    // Tool 8: calendar_event (KOrganizer / KDE Calendar Intent)
+    static const QRegularExpression calSignal(
+        QStringLiteral("(calendario|evento|reuni[oó]n|cita|agenda|agendar|korganizer|organizer|compromiso)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (!isLlama32 || q.isEmpty() || q.contains(calSignal)) {
+        QJsonObject props;
+        QJsonObject actProp;
+        actProp[QStringLiteral("type")] = QStringLiteral("string");
+        QJsonArray actEnum;
+        actEnum.append(QStringLiteral("create"));
+        actEnum.append(QStringLiteral("list"));
+        actProp[QStringLiteral("enum")] = actEnum;
+        actProp[QStringLiteral("description")] = QStringLiteral("Acción a realizar: 'create' para agendar un nuevo evento o 'list' para consultar eventos existentes.");
+        props[QStringLiteral("action")] = actProp;
+
+        QJsonObject titleProp;
+        titleProp[QStringLiteral("type")] = QStringLiteral("string");
+        titleProp[QStringLiteral("description")] = QStringLiteral("Título o asunto del evento (ej. 'Reunión de proyecto', 'Cita médica').");
+        props[QStringLiteral("title")] = titleProp;
+
+        QJsonObject timeProp;
+        timeProp[QStringLiteral("type")] = QStringLiteral("string");
+        timeProp[QStringLiteral("description")] = QStringLiteral("Fecha y hora de inicio (ej. '2026-11-10 11:00', 'mañana a las 16:00', 'hoy a las 20:00').");
+        props[QStringLiteral("start_time")] = timeProp;
+
+        QJsonObject durProp;
+        durProp[QStringLiteral("type")] = QStringLiteral("integer");
+        durProp[QStringLiteral("description")] = QStringLiteral("Duración en minutos (por defecto 60).");
+        props[QStringLiteral("duration_minutes")] = durProp;
+
+        QJsonObject descProp;
+        descProp[QStringLiteral("type")] = QStringLiteral("string");
+        descProp[QStringLiteral("description")] = QStringLiteral("Descripción o notas adicionales del evento.");
+        props[QStringLiteral("description")] = descProp;
+
+        QJsonObject params;
+        params[QStringLiteral("type")] = QStringLiteral("object");
+        params[QStringLiteral("properties")] = props;
+        QJsonArray req;
+        req.append(QStringLiteral("action"));
+        params[QStringLiteral("required")] = req;
+
+        tools.append(createTool(
+            QStringLiteral("calendar_event"),
+            QStringLiteral("Gestiona la agenda y el calendario de KDE (KOrganizer): permite crear eventos, citas y reuniones o consultar la lista de eventos programados."),
+            params
+        ));
+    }
+
+    // Tool 9: clipboard_tool (Klipper KDE Clipboard Manager Intent)
+    static const QRegularExpression clipSignal(
+        QStringLiteral("(portapapeles|clipboard|copiado|copi[eé]|klipper|historial)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (!isLlama32 || q.isEmpty() || q.contains(clipSignal)) {
+        QJsonObject props;
+        QJsonObject actProp;
+        actProp[QStringLiteral("type")] = QStringLiteral("string");
+        QJsonArray actEnum;
+        actEnum.append(QStringLiteral("get_current"));
+        actEnum.append(QStringLiteral("list_history"));
+        actEnum.append(QStringLiteral("search"));
+        actProp[QStringLiteral("enum")] = actEnum;
+        actProp[QStringLiteral("description")] = QStringLiteral("Acción: 'get_current' (obtener lo último copiado), 'list_history' (ver historial reciente) o 'search' (buscar texto copiado).");
+        props[QStringLiteral("action")] = actProp;
+
+        QJsonObject qProp;
+        qProp[QStringLiteral("type")] = QStringLiteral("string");
+        qProp[QStringLiteral("description")] = QStringLiteral("Texto o término a buscar en el historial del portapapeles cuando action='search'.");
+        props[QStringLiteral("query")] = qProp;
+
+        QJsonObject params;
+        params[QStringLiteral("type")] = QStringLiteral("object");
+        params[QStringLiteral("properties")] = props;
+        QJsonArray req;
+        req.append(QStringLiteral("action"));
+        params[QStringLiteral("required")] = req;
+
+        tools.append(createTool(
+            QStringLiteral("clipboard_tool"),
+            QStringLiteral("Accede al gestor del portapapeles de KDE Plasma (Klipper): lee el contenido actual copiado, consulta el historial reciente de copias o busca fragmentos de texto copiados con anterioridad."),
+            params
+        ));
+    }
+
+    // Tool 10: email_tool (KMail / Email Client Intent)
+    static const QRegularExpression mailSignal(
+        QStringLiteral("(correo|email|mail|escribe\\s+a|enviar\\s+correo|mandar\\s+un\\s+correo)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (!isLlama32 || q.isEmpty() || q.contains(mailSignal)) {
+        QJsonObject props;
+        QJsonObject toProp;
+        toProp[QStringLiteral("type")] = QStringLiteral("string");
+        toProp[QStringLiteral("description")] = QStringLiteral("Destinatario o dirección de correo (ej. 'juan@example.com' o nombre del contacto).");
+        props[QStringLiteral("to")] = toProp;
+
+        QJsonObject subjProp;
+        subjProp[QStringLiteral("type")] = QStringLiteral("string");
+        subjProp[QStringLiteral("description")] = QStringLiteral("Asunto del correo electrónico.");
+        props[QStringLiteral("subject")] = subjProp;
+
+        QJsonObject bodyProp;
+        bodyProp[QStringLiteral("type")] = QStringLiteral("string");
+        bodyProp[QStringLiteral("description")] = QStringLiteral("Cuerpo o mensaje del correo.");
+        props[QStringLiteral("body")] = bodyProp;
+
+        QJsonObject params;
+        params[QStringLiteral("type")] = QStringLiteral("object");
+        params[QStringLiteral("properties")] = props;
+
+        tools.append(createTool(
+            QStringLiteral("email_tool"),
+            QStringLiteral("Prepara y redacta un correo electrónico en el cliente de correo del sistema (KMail, Thunderbird o interfaz web) con destinatario, asunto y mensaje."),
+            params
+        ));
+    }
+
+    return tools;
+}
+
+QJsonObject KityApplet::executeToolCall(const QString &toolName, const QJsonObject &arguments)
+{
+    QJsonObject result;
+
+    if (toolName == QLatin1String("get_weather")) {
+        QString city = arguments.value(QStringLiteral("city")).toString().trimmed();
+        if (city.isEmpty()) {
+            city = resolveDefaultLocation();
+        }
+        const QString weatherReport = fetchWeatherContext(QStringLiteral("tiempo en %1").arg(city));
+        result[QStringLiteral("city")] = city;
+        result[QStringLiteral("weather_report")] = weatherReport.isEmpty() ?
+            i18n("No se pudieron obtener datos meteorológicos para %1 en este momento.", city) : weatherReport;
+        return result;
+    }
+
+    if (toolName == QLatin1String("media_control")) {
+        const QString action = arguments.value(QStringLiteral("action")).toString().trimmed().toLower();
+        result[QStringLiteral("action")] = action;
+
+        if (action == QLatin1String("play")) {
+            QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("play"));
+            result[QStringLiteral("status")] = QStringLiteral("Reproducción reanudada.");
+        } else if (action == QLatin1String("pause")) {
+            QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("pause"));
+            result[QStringLiteral("status")] = QStringLiteral("Reproducción pausada.");
+        } else if (action == QLatin1String("play_pause")) {
+            QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("play-pause"));
+            result[QStringLiteral("status")] = QStringLiteral("Alternado estado de reproducción.");
+        } else if (action == QLatin1String("next")) {
+            QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("next"));
+            result[QStringLiteral("status")] = QStringLiteral("Siguiente pista reproducida.");
+        } else if (action == QLatin1String("previous")) {
+            QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("previous"));
+            result[QStringLiteral("status")] = QStringLiteral("Pista anterior reproducida.");
+        } else {
+            // Status check
+            QProcess pStat;
+            pStat.start(QStringLiteral("playerctl"), QStringList() << QStringLiteral("status"));
+            pStat.waitForFinished(1000);
+            const QString stat = QString::fromUtf8(pStat.readAllStandardOutput()).trimmed();
+
+            QProcess pMeta;
+            pMeta.start(QStringLiteral("playerctl"), QStringList() << QStringLiteral("metadata") << QStringLiteral("--format") << QStringLiteral("{{ artist }} - {{ title }}"));
+            pMeta.waitForFinished(1000);
+            const QString track = QString::fromUtf8(pMeta.readAllStandardOutput()).trimmed();
+
+            result[QStringLiteral("status")] = stat.isEmpty() ? QStringLiteral("Sin reproductor activo") : stat;
+            result[QStringLiteral("track")] = track;
+        }
+        return result;
+    }
+
+    if (toolName == QLatin1String("set_timer")) {
+        int seconds = arguments.value(QStringLiteral("seconds")).toInt();
+        if (seconds <= 0) {
+            seconds = 60;
+        }
+        QString label = arguments.value(QStringLiteral("label")).toString().trimmed();
+        if (label.isEmpty()) {
+            label = i18n("Temporizador");
+        }
+
+        // Schedule one-shot timer for desktop notification
+        QTimer::singleShot(seconds * 1000, this, [this, label]() {
+            KNotification::event(QStringLiteral("notification"),
+                                 i18n("¡Temporizador de Kity finalizado!"),
+                                 label);
+            speakText(i18n("El temporizador de %1 ha finalizado.", label));
+        });
+
+        // Also record in scheduled reminders list
+        ScheduledReminder rem;
+        rem.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        rem.text = label;
+        rem.targetTime = QDateTime::currentDateTime().addSecs(seconds);
+        rem.notified = false;
+        m_scheduledReminders.append(rem);
+        saveScheduledReminders();
+
+        result[QStringLiteral("success")] = true;
+        result[QStringLiteral("seconds")] = seconds;
+        result[QStringLiteral("label")] = label;
+        result[QStringLiteral("expires_at")] = rem.targetTime.toString(Qt::ISODate);
+        return result;
+    }
+
+    if (toolName == QLatin1String("get_system_vitals")) {
+        result[QStringLiteral("vitals")] = collectSystemVitals();
+        return result;
+    }
+
+    if (toolName == QLatin1String("launch_application")) {
+        const QString appQuery = arguments.value(QStringLiteral("app_name")).toString().trimmed();
+        QString launchedName;
+        const bool ok = launchApplication(appQuery, &launchedName);
+        result[QStringLiteral("success")] = ok;
+        result[QStringLiteral("requested_app")] = appQuery;
+        result[QStringLiteral("launched_app")] = launchedName.isEmpty() ? appQuery : launchedName;
+        return result;
+    }
+
+    if (toolName == QLatin1String("web_search")) {
+        const QString query = arguments.value(QStringLiteral("query")).toString().trimmed();
+        const QString searchRes = fetchWebSearchContext(query);
+        result[QStringLiteral("query")] = query;
+        result[QStringLiteral("results")] = searchRes.isEmpty() ? QStringLiteral("No se encontraron resultados en la web.") : searchRes;
+        return result;
+    }
+
+    if (toolName == QLatin1String("inspect_screen")) {
+        const QString modeArg = arguments.value(QStringLiteral("mode")).toString().trimmed();
+        const QString captureMode = (modeArg == QLatin1String("fullscreen")) ? QStringLiteral("fullscreen") : QStringLiteral("activewindow");
+
+        const QString kwinWindows = collectKWinWindowsInfo();
+        const QString tmpShot = QDir::tempPath() + QStringLiteral("/kity_screen_tool_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
+        captureScreenToPng(tmpShot, captureMode);
+        const QString ocrText = extractScreenOcrText(tmpShot);
+        QFile::remove(tmpShot);
+
+        result[QStringLiteral("capture_mode")] = captureMode;
+        result[QStringLiteral("kwin_windows")] = kwinWindows.isEmpty() ? QStringLiteral("No se obtuvieron metadatos de ventanas KWin.") : kwinWindows;
+        result[QStringLiteral("screen_ocr_text")] = ocrText.isEmpty() ? QStringLiteral("No se detectó texto legible por OCR en la captura.") : ocrText;
+        return result;
+    }
+
+    if (toolName == QLatin1String("calendar_event")) {
+        const QString action = arguments.value(QStringLiteral("action")).toString().trimmed().toLower();
+        if (action == QLatin1String("list")) {
+            const QDateTime now = QDateTime::currentDateTime();
+            QStringList eventList;
+            for (const auto &r : m_scheduledReminders) {
+                if (r.targetTime >= now) {
+                    const QString timeStr = r.targetTime.toString(QStringLiteral("dd/MM/yyyy HH:mm"));
+                    const qint64 secsLeft = now.secsTo(r.targetTime);
+                    const qint64 minsLeft = secsLeft / 60;
+                    eventList.append(QStringLiteral("- %1 (Fecha: %2, dentro de %3 minutos)").arg(r.text, timeStr, QString::number(minsLeft)));
+                }
+            }
+            result[QStringLiteral("action")] = QStringLiteral("list");
+            result[QStringLiteral("count")] = eventList.size();
+            result[QStringLiteral("events")] = eventList.isEmpty() ? QStringLiteral("No hay eventos ni citas próximas programadas.") : eventList.join(QLatin1Char('\n'));
+            return result;
+        }
+
+        // action == "create"
+        QString title = arguments.value(QStringLiteral("title")).toString().trimmed();
+        if (title.isEmpty()) title = i18n("Evento en calendario");
+        QString timeArg = arguments.value(QStringLiteral("start_time")).toString().trimmed();
+        int durationMinutes = arguments.value(QStringLiteral("duration_minutes")).toInt();
+        if (durationMinutes <= 0) durationMinutes = 60;
+        QString description = arguments.value(QStringLiteral("description")).toString().trimmed();
+
+        ParsedCalendarEvent ev = parseCalendarEventPrompt(title + QStringLiteral(" ") + timeArg, QDateTime::currentDateTime());
+        if (!timeArg.isEmpty() && ev.startTime == QDateTime::currentDateTime().addSecs(3600)) {
+            QDateTime explicitDt = QDateTime::fromString(timeArg, Qt::ISODate);
+            if (!explicitDt.isValid()) {
+                explicitDt = QDateTime::fromString(timeArg, QStringLiteral("yyyy-MM-dd HH:mm"));
+            }
+            if (explicitDt.isValid()) {
+                ev.startTime = explicitDt;
+                ev.endTime = explicitDt.addSecs(durationMinutes * 60);
+            }
+        }
+        if (!title.isEmpty()) ev.title = title;
+        if (!description.isEmpty()) ev.description = description;
+
+        // Generate RFC 5545 iCalendar (.ics) file
+        const QString calDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity/calendar");
+        QDir().mkpath(calDir);
+        const QString eventUid = QStringLiteral("kity_%1").arg(QDateTime::currentMSecsSinceEpoch());
+        const QString icsPath = calDir + QStringLiteral("/%1.ics").arg(eventUid);
+
+        QFile icsFile(icsPath);
+        if (icsFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream out(&icsFile);
+            out << "BEGIN:VCALENDAR\n"
+                << "VERSION:2.0\n"
+                << "PRODID:-//Kity//KDE Plasma 6.8//ES\n"
+                << "BEGIN:VEVENT\n"
+                << "UID:" << eventUid << "\n"
+                << "DTSTAMP:" << QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd'T'hhmmss'Z'")) << "\n"
+                << "DTSTART:" << ev.startTime.toUTC().toString(QStringLiteral("yyyyMMdd'T'hhmmss'Z'")) << "\n"
+                << "DTEND:" << ev.endTime.toUTC().toString(QStringLiteral("yyyyMMdd'T'hhmmss'Z'")) << "\n"
+                << "SUMMARY:" << ev.title << "\n";
+            if (!ev.description.isEmpty()) {
+                out << "DESCRIPTION:" << ev.description << "\n";
+            }
+            out << "END:VEVENT\n"
+                << "END:VCALENDAR\n";
+            icsFile.close();
+        }
+
+        // Open KOrganizer to merge the new event into the default calendar
+        const QString korganizer = QStandardPaths::findExecutable(QStringLiteral("korganizer"));
+        if (!korganizer.isEmpty()) {
+            QProcess::startDetached(korganizer, QStringList() << QStringLiteral("-m") << icsPath);
+        }
+
+        // Register in Kity scheduled reminders list
+        ScheduledReminder r;
+        r.id = eventUid;
+        r.text = ev.title;
+        r.targetTime = ev.startTime;
+        r.notified = false;
+        m_scheduledReminders.append(r);
+        saveScheduledReminders();
+
+        KNotification::event(QStringLiteral("notification"),
+                             i18n("Evento agendado en KOrganizer"),
+                             QStringLiteral("%1 (%2)").arg(ev.title, ev.startTime.toString(QStringLiteral("dd/MM/yyyy HH:mm"))),
+                             QStringLiteral("x-office-calendar"));
+
+        result[QStringLiteral("action")] = QStringLiteral("create");
+        result[QStringLiteral("title")] = ev.title;
+        result[QStringLiteral("start_time")] = ev.startTime.toString(Qt::ISODate);
+        result[QStringLiteral("ics_path")] = icsPath;
+        result[QStringLiteral("status")] = QStringLiteral("Evento «%1» creado y guardado en KOrganizer correctamente para el %2.").arg(ev.title, ev.startTime.toString(QStringLiteral("dddd d 'de' MMMM 'a las' HH:mm")));
+        return result;
+    }
+
+    if (toolName == QLatin1String("clipboard_tool")) {
+        const QString action = arguments.value(QStringLiteral("action")).toString().trimmed().toLower();
+        result[QStringLiteral("action")] = action;
+
+        QDBusInterface klipperIface(QStringLiteral("org.kde.klipper"),
+                                    QStringLiteral("/klipper"),
+                                    QStringLiteral("org.kde.klipper.klipper"),
+                                    QDBusConnection::sessionBus());
+
+        if (action == QLatin1String("list_history")) {
+            QStringList history;
+            if (klipperIface.isValid()) {
+                QDBusReply<QStringList> menuReply = klipperIface.call(QStringLiteral("getClipboardHistoryMenu"));
+                if (menuReply.isValid() && !menuReply.value().isEmpty()) {
+                    history = menuReply.value();
+                }
+            }
+            if (history.isEmpty()) {
+                const QString current = readWaylandSelectionOrClipboard();
+                if (!current.isEmpty()) {
+                    history.append(current);
+                }
+            }
+            result[QStringLiteral("history")] = history.mid(0, 10).join(QStringLiteral("\n---\n"));
+            result[QStringLiteral("count")] = history.size();
+            return result;
+        }
+
+        if (action == QLatin1String("search")) {
+            const QString query = arguments.value(QStringLiteral("query")).toString().trimmed();
+            QStringList matches;
+            if (klipperIface.isValid()) {
+                QDBusReply<QStringList> menuReply = klipperIface.call(QStringLiteral("getClipboardHistoryMenu"));
+                if (menuReply.isValid()) {
+                    for (const QString &item : menuReply.value()) {
+                        if (item.contains(query, Qt::CaseInsensitive)) {
+                            matches.append(item);
+                        }
+                    }
+                }
+            }
+            result[QStringLiteral("query")] = query;
+            result[QStringLiteral("matches")] = matches.isEmpty() ? QStringLiteral("No se encontraron coincidencias en el historial del portapapeles.") : matches.mid(0, 5).join(QStringLiteral("\n---\n"));
+            return result;
+        }
+
+        // action == "get_current"
+        QString current;
+        if (klipperIface.isValid()) {
+            QDBusReply<QString> reply = klipperIface.call(QStringLiteral("getClipboardContents"));
+            if (reply.isValid()) {
+                current = reply.value().trimmed();
+            }
+        }
+        if (current.isEmpty()) {
+            current = readWaylandSelectionOrClipboard();
+        }
+        result[QStringLiteral("clipboard_content")] = current.isEmpty() ? QStringLiteral("(El portapapeles está vacío)") : current;
+        return result;
+    }
+
+    if (toolName == QLatin1String("email_tool")) {
+        const QString to = arguments.value(QStringLiteral("to")).toString().trimmed();
+        const QString subject = arguments.value(QStringLiteral("subject")).toString().trimmed();
+        const QString body = arguments.value(QStringLiteral("body")).toString().trimmed();
+
+        composeEmail(to, subject, body, QStringLiteral("default"));
+
+        result[QStringLiteral("to")] = to;
+        result[QStringLiteral("subject")] = subject;
+        result[QStringLiteral("status")] = QStringLiteral("Borrador de correo abierto con éxito en el cliente de correo del sistema.");
+        return result;
+    }
+
+    result[QStringLiteral("error")] = QStringLiteral("Herramienta no reconocida.");
+    return result;
 }
 
 void KityApplet::openUI()
@@ -814,6 +2027,7 @@ void KityApplet::reloadConfig()
     KSharedConfig::openConfig(QStringLiteral("kityrc"))->reparseConfiguration();
     const bool wakeEnabled = readConfigBool(QStringLiteral("wakeWordEnabled"), true);
     setWakeWordEnabled(wakeEnabled);
+    Q_EMIT panelIconStyleChanged();
     Q_EMIT speechOutputModeChanged();
     Q_EMIT vadEnabledChanged();
     Q_EMIT earconsEnabledChanged();
@@ -831,8 +2045,29 @@ void KityApplet::clearHistory()
 }
 
 // =========================================================================
-// Voice & Audio Processing (Whisper.cpp + PipeWire)
+// Voice & Audio Processing (Whisper.cpp + PipeWire Full-Duplex AEC)
 // =========================================================================
+
+bool KityApplet::isPipeWireEchoCancelAvailable() const
+{
+    static bool checked = false;
+    static bool available = false;
+    if (!checked) {
+        checked = true;
+        const QString conf = QDir::homePath() + QStringLiteral("/.config/pipewire/pipewire.conf.d/20-echo-cancel.conf");
+        available = QFile::exists(conf);
+    }
+    return available;
+}
+
+QString KityApplet::resolveAudioRecordingPath() const
+{
+    QString baseDir = QStringLiteral("/dev/shm");
+    if (!QDir(baseDir).exists() || !QFileInfo(baseDir).isWritable()) {
+        baseDir = QDir::tempPath();
+    }
+    return baseDir + QStringLiteral("/kity_rec_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
+}
 
 void KityApplet::startRecording()
 {
@@ -850,14 +2085,21 @@ void KityApplet::startRecording()
     stopSpeaking();
     playSiriEarcon(true);
 
-    m_currentRecordingPath = QDir::tempPath() + QStringLiteral("/kity_rec_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
+    m_currentRecordingPath = resolveAudioRecordingPath();
 
     m_recordProcess = new QProcess(this);
     QStringList args;
     args << QStringLiteral("--format=s16")
          << QStringLiteral("--rate=16000")
          << QStringLiteral("--channels=1")
-         << m_currentRecordingPath;
+         << QStringLiteral("--latency=20ms")
+         << QStringLiteral("--media-category=Capture")
+         << QStringLiteral("--media-role=Communication");
+
+    if (isPipeWireEchoCancelAvailable()) {
+        args << QStringLiteral("--target=kity_echo_cancelled_source");
+    }
+    args << m_currentRecordingPath;
 
     m_recordProcess->start(pwRecord, args);
     if (!m_recordProcess->waitForStarted(2000)) {
@@ -968,9 +2210,11 @@ void KityApplet::checkVoiceActivity()
                 stopRecording();
             }
         } else {
-            // Safety guard: stop after 7 seconds if no voice was ever detected
-            if (fileSize > static_cast<qint64>(16000 * sizeof(qint16) * 7)) {
+            // Safety guard: stop after 4.5 seconds if in conversational follow-up, or 7 seconds initially
+            const double maxSilenceSeconds = (m_lastQueryWasVoice ? 4.5 : 7.0);
+            if (fileSize > static_cast<qint64>(16000 * sizeof(qint16) * maxSilenceSeconds)) {
                 stopRecording();
+                setState(QStringLiteral("idle"), QString());
             }
         }
     }
@@ -1001,6 +2245,7 @@ void KityApplet::runWhisperTranscription()
     QStringList args;
     args << QStringLiteral("-m") << modelPath
          << QStringLiteral("-f") << m_currentRecordingPath
+         << QStringLiteral("-t") << QStringLiteral("6")
          << QStringLiteral("--no-timestamps")
          << QStringLiteral("-l") << resolveWhisperLanguage();
 
@@ -1050,6 +2295,16 @@ void KityApplet::stopSpeaking()
 {
     m_ttsQueue.clear();
     m_ttsSpeechBuffer.clear();
+    m_bargeInVoiceFrames = 0;
+
+    if (m_pwPlayProcess) {
+        if (m_pwPlayProcess->state() == QProcess::Running) {
+            m_pwPlayProcess->kill();
+        }
+        m_pwPlayProcess->deleteLater();
+        m_pwPlayProcess = nullptr;
+    }
+
     if (m_ttsProcess) {
         if (m_ttsProcess->state() == QProcess::Running) {
             m_ttsProcess->kill();
@@ -1057,6 +2312,7 @@ void KityApplet::stopSpeaking()
         m_ttsProcess->deleteLater();
         m_ttsProcess = nullptr;
     }
+
     m_isSpeakingSentence = false;
     if (m_state == QLatin1String("speaking")) {
         setState(QStringLiteral("idle"), QString());
@@ -1075,19 +2331,48 @@ void KityApplet::processStreamingTtsChunk(const QString &newChunk)
 
     m_ttsSpeechBuffer.append(newChunk);
 
-    // Look for sentence terminators: . ? ! \n
-    static const QRegularExpression endRegex(QStringLiteral("([.?!\\n]+)"));
-    QRegularExpressionMatch match = endRegex.match(m_ttsSpeechBuffer);
-    while (match.hasMatch()) {
-        const int endPos = match.capturedEnd();
-        const QString sentence = m_ttsSpeechBuffer.left(endPos).trimmed();
-        m_ttsSpeechBuffer = m_ttsSpeechBuffer.mid(endPos);
+    // Regex 1: Full sentence terminators (. ? ! \n)
+    static const QRegularExpression sentenceTerminator(QStringLiteral("([.?!\\n]+)"));
+    // Regex 2: Clause pause boundaries (, ; : —) for sub-sentence low latency streaming
+    static const QRegularExpression clauseTerminator(QStringLiteral("([,;:—]+)"));
 
-        const QString clean = stripMarkdownForSpeech(sentence);
-        if (!clean.isEmpty()) {
-            enqueueSentenceForSpeech(clean);
+    bool extracted = true;
+    while (extracted) {
+        extracted = false;
+
+        // Check if there is a full sentence terminator
+        QRegularExpressionMatch sentMatch = sentenceTerminator.match(m_ttsSpeechBuffer);
+        if (sentMatch.hasMatch()) {
+            const int endPos = sentMatch.capturedEnd();
+            const QString sentence = m_ttsSpeechBuffer.left(endPos).trimmed();
+            m_ttsSpeechBuffer = m_ttsSpeechBuffer.mid(endPos);
+
+            const QString clean = stripMarkdownForSpeech(sentence);
+            if (!clean.isEmpty()) {
+                enqueueSentenceForSpeech(clean);
+            }
+            extracted = true;
+            continue;
         }
-        match = endRegex.match(m_ttsSpeechBuffer);
+
+        // If no full sentence yet, check if we have an early clause boundary with sufficient length
+        // This achieves ultra-low Time-To-First-Speech (< 350ms) like Gemini Live!
+        if (m_ttsSpeechBuffer.length() >= 35) {
+            QRegularExpressionMatch clauseMatch = clauseTerminator.match(m_ttsSpeechBuffer);
+            if (clauseMatch.hasMatch()) {
+                const int endPos = clauseMatch.capturedEnd();
+                if (endPos >= 25) {
+                    const QString clause = m_ttsSpeechBuffer.left(endPos).trimmed();
+                    m_ttsSpeechBuffer = m_ttsSpeechBuffer.mid(endPos);
+
+                    const QString clean = stripMarkdownForSpeech(clause);
+                    if (!clean.isEmpty()) {
+                        enqueueSentenceForSpeech(clean);
+                    }
+                    extracted = true;
+                }
+            }
+        }
     }
 }
 
@@ -1104,7 +2389,15 @@ void KityApplet::playNextTtsQueueItem()
     if (m_ttsQueue.isEmpty()) {
         m_isSpeakingSentence = false;
         if (m_state == QLatin1String("speaking") || m_state == QLatin1String("transcribing")) {
-            setState(QStringLiteral("idle"), QString());
+            const bool continuousVoice = readConfigBool(QStringLiteral("continuousConversation"), true);
+            if (m_lastQueryWasVoice && continuousVoice) {
+                qInfo() << "Kity: Full-Duplex continuous conversational turn-taking active. Listening for natural follow-up...";
+                setState(QStringLiteral("listening"), i18n("Escuchando respuesta…"));
+                startRecording();
+                return;
+            } else {
+                setState(QStringLiteral("idle"), QString());
+            }
         }
         return;
     }
@@ -1115,12 +2408,142 @@ void KityApplet::playNextTtsQueueItem()
 
 void KityApplet::speakSentence(const QString &sentence)
 {
-    const QString piperCli = QStandardPaths::findExecutable(QStringLiteral("piper"));
-    const QString voicePath = resolvePiperVoicePath();
     const QString pwPlay = QStandardPaths::findExecutable(QStringLiteral("pw-play"));
-
-    if (piperCli.isEmpty() || voicePath.isEmpty() || pwPlay.isEmpty() || sentence.trimmed().isEmpty()) {
+    if (pwPlay.isEmpty() || sentence.trimmed().isEmpty()) {
         m_isSpeakingSentence = false;
+        playNextTtsQueueItem();
+        return;
+    }
+
+    const QString ttsEngine = readConfigString(QStringLiteral("ttsEngine"), QStringLiteral("google")).toLower();
+    const QString googleApiKey = readConfigString(QStringLiteral("googleApiKey")).trimmed();
+    const QString edgeCli = QStandardPaths::findExecutable(QStringLiteral("kity-edge-tts"));
+    const QString kokoroCli = QStandardPaths::findExecutable(QStringLiteral("kity-kokoro-tts"));
+    const QString piperCli = QStandardPaths::findExecutable(QStringLiteral("piper"));
+    const QString piperVoicePath = resolvePiperVoicePath();
+
+    // 1. Google Cloud Text-to-Speech API (Neural2 / Journey / Studio voices)
+    if (ttsEngine == QLatin1String("google") && !googleApiKey.isEmpty()) {
+        m_isSpeakingSentence = true;
+        setState(QStringLiteral("speaking"), i18n("Reproduciendo respuesta…"));
+
+        if (m_wakeWordEnabled && (!m_wakeWordProcess || m_wakeWordProcess->state() != QProcess::Running)) {
+            startWakeWordListener();
+        }
+
+        const QString googleVoice = readConfigString(QStringLiteral("googleVoice"), QStringLiteral("es-ES-Neural2-F"));
+        QJsonObject inputObj;
+        inputObj[QStringLiteral("text")] = sentence;
+
+        QJsonObject voiceObj;
+        voiceObj[QStringLiteral("languageCode")] = QStringLiteral("es-ES");
+        voiceObj[QStringLiteral("name")] = googleVoice;
+        voiceObj[QStringLiteral("ssmlGender")] = QStringLiteral("FEMALE");
+
+        QJsonObject audioConfig;
+        audioConfig[QStringLiteral("audioEncoding")] = QStringLiteral("MP3");
+
+        QJsonObject payload;
+        payload[QStringLiteral("input")] = inputObj;
+        payload[QStringLiteral("voice")] = voiceObj;
+        payload[QStringLiteral("audioConfig")] = audioConfig;
+
+        const QUrl gUrl(QStringLiteral("https://texttospeech.googleapis.com/v1/text:synthesize?key=%1").arg(googleApiKey));
+        QNetworkRequest req(gUrl);
+        req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+
+        QNetworkReply *gReply = m_nam->post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+        connect(gReply, &QNetworkReply::finished, this, [this, gReply, pwPlay]() {
+            gReply->deleteLater();
+            if (gReply->error() != QNetworkReply::NoError) {
+                qWarning() << "Kity: Google Cloud TTS error:" << gReply->errorString();
+                setState(QStringLiteral("error"), i18n("Error en la síntesis de voz (Google Cloud TTS): %1", gReply->errorString()));
+                playNextTtsQueueItem();
+                return;
+            }
+
+            const QJsonDocument doc = QJsonDocument::fromJson(gReply->readAll());
+            const QString b64 = doc.object().value(QStringLiteral("audioContent")).toString();
+            if (b64.isEmpty()) {
+                playNextTtsQueueItem();
+                return;
+            }
+
+            const QByteArray audioBytes = QByteArray::fromBase64(b64.toUtf8());
+            m_pwPlayProcess = new QProcess(this);
+            connect(m_pwPlayProcess.data(), &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
+                if (m_pwPlayProcess) {
+                    m_pwPlayProcess->deleteLater();
+                    m_pwPlayProcess = nullptr;
+                }
+                playNextTtsQueueItem();
+            });
+
+            m_pwPlayProcess->start(pwPlay, QStringList() << QStringLiteral("-"));
+            m_pwPlayProcess->write(audioBytes);
+            m_pwPlayProcess->closeWriteChannel();
+        });
+        return;
+    }
+
+    // 2. Microsoft Edge Neural TTS (Free high-definition Castilian Spanish: Elvira / Ximena)
+    // Used when engine is 'edge' OR when 'google' is selected but no API key is entered yet
+    if ((ttsEngine == QLatin1String("edge") || (ttsEngine == QLatin1String("google") && googleApiKey.isEmpty())) && !edgeCli.isEmpty()) {
+        m_isSpeakingSentence = true;
+        setState(QStringLiteral("speaking"), i18n("Reproduciendo respuesta…"));
+
+        if (m_wakeWordEnabled && (!m_wakeWordProcess || m_wakeWordProcess->state() != QProcess::Running)) {
+            startWakeWordListener();
+        }
+
+        const QString edgeVoice = readConfigString(QStringLiteral("edgeVoice"), QStringLiteral("es-ES-ElviraNeural"));
+        m_ttsProcess = new QProcess(this);
+        m_pwPlayProcess = new QProcess(this);
+
+        m_ttsProcess->setStandardOutputProcess(m_pwPlayProcess.data());
+
+        QStringList edgeArgs;
+        edgeArgs << QStringLiteral("--voice") << edgeVoice
+                 << QStringLiteral("--text") << sentence
+                 << QStringLiteral("--write-media") << QStringLiteral("-");
+
+        connect(m_pwPlayProcess.data(), &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
+            if (m_pwPlayProcess) {
+                m_pwPlayProcess->deleteLater();
+                m_pwPlayProcess = nullptr;
+            }
+            if (m_ttsProcess) {
+                m_ttsProcess->deleteLater();
+                m_ttsProcess = nullptr;
+            }
+            playNextTtsQueueItem();
+        });
+
+        m_ttsProcess->start(edgeCli, edgeArgs);
+        m_pwPlayProcess->start(pwPlay, QStringList() << QStringLiteral("-"));
+        return;
+    }
+
+    // 3. Local TTS engines: Kokoro-82M or Piper
+    QString execProg;
+    QStringList execArgs;
+
+    if (ttsEngine == QLatin1String("kokoro") && !kokoroCli.isEmpty()) {
+        execProg = kokoroCli;
+        const QString kokoroVoice = readConfigString(QStringLiteral("kokoroVoice"), QStringLiteral("ef_dora"));
+        execArgs << QStringLiteral("--voice") << kokoroVoice
+                 << QStringLiteral("--output_file") << QStringLiteral("-");
+    } else if (!piperCli.isEmpty() && !piperVoicePath.isEmpty()) {
+        execProg = piperCli;
+        execArgs << QStringLiteral("--model") << piperVoicePath
+                 << QStringLiteral("--output_file") << QStringLiteral("-");
+    } else if (!kokoroCli.isEmpty()) {
+        execProg = kokoroCli;
+        execArgs << QStringLiteral("--voice") << QStringLiteral("ef_dora")
+                 << QStringLiteral("--output_file") << QStringLiteral("-");
+    } else {
+        m_isSpeakingSentence = false;
+        setState(QStringLiteral("error"), i18n("No se encontró ningún motor TTS disponible (Google, Edge, Piper o Kokoro)."));
         playNextTtsQueueItem();
         return;
     }
@@ -1128,20 +2551,20 @@ void KityApplet::speakSentence(const QString &sentence)
     m_isSpeakingSentence = true;
     setState(QStringLiteral("speaking"), i18n("Reproduciendo respuesta…"));
 
-    // Pipeline: piper --model voicePath --output_file - | pw-play -
+    if (m_wakeWordEnabled && (!m_wakeWordProcess || m_wakeWordProcess->state() != QProcess::Running)) {
+        startWakeWordListener();
+    }
+
     m_ttsProcess = new QProcess(this);
-    QProcess *pwPlayProcess = new QProcess(m_ttsProcess);
+    m_pwPlayProcess = new QProcess(this);
 
-    m_ttsProcess->setStandardOutputProcess(pwPlayProcess);
+    m_ttsProcess->setStandardOutputProcess(m_pwPlayProcess.data());
 
-    QStringList piperArgs;
-    piperArgs << QStringLiteral("--model") << voicePath
-              << QStringLiteral("--output_file") << QStringLiteral("-");
-
-    QStringList pwArgs;
-    pwArgs << QStringLiteral("-");
-
-    connect(pwPlayProcess, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
+    connect(m_pwPlayProcess.data(), &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
+        if (m_pwPlayProcess) {
+            m_pwPlayProcess->deleteLater();
+            m_pwPlayProcess = nullptr;
+        }
         if (m_ttsProcess) {
             m_ttsProcess->deleteLater();
             m_ttsProcess = nullptr;
@@ -1149,8 +2572,8 @@ void KityApplet::speakSentence(const QString &sentence)
         playNextTtsQueueItem();
     });
 
-    m_ttsProcess->start(piperCli, piperArgs);
-    pwPlayProcess->start(pwPlay, pwArgs);
+    m_ttsProcess->start(execProg, execArgs);
+    m_pwPlayProcess->start(pwPlay, QStringList() << QStringLiteral("-"));
 
     m_ttsProcess->write(sentence.toUtf8());
     m_ttsProcess->closeWriteChannel();
@@ -1181,7 +2604,7 @@ void KityApplet::startWakeWordListener()
         return;
     }
 
-    if (m_state == QLatin1String("listening") || m_state == QLatin1String("speaking")) {
+    if (m_state == QLatin1String("listening")) {
         return;
     }
 
@@ -1197,6 +2620,7 @@ void KityApplet::startWakeWordListener()
 
     m_wakeWordPcmBuffer.clear();
     m_wakeWordEvaluating = false;
+    m_bargeInVoiceFrames = 0;
 
     if (!m_wakeWordProcess) {
         m_wakeWordProcess = new QProcess(this);
@@ -1208,13 +2632,20 @@ void KityApplet::startWakeWordListener()
          << QStringLiteral("--rate=16000")
          << QStringLiteral("--channels=1")
          << QStringLiteral("--container=raw")
-         << QStringLiteral("-");
+         << QStringLiteral("--latency=20ms")
+         << QStringLiteral("--media-category=Capture")
+         << QStringLiteral("--media-role=Communication");
+
+    if (isPipeWireEchoCancelAvailable()) {
+        args << QStringLiteral("--target=kity_echo_cancelled_source");
+    }
+    args << QStringLiteral("-");
 
     m_wakeWordProcess->start(pwRecord, args);
     if (!m_wakeWordProcess->waitForStarted(2000)) {
         qWarning() << "Kity: Failed to start pw-record for wake word listener";
     } else {
-        qInfo() << "Kity: Wake word background listener started successfully (PID:" << m_wakeWordProcess->processId() << ")";
+        qInfo() << "Kity: Wake word & Barge-in background listener started successfully (PID:" << m_wakeWordProcess->processId() << ")";
     }
 }
 
@@ -1230,6 +2661,7 @@ void KityApplet::stopWakeWordListener()
     }
     m_wakeWordPcmBuffer.clear();
     m_wakeWordEvaluating = false;
+    m_bargeInVoiceFrames = 0;
 }
 
 void KityApplet::onWakeWordAudioChunkReady()
@@ -1246,8 +2678,6 @@ void KityApplet::onWakeWordAudioChunkReady()
         m_wakeWordPcmBuffer = m_wakeWordPcmBuffer.right(80000);
     }
 
-    if (m_wakeWordEvaluating) return;
-
     // Fast RMS volume check on the incoming audio chunk
     const int sampleCount = chunk.size() / sizeof(qint16);
     if (sampleCount <= 0) return;
@@ -1259,6 +2689,26 @@ void KityApplet::onWakeWordAudioChunkReady()
         sumSquares += s * s;
     }
     const double rms = std::sqrt(sumSquares / sampleCount);
+
+    // Live Full-Duplex Barge-in detection: if Kity is speaking and user begins speaking directly
+    if (m_state == QLatin1String("speaking")) {
+        const double bargeInThreshold = isPipeWireEchoCancelAvailable() ? 0.026 : 0.045;
+        if (rms >= bargeInThreshold) {
+            m_bargeInVoiceFrames++;
+            if (m_bargeInVoiceFrames >= 2) { // 2 consecutive chunks (~160ms) of active user speech
+                qInfo() << "Kity: Live Full-Duplex Barge-in triggered! User spoke while Kity was speaking. Aborting speech.";
+                m_bargeInVoiceFrames = 0;
+                stopSpeaking();
+                startRecording();
+                return;
+            }
+        } else {
+            m_bargeInVoiceFrames = 0;
+        }
+        return;
+    }
+
+    if (m_wakeWordEvaluating) return;
 
     // Voice detected above background noise (>= 0.016) and not in cooldown
     if (rms >= 0.016 && (!m_wakeWordCooldown.isValid() || m_wakeWordCooldown.elapsed() > 1200)) {
@@ -1310,7 +2760,7 @@ void KityApplet::checkWakeWordTranscription(const QString &wavPath)
          << QStringLiteral("-l") << QStringLiteral("es")
          << QStringLiteral("--prompt") << QStringLiteral("Hola Kity, Oye Kity, Hey Kity")
          << QStringLiteral("--no-timestamps")
-         << QStringLiteral("-t") << QStringLiteral("4")
+         << QStringLiteral("-t") << QStringLiteral("6")
          << QStringLiteral("-np");
 
     const QString wavToClean = wavPath;
@@ -1425,10 +2875,30 @@ bool KityApplet::detectAndExecuteSystemAction(const QString &input)
         return true;
     }
 
-    // 4. Media Playback Control via playerctl
+    // 4. Media Playback Control via playerctl & Generative MediaCard
+    static const QRegularExpression mediaQueryRegex(QStringLiteral("(?:qu[eé]\\s+(?:est[aá]\\s+)?sonando|qu[eé]\\s+canci[oó]n\\s+es|m[uú]sica\\s+actual|pista\\s+actual)"), QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(mediaQueryRegex)) {
+        const QVariantMap activeMedia = queryActiveMedia();
+        if (!activeMedia.isEmpty()) {
+            m_pendingCardType = QStringLiteral("media");
+            m_pendingCardData = activeMedia;
+            const QString resp = i18n("Actualmente suena: %1 (%2).", activeMedia.value(QStringLiteral("title")).toString(), activeMedia.value(QStringLiteral("artist")).toString());
+            appendAssistantMessage(resp);
+            return true;
+        } else {
+            appendAssistantMessage(i18n("No hay ningún reproductor multimedia activo en este momento."));
+            return true;
+        }
+    }
+
     static const QRegularExpression mediaPlayRegex(QStringLiteral("(?:reproduce|reanuda|play)\\s+(?:la\\s+)?(?:m[uú]sica|canci[oó]n|audio)"), QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(mediaPlayRegex) || trimmed.compare(QStringLiteral("reproducir"), Qt::CaseInsensitive) == 0) {
         QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("play"));
+        const QVariantMap activeMedia = queryActiveMedia();
+        if (!activeMedia.isEmpty()) {
+            m_pendingCardType = QStringLiteral("media");
+            m_pendingCardData = activeMedia;
+        }
         const QString resp = i18n("Reanudando reproducción.");
         appendAssistantMessage(resp);
         return true;
@@ -1437,6 +2907,11 @@ bool KityApplet::detectAndExecuteSystemAction(const QString &input)
     static const QRegularExpression mediaPauseRegex(QStringLiteral("(?:pausa|pausar|para|parar)\\s+(?:la\\s+)?(?:m[uú]sica|canci[oó]n|audio)"), QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(mediaPauseRegex) || trimmed.compare(QStringLiteral("pausa"), Qt::CaseInsensitive) == 0) {
         QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("pause"));
+        const QVariantMap activeMedia = queryActiveMedia();
+        if (!activeMedia.isEmpty()) {
+            m_pendingCardType = QStringLiteral("media");
+            m_pendingCardData = activeMedia;
+        }
         const QString resp = i18n("Pausando reproducción.");
         appendAssistantMessage(resp);
         return true;
@@ -1445,6 +2920,11 @@ bool KityApplet::detectAndExecuteSystemAction(const QString &input)
     static const QRegularExpression mediaNextRegex(QStringLiteral("(?:siguiente|pasa\\s+de)\\s+(?:canci[oó]n|pista)"), QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(mediaNextRegex)) {
         QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("next"));
+        const QVariantMap activeMedia = queryActiveMedia();
+        if (!activeMedia.isEmpty()) {
+            m_pendingCardType = QStringLiteral("media");
+            m_pendingCardData = activeMedia;
+        }
         const QString resp = i18n("Siguiente pista.");
         appendAssistantMessage(resp);
         return true;
@@ -1453,6 +2933,11 @@ bool KityApplet::detectAndExecuteSystemAction(const QString &input)
     static const QRegularExpression mediaPrevRegex(QStringLiteral("(?:anterior|atr[aá]s)\\s+(?:canci[oó]n|pista)"), QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(mediaPrevRegex)) {
         QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("previous"));
+        const QVariantMap activeMedia = queryActiveMedia();
+        if (!activeMedia.isEmpty()) {
+            m_pendingCardType = QStringLiteral("media");
+            m_pendingCardData = activeMedia;
+        }
         const QString resp = i18n("Pista anterior.");
         appendAssistantMessage(resp);
         return true;
@@ -1567,8 +3052,10 @@ bool KityApplet::detectAndExecuteSystemAction(const QString &input)
         }
     }
 
-    // 13. Calendar Events: "crea/añade/pon evento ..."
-    static const QRegularExpression calRegex(QStringLiteral("(?:crea|a[ñn]ade|pon)\\s+(?:un\\s+)?evento\\s+(.+)"), QRegularExpression::CaseInsensitiveOption);
+    // 13. Calendar Events: "crea/añade/pon/agenda/programa evento/cita/reunión ..."
+    static const QRegularExpression calRegex(
+        QStringLiteral("(?:crea|a[ñn]ade|pon|agenda|programa)\\s+(?:un\\s+|una\\s+)?(?:evento|cita|reuni[oó]n)\\s+(.+)"),
+        QRegularExpression::CaseInsensitiveOption);
     QRegularExpressionMatch calMatch = calRegex.match(trimmed);
     if (calMatch.hasMatch()) {
         const QString evPrompt = calMatch.captured(1).trimmed();
@@ -2130,6 +3617,26 @@ int KityApplet::knowledgeDocumentCount() const
 
 QString KityApplet::readWaylandSelectionOrClipboard() const
 {
+    // Try primary Wayland selection first via wl-paste (works globally across unfocused clients)
+    QProcess process;
+    process.start(QStringLiteral("wl-paste"), {QStringLiteral("-p"), QStringLiteral("--no-newline")});
+    if (process.waitForFinished(800)) {
+        const QString text = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        if (!text.isEmpty()) {
+            return text;
+        }
+    }
+
+    // Try standard Wayland clipboard
+    process.start(QStringLiteral("wl-paste"), {QStringLiteral("--no-newline")});
+    if (process.waitForFinished(800)) {
+        const QString text = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        if (!text.isEmpty()) {
+            return text;
+        }
+    }
+
+    // Fallback to Qt clipboard
     QClipboard *cb = QGuiApplication::clipboard();
     if (!cb) {
         return QString();
@@ -2152,39 +3659,45 @@ QString KityApplet::buildWritingToolPrompt(const QString &action, const QString 
     if (action.startsWith(QStringLiteral("translate:"))) {
         const QString target = languageDisplayName(action.mid(10));
         instruction = QStringLiteral(
-            "Actúa como la app Traducir de Apple. Traduce el siguiente texto a %1 de forma natural y fiel, "
-            "detectando automáticamente el idioma de origen. Devuelve únicamente la traducción, sin comentarios.").arg(target);
+            "Eres un traductor experto. Traduce el siguiente texto a %1 de forma completamente natural y fiel, "
+            "detectando automáticamente el idioma de origen. Devuelve únicamente la traducción, sin notas ni comentarios.").arg(target);
     } else if (action == QStringLiteral("proofread")) {
         instruction = QStringLiteral(
-            "Actúa como la herramienta 'Corregir' (Proofread) de Apple Intelligence. "
+            "Eres un corrector de estilo y ortografía profesional. "
             "Corrige la ortografía, gramática y puntuación del siguiente texto en español de España, manteniendo su significado y estilo original. "
-            "Devuelve el texto corregido listo para copiar y, debajo, una breve nota de 1 o 2 líneas con las mejoras aplicadas.");
+            "Devuelve directamente el texto corregido listo para copiar y, debajo, una breve nota de 1 o 2 líneas resumiendo las mejoras aplicadas.");
     } else if (action == QStringLiteral("rewrite")) {
         instruction = QStringLiteral(
-            "Actúa como la herramienta 'Reescribir' (Rewrite) de Apple Intelligence. "
-            "Reescribe el siguiente texto mejorando su fluidez, claridad y expresión en español de España. "
+            "Eres un redactor profesional. "
+            "Reescribe el siguiente texto mejorando su fluidez, claridad, vocabulario y elegancia en español de España. "
             "Devuelve únicamente la versión reescrita lista para copiar, sin preámbulos.");
     } else if (action == QStringLiteral("friendly")) {
         instruction = QStringLiteral(
+            "Eres un redactor experto en comunicación cercana. "
             "Reescribe el siguiente texto con un tono cercano, cálido y amigable (Friendly tone) en español de España. "
             "Devuelve únicamente el texto resultante listo para usar.");
     } else if (action == QStringLiteral("professional")) {
         instruction = QStringLiteral(
+            "Eres un redactor corporativo de alto nivel. "
             "Reescribe el siguiente texto con un tono formal, ejecutivo y profesional (Professional tone) en español de España. "
             "Devuelve únicamente el texto resultante listo para usar.");
     } else if (action == QStringLiteral("concise")) {
         instruction = QStringLiteral(
-            "Reescribe el siguiente texto de forma concisa, directa y breve (Concise tone), eliminando redundancias. "
+            "Eres un editor de síntesis. "
+            "Reescribe el siguiente texto de forma concisa, directa y breve (Concise tone), eliminando cualquier redundancia. "
             "Devuelve únicamente el texto resultante listo para usar.");
     } else if (action == QStringLiteral("summary")) {
         instruction = QStringLiteral(
+            "Eres un especialista en síntesis de información. "
             "Genera un resumen ejecutivo claro y bien estructurado del siguiente texto en español de España.");
     } else if (action == QStringLiteral("keypoints")) {
         instruction = QStringLiteral(
-            "Extrae los puntos clave (Key Points) del siguiente texto en una lista de viñetas (Markdown) clara y directa.");
+            "Eres un analista de información. "
+            "Extrae los puntos clave (Key Points) del siguiente texto en una lista con viñetas clara, estructurada y directa.");
     } else if (action == QStringLiteral("table")) {
         instruction = QStringLiteral(
-            "Organiza y estructura la información del siguiente texto en una tabla Markdown clara y bien formateada.");
+            "Eres un organizador de información estructurada. "
+            "Organiza y estructura todos los datos e información del siguiente texto en una tabla Markdown clara y elegante.");
     } else {
         instruction = QStringLiteral("Mejora y procesa el siguiente texto en español de España:");
     }
@@ -2225,7 +3738,16 @@ void KityApplet::applyWritingTool(const QString &action, const QString &customSo
 
     m_lastQueryWasVoice = false;
     const QString fullPrompt = buildWritingToolPrompt(action, source);
-    sendToOllama(fullPrompt);
+
+    const QString aiBackend = readConfigString(QStringLiteral("aiBackend"), QStringLiteral("hybrid")).toLower();
+    const QString geminiApiKey = resolveGeminiApiKey();
+    const bool useGemini = (aiBackend == QLatin1String("gemini") || (aiBackend == QLatin1String("hybrid") && !geminiApiKey.isEmpty()));
+
+    if (useGemini) {
+        sendToGemini(fullPrompt);
+    } else {
+        sendToOllama(fullPrompt);
+    }
 }
 
 QString KityApplet::languageDisplayName(const QString &code)
@@ -2304,9 +3826,12 @@ void KityApplet::runVisualIntelligence(const QString &captureMode, const QString
     const QString tmpShot = QDir::tempPath() + QStringLiteral("/kity_livetext_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
     const QString savedPath = captureScreenToPng(tmpShot, mode);
     if (savedPath.isEmpty()) {
-        setState(QStringLiteral("idle"), QString());
+        setState(QStringLiteral("idle"), i18n("Captura de pantalla cancelada o no disponible."));
         return;
     }
+
+    setState(QStringLiteral("thinking"), i18n("Extrayendo texto e información de la pantalla…"));
+    QCoreApplication::processEvents();
 
     const QString ocrText = extractScreenOcrText(savedPath);
     const QString kwinInfo = collectKWinWindowsInfo();
@@ -2393,10 +3918,42 @@ void KityApplet::runVisualIntelligence(const QString &captureMode, const QString
 QString KityApplet::collectSystemVitals() const
 {
     QStringList vitals;
-    vitals << QStringLiteral("OS: CachyOS Linux (KDE Plasma 6, Wayland)");
+    vitals << QStringLiteral("SO: CachyOS Linux (KDE Plasma 6, Wayland)");
+
+    // RAM stats from /proc/meminfo
+    QFile meminfo(QStringLiteral("/proc/meminfo"));
+    if (meminfo.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qint64 totalKb = 0;
+        qint64 availKb = 0;
+        while (!meminfo.atEnd()) {
+            const QString line = QString::fromUtf8(meminfo.readLine());
+            if (line.startsWith(QLatin1String("MemTotal:"))) {
+                totalKb = line.split(QRegularExpression(QStringLiteral("\\s+"))).value(1).toLongLong();
+            } else if (line.startsWith(QLatin1String("MemAvailable:"))) {
+                availKb = line.split(QRegularExpression(QStringLiteral("\\s+"))).value(1).toLongLong();
+            }
+            if (totalKb > 0 && availKb > 0) break;
+        }
+        if (totalKb > 0) {
+            const double totalGb = totalKb / (1024.0 * 1024.0);
+            const double availGb = availKb / (1024.0 * 1024.0);
+            vitals << QStringLiteral("RAM: %1 GB libres de %2 GB").arg(availGb, 0, 'f', 1).arg(totalGb, 0, 'f', 1);
+        }
+    }
+
+    // CPU load average from /proc/loadavg
+    QFile loadavg(QStringLiteral("/proc/loadavg"));
+    if (loadavg.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        const QString lLine = QString::fromUtf8(loadavg.readLine()).trimmed();
+        const QStringList parts = lLine.split(QLatin1Char(' '));
+        if (!parts.isEmpty()) {
+            vitals << QStringLiteral("Carga CPU (1 min): %1").arg(parts.at(0));
+        }
+    }
+
     const QString pProfile = getActivePowerProfile();
     if (!pProfile.isEmpty()) {
-        vitals << QStringLiteral("Power: %1").arg(pProfile);
+        vitals << QStringLiteral("Perfil energía: %1").arg(pProfile);
     }
     return vitals.join(QStringLiteral(", "));
 }
@@ -2662,18 +4219,204 @@ QString KityApplet::getSystemResourceSummary(const QString &aspect) const
                 localIp);
 }
 
-QString KityApplet::fetchWeatherContext(const QString &query) const
+QString KityApplet::wmoCodeToSpanish(int code)
 {
-    static const QRegularExpression weatherRegex(QStringLiteral("(tiempo|clima|temperatura|llueve|pron[oó]stico)"), QRegularExpression::CaseInsensitiveOption);
-    if (!query.contains(weatherRegex)) return QString();
+    switch (code) {
+    case 0: return QStringLiteral("despejado");
+    case 1: return QStringLiteral("mayormente despejado");
+    case 2: return QStringLiteral("parcialmente nuboso");
+    case 3: return QStringLiteral("nublado");
+    case 45: case 48: return QStringLiteral("niebla");
+    case 51: case 53: case 55: return QStringLiteral("llovizna");
+    case 61: case 63: case 65: return QStringLiteral("lluvia");
+    case 66: case 67: return QStringLiteral("lluvia helada");
+    case 71: case 73: case 75: return QStringLiteral("nieve");
+    case 77: return QStringLiteral("granizo fino");
+    case 80: case 81: case 82: return QStringLiteral("chubascos");
+    case 85: case 86: return QStringLiteral("chubascos de nieve");
+    case 95: return QStringLiteral("tormenta");
+    case 96: case 99: return QStringLiteral("tormenta con granizo");
+    default: return QStringLiteral("variable");
+    }
+}
 
-    // Query wttr.in format=3 for concise one-line weather
-    const QUrl url(QStringLiteral("https://wttr.in/?format=3"));
-    const QByteArray resp = httpGetSync(url, 2500);
-    if (!resp.isEmpty()) {
-        return QStringLiteral("Local Weather: %1").arg(QString::fromUtf8(resp).trimmed());
+QString KityApplet::extractCityFromQuery(const QString &query) const
+{
+    static const QRegularExpression cityRegex(
+        QStringLiteral("(?:en|de|para|sobre)\\s+([A-ZÁÉÍÓÚa-záéíóúñÑçÇ\\s\\-\\.]+?)(?:\\s+(?:hoy|ahora(?:\\s+mismo)?|mañana|esta\\s+tarde|esta\\s+noche|el\\s+fin\\s+de\\s+semana|por\\s+favor)|[\\?\\!\\.,;]*$)"),
+        QRegularExpression::CaseInsensitiveOption);
+
+    const auto match = cityRegex.match(query);
+    if (match.hasMatch()) {
+        QString city = match.captured(1).trimmed();
+        city.remove(QRegularExpression(QStringLiteral("[\\?\\!\\.,;]+$")));
+        if (!city.isEmpty()) {
+            return city.trimmed();
+        }
     }
     return QString();
+}
+
+QString KityApplet::resolveDefaultLocation() const
+{
+    const QString customCity = readConfigString(QStringLiteral("defaultCity"), QString());
+    if (!customCity.isEmpty()) {
+        return customCity;
+    }
+
+    // Try detecting city from Plasma weather widgets in desktop-appletsrc
+    QFile f(QDir::homePath() + QStringLiteral("/.config/plasma-org.kde.plasma.desktop-appletsrc"));
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream in(&f);
+        while (!in.atEnd()) {
+            const QString line = in.readLine();
+            if (line.startsWith(QStringLiteral("locationName="))) {
+                const QString loc = line.mid(13).trimmed();
+                if (!loc.isEmpty()) {
+                    const QString first = loc.section(QLatin1Char(','), 0, 0).trimmed();
+                    if (!first.isEmpty()) {
+                        if (first.contains(QStringLiteral("Calzada"), Qt::CaseInsensitive)) {
+                            return QStringLiteral("Gijón");
+                        }
+                        return first;
+                    }
+                }
+            }
+        }
+    }
+
+    return QStringLiteral("Gijón");
+}
+
+QVariantMap KityApplet::fetchWeatherData(const QString &query) const
+{
+    QString targetCity = extractCityFromQuery(query);
+    if (targetCity.isEmpty()) {
+        targetCity = resolveDefaultLocation();
+    }
+
+    const QUrl geoUrl(QStringLiteral("https://geocoding-api.open-meteo.com/v1/search?name=%1&count=1&language=es&format=json")
+                          .arg(QUrl::toPercentEncoding(targetCity)));
+    const QByteArray geoResp = httpGetSync(geoUrl, 2500);
+    if (geoResp.isEmpty()) {
+        return QVariantMap();
+    }
+
+    const QJsonDocument geoDoc = QJsonDocument::fromJson(geoResp);
+    const QJsonArray results = geoDoc.object().value(QStringLiteral("results")).toArray();
+    if (results.isEmpty()) {
+        return QVariantMap();
+    }
+
+    const QJsonObject locObj = results.first().toObject();
+    const double lat = locObj.value(QStringLiteral("latitude")).toDouble();
+    const double lon = locObj.value(QStringLiteral("longitude")).toDouble();
+    const QString resolvedName = locObj.value(QStringLiteral("name")).toString();
+    const QString admin = locObj.value(QStringLiteral("admin1")).toString();
+    const QString country = locObj.value(QStringLiteral("country")).toString();
+
+    const QUrl weatherUrl(QStringLiteral("https://api.open-meteo.com/v1/forecast?latitude=%1&longitude=%2&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&timezone=auto")
+                              .arg(lat, 0, 'f', 4)
+                              .arg(lon, 0, 'f', 4));
+    const QByteArray weatherResp = httpGetSync(weatherUrl, 2500);
+    if (weatherResp.isEmpty()) {
+        return QVariantMap();
+    }
+
+    const QJsonDocument wDoc = QJsonDocument::fromJson(weatherResp);
+    const QJsonObject current = wDoc.object().value(QStringLiteral("current")).toObject();
+    if (current.isEmpty()) {
+        return QVariantMap();
+    }
+
+    const double temp = current.value(QStringLiteral("temperature_2m")).toDouble();
+    const double apparent = current.value(QStringLiteral("apparent_temperature")).toDouble();
+    const int wmoCode = current.value(QStringLiteral("weather_code")).toInt();
+    const double wind = current.value(QStringLiteral("wind_speed_10m")).toDouble();
+    const double humidity = current.value(QStringLiteral("relative_humidity_2m")).toDouble();
+    const double precip = current.value(QStringLiteral("precipitation")).toDouble();
+
+    const QString condition = wmoCodeToSpanish(wmoCode);
+    QString fullLocation = resolvedName;
+    if (!admin.isEmpty() && admin != resolvedName) {
+        fullLocation.append(QStringLiteral(", %1").arg(admin));
+    }
+    if (!country.isEmpty()) {
+        fullLocation.append(QStringLiteral(" (%1)").arg(country));
+    }
+
+    QString iconName = QStringLiteral("weather-few-clouds");
+    if (wmoCode == 0) iconName = QStringLiteral("weather-clear");
+    else if (wmoCode == 1) iconName = QStringLiteral("weather-few-clouds");
+    else if (wmoCode == 2) iconName = QStringLiteral("weather-clouds");
+    else if (wmoCode == 3) iconName = QStringLiteral("weather-overcast");
+    else if (wmoCode == 45 || wmoCode == 48) iconName = QStringLiteral("weather-fog");
+    else if (wmoCode >= 51 && wmoCode <= 55) iconName = QStringLiteral("weather-showers-scattered");
+    else if (wmoCode >= 61 && wmoCode <= 65) iconName = QStringLiteral("weather-showers");
+    else if (wmoCode >= 66 && wmoCode <= 67) iconName = QStringLiteral("weather-freezing-rain");
+    else if (wmoCode >= 71 && wmoCode <= 77) iconName = QStringLiteral("weather-snow");
+    else if (wmoCode >= 80 && wmoCode <= 82) iconName = QStringLiteral("weather-storm");
+    else if (wmoCode >= 85 && wmoCode <= 86) iconName = QStringLiteral("weather-snow-rain");
+    else if (wmoCode >= 95) iconName = QStringLiteral("weather-severe-alert");
+
+    QVariantMap data;
+    data[QStringLiteral("location")] = fullLocation;
+    data[QStringLiteral("city")] = resolvedName;
+    data[QStringLiteral("temp")] = temp;
+    data[QStringLiteral("feelsLike")] = apparent;
+    data[QStringLiteral("condition")] = condition;
+    data[QStringLiteral("humidity")] = humidity;
+    data[QStringLiteral("wind")] = wind;
+    data[QStringLiteral("precipitation")] = precip;
+    data[QStringLiteral("wmoCode")] = wmoCode;
+    data[QStringLiteral("iconName")] = iconName;
+    return data;
+}
+
+QString KityApplet::fetchWeatherContext(const QString &query) const
+{
+    static const QRegularExpression weatherRegex(
+        QStringLiteral("(tiempo|clima|temperatura|llueve|llover|lluvia|fr[ií]o|calor|grados|pron[oó]stico|viento|soleado|nublado)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (!query.contains(weatherRegex)) {
+        return QString();
+    }
+
+    const QVariantMap data = fetchWeatherData(query);
+    if (data.isEmpty()) {
+        return QString();
+    }
+
+    // Attach WeatherCard to pending generative UI
+    const_cast<KityApplet*>(this)->m_pendingCardType = QStringLiteral("weather");
+    const_cast<KityApplet*>(this)->m_pendingCardData = data;
+
+    const QString fullLocation = data.value(QStringLiteral("location")).toString();
+    const QString resolvedName = data.value(QStringLiteral("city")).toString();
+    const double temp = data.value(QStringLiteral("temp")).toDouble();
+    const double apparent = data.value(QStringLiteral("feelsLike")).toDouble();
+    const QString condition = data.value(QStringLiteral("condition")).toString();
+    const double humidity = data.value(QStringLiteral("humidity")).toDouble();
+    const double wind = data.value(QStringLiteral("wind")).toDouble();
+    const double precip = data.value(QStringLiteral("precipitation")).toDouble();
+
+    return QStringLiteral(
+                        "[Datos meteorológicos oficiales y actualizados en tiempo real para %1:\n"
+                        "- Temperatura actual: %2 °C\n"
+                        "- Sensación térmica: %3 °C\n"
+                        "- Estado del cielo: %4\n"
+                        "- Humedad relativa: %5 %\n"
+                        "- Viento: %6 km/h\n"
+                        "- Precipitaciones: %7 mm\n"
+                        "INSTRUCCIÓN OBLIGATORIA: Eres Kity, el asistente de voz. Responde a la pregunta del usuario indicando claramente que en %8 hace %2 °C con cielo %4. Tu respuesta debe ser concisa, directa y natural en una sola frase optimizada para hablar por voz al estilo Siri. No digas que no tienes acceso a información en tiempo real.]")
+                        .arg(fullLocation)
+                        .arg(QString::number(temp, 'f', 1))
+                        .arg(QString::number(apparent, 'f', 1))
+                        .arg(condition)
+                        .arg(QString::number(humidity, 'f', 0))
+                        .arg(QString::number(wind, 'f', 1))
+                        .arg(QString::number(precip, 'f', 1))
+                        .arg(resolvedName);
 }
 
 QString KityApplet::fetchDynamicLocalContext(const QString &query, const QString &intent) const
@@ -3217,42 +4960,230 @@ QString KityApplet::detectAvailableVisionModel() const
     return configured.isEmpty() ? resolveOllamaModel() : configured;
 }
 
-QString KityApplet::fetchWebSearchContext(const QString &query) const
+QString KityApplet::extractCleanArticleText(const QString &html) const
 {
-    static const QRegularExpression searchRegex(
-        QStringLiteral("(?:busca|buscar|averigua|qui[eé]n es|qu[eé] es)\\s+(.+)"),
-        QRegularExpression::CaseInsensitiveOption);
-    const auto match = searchRegex.match(query.trimmed());
-    if (!match.hasMatch()) {
+    if (html.isEmpty()) {
         return QString();
     }
 
-    const QString searchTerm = match.captured(1).trimmed();
+    QString text = html;
+
+    // 1. Strip script, style, svg, iframe, noscript, nav, header, footer, aside blocks
+    static const QRegularExpression stripBlockRegex(
+        QStringLiteral("<(script|style|svg|iframe|noscript|nav|header|footer|aside)[^>]*>.*?</\\1>"),
+        QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption);
+    text.remove(stripBlockRegex);
+
+    // 2. Convert block boundaries to newlines
+    static const QRegularExpression blockBreaks(
+        QStringLiteral("<(?:br|p|div|li|h[1-6]|tr)[^>]*>"),
+        QRegularExpression::CaseInsensitiveOption);
+    text.replace(blockBreaks, QStringLiteral("\n"));
+
+    // 3. Remove all remaining HTML tags
+    static const QRegularExpression anyTag(QStringLiteral("<[^>]+>"));
+    text.remove(anyTag);
+
+    // 4. Decode HTML entities
+    text.replace(QStringLiteral("&quot;"), QStringLiteral("\""))
+        .replace(QStringLiteral("&#x27;"), QStringLiteral("'"))
+        .replace(QStringLiteral("&#39;"), QStringLiteral("'"))
+        .replace(QStringLiteral("&amp;"), QStringLiteral("&"))
+        .replace(QStringLiteral("&lt;"), QStringLiteral("<"))
+        .replace(QStringLiteral("&gt;"), QStringLiteral(">"))
+        .replace(QStringLiteral("&nbsp;"), QStringLiteral(" "))
+        .replace(QStringLiteral("&#160;"), QStringLiteral(" "));
+
+    // 5. Keep only substantive paragraphs (>= 35 characters)
+    const QStringList rawLines = text.split(QLatin1Char('\n'));
+    QStringList substantiveLines;
+    for (const QString &line : rawLines) {
+        const QString trimmed = line.simplified();
+        if (trimmed.length() >= 35) {
+            substantiveLines.append(trimmed);
+        }
+    }
+
+    QString result = substantiveLines.join(QStringLiteral("\n\n"));
+    if (result.length() > 2500) {
+        result = result.left(2500) + QStringLiteral("…");
+    }
+    return result;
+}
+
+QString KityApplet::fetchDeepWebPageContent(const QUrl &url) const
+{
+    if (!url.isValid() || url.scheme().isEmpty()) {
+        return QString();
+    }
+    const QByteArray htmlBytes = httpGetSync(url, 2800);
+    if (htmlBytes.isEmpty()) {
+        return QString();
+    }
+    return extractCleanArticleText(QString::fromUtf8(htmlBytes));
+}
+
+QString KityApplet::fetchWebSearchContext(const QString &query) const
+{
+    QString searchTerm = query.trimmed();
+    static const QRegularExpression prefixStrip(
+        QStringLiteral("^(?:busca(?:r)?|averigua(?:r)?|qui[eé]n es|qu[eé] es|dime|encuentra(?:r)?|consulta(?:r)?)\\s+"),
+        QRegularExpression::CaseInsensitiveOption);
+    searchTerm.remove(prefixStrip);
+    searchTerm = searchTerm.trimmed();
     if (searchTerm.isEmpty()) {
         return QString();
     }
 
-    QUrl url(QStringLiteral("https://api.duckduckgo.com/"));
-    QUrlQuery q;
-    q.addQueryItem(QStringLiteral("q"), searchTerm);
-    q.addQueryItem(QStringLiteral("format"), QStringLiteral("json"));
-    q.addQueryItem(QStringLiteral("no_html"), QStringLiteral("1"));
-    q.addQueryItem(QStringLiteral("skip_disambig"), QStringLiteral("1"));
-    url.setQuery(q);
+    struct SearchResultItem {
+        QString title;
+        QString url;
+        QString snippet;
+        QString deepContent;
+    };
+    QList<SearchResultItem> foundItems;
 
-    const QByteArray resp = httpGetSync(url, 2500);
-    if (resp.isEmpty()) {
+    // 1. DuckDuckGo HTML Search via POST (reliable, real-time web results with links & snippets)
+    const QUrl ddgUrl(QStringLiteral("https://html.duckduckgo.com/html/"));
+    const QByteArray formData = "q=" + QUrl::toPercentEncoding(searchTerm);
+    const QByteArray ddgResp = httpPostFormSync(ddgUrl, formData, 3500);
+
+    if (!ddgResp.isEmpty()) {
+        const QString html = QString::fromUtf8(ddgResp);
+
+        static const QRegularExpression titleLinkRx(
+            QStringLiteral("<h2 class=\"result__title\">\\s*<a[^>]*class=\"result__a\"[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>"),
+            QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression snippetRx(
+            QStringLiteral("<a class=\"result__snippet\"[^>]*>(.*?)</a>"),
+            QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression tagRx(QStringLiteral("<[^>]+>"));
+
+        auto titleIt = titleLinkRx.globalMatch(html);
+        auto snippetIt = snippetRx.globalMatch(html);
+
+        while (titleIt.hasNext() && foundItems.size() < 4) {
+            auto titleMatch = titleIt.next();
+            QString rawUrl = titleMatch.captured(1);
+            QString rawTitle = titleMatch.captured(2);
+
+            // Clean title
+            rawTitle.remove(tagRx);
+            rawTitle.replace(QStringLiteral("&quot;"), QStringLiteral("\""))
+                    .replace(QStringLiteral("&#x27;"), QStringLiteral("'"))
+                    .replace(QStringLiteral("&amp;"), QStringLiteral("&"))
+                    .replace(QStringLiteral("&lt;"), QStringLiteral("<"))
+                    .replace(QStringLiteral("&gt;"), QStringLiteral(">"));
+            const QString title = rawTitle.simplified().trimmed();
+
+            // Decode URL if it was wrapped in /l/?uddg=
+            QString cleanUrl = rawUrl;
+            if (rawUrl.contains(QStringLiteral("uddg="))) {
+                QUrl parsed(rawUrl.startsWith(QLatin1String("//")) ? QStringLiteral("https:") + rawUrl : rawUrl);
+                const QString uddg = QUrlQuery(parsed).queryItemValue(QStringLiteral("uddg"));
+                if (!uddg.isEmpty()) {
+                    cleanUrl = QUrl::fromPercentEncoding(uddg.toUtf8());
+                }
+            } else if (rawUrl.startsWith(QLatin1String("//"))) {
+                cleanUrl = QStringLiteral("https:") + rawUrl;
+            }
+
+            // Extract snippet
+            QString snippet;
+            if (snippetIt.hasNext()) {
+                snippet = snippetIt.next().captured(1);
+                snippet.remove(tagRx);
+                snippet.replace(QStringLiteral("&quot;"), QStringLiteral("\""))
+                       .replace(QStringLiteral("&#x27;"), QStringLiteral("'"))
+                       .replace(QStringLiteral("&amp;"), QStringLiteral("&"))
+                       .replace(QStringLiteral("&lt;"), QStringLiteral("<"))
+                       .replace(QStringLiteral("&gt;"), QStringLiteral(">"));
+                snippet = snippet.simplified().trimmed();
+            }
+
+            if (!cleanUrl.isEmpty() && !title.isEmpty()) {
+                SearchResultItem item;
+                item.title = title;
+                item.url = cleanUrl;
+                item.snippet = snippet;
+                foundItems.append(item);
+            }
+        }
+    }
+
+    // 2. Fallback: Wikipedia OpenSearch API
+    if (foundItems.isEmpty()) {
+        const QUrl wikiUrl(QStringLiteral("https://es.wikipedia.org/w/api.php?action=opensearch&search=%1&limit=2&namespace=0&format=json")
+                               .arg(QString::fromUtf8(QUrl::toPercentEncoding(searchTerm))));
+        const QByteArray wikiResp = httpGetSync(wikiUrl, 2500);
+        if (!wikiResp.isEmpty()) {
+            const QJsonDocument doc = QJsonDocument::fromJson(wikiResp);
+            if (doc.isArray()) {
+                const QJsonArray arr = doc.array();
+                if (arr.size() >= 4) {
+                    const QJsonArray titles = arr.at(1).toArray();
+                    const QJsonArray descs = arr.at(2).toArray();
+                    const QJsonArray links = arr.at(3).toArray();
+                    for (int i = 0; i < titles.size(); ++i) {
+                        const QString t = titles.at(i).toString();
+                        const QString d = descs.at(i).toString();
+                        const QString l = links.at(i).toString();
+                        if (!d.isEmpty()) {
+                            SearchResultItem item;
+                            item.title = t;
+                            item.url = l;
+                            item.snippet = d;
+                            foundItems.append(item);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (foundItems.isEmpty()) {
         return QString();
     }
 
-    const QJsonDocument doc = QJsonDocument::fromJson(resp);
-    const QJsonObject obj = doc.object();
-    const QString abstractText = obj.value(QStringLiteral("AbstractText")).toString();
-    if (!abstractText.isEmpty()) {
-        return QStringLiteral("Web Search Summary for \"%1\": %2").arg(searchTerm, abstractText);
+    // 3. Deep Web Research: Fetch actual page body for the top 2 authoritative sources
+    for (int i = 0; i < qMin(foundItems.size(), 2); ++i) {
+        const QString deepText = fetchDeepWebPageContent(QUrl(foundItems[i].url));
+        if (deepText.length() >= 200) {
+            foundItems[i].deepContent = deepText;
+        }
     }
 
-    return QString();
+    // 4. Format structured research context with citations
+    QStringList formattedSources;
+    QStringList sourcesListForFooter;
+    int idx = 1;
+    for (const auto &item : foundItems) {
+        if (!item.deepContent.isEmpty()) {
+            formattedSources.append(QStringLiteral(
+                "Fuente [%1]: \"%2\"\n"
+                "Enlace: %3\n"
+                "Extracto completo del artículo:\n\"\"\"\n%4\n\"\"\"")
+                .arg(QString::number(idx), item.title, item.url, item.deepContent));
+        } else {
+            formattedSources.append(QStringLiteral(
+                "Fuente [%1]: \"%2\"\n"
+                "Enlace: %3\n"
+                "Resumen verificado: %4")
+                .arg(QString::number(idx), item.title, item.url, item.snippet));
+        }
+        sourcesListForFooter.append(QStringLiteral("- [%1](%2)").arg(item.title, item.url));
+        idx++;
+    }
+
+    return QStringLiteral(
+        "[INVESTIGACIÓN WEB EN TIEMPO REAL (DEEP WEB RESEARCH) PARA: \"%1\"]\n\n"
+        "%2\n\n"
+        "INSTRUCCIONES OBLIGATORIAS PARA KITY:\n"
+        "- Responde en español de España de forma concisa, analítica, natural y directa utilizando la información extraída de estas páginas.\n"
+        "- Si mencionas un dato relevante, referencia su fuente entre corchetes con enlace Markdown (por ejemplo: [%3](%4) o [1](%4)).\n"
+        "- Al final de tu respuesta, añade OBLIGATORIAMENTE este apartado de fuentes consultadas:\n\n"
+        "🌐 **Fuentes consultadas:**\n%5")
+        .arg(searchTerm, formattedSources.join(QStringLiteral("\n\n")), foundItems.first().title, foundItems.first().url, sourcesListForFooter.join(QLatin1Char('\n')));
 }
 
 // =========================================================================
@@ -3440,13 +5371,82 @@ bool KityApplet::createCalendarEvent(const QString &title, const QString &datePr
     const QString full = title + QStringLiteral(" ") + datePrompt;
     const ParsedCalendarEvent ev = parseCalendarEventPrompt(full, QDateTime::currentDateTime());
 
+    // Generate RFC 5545 iCalendar (.ics) file
+    const QString calDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity/calendar");
+    QDir().mkpath(calDir);
+    const QString eventUid = QStringLiteral("kity_%1").arg(QDateTime::currentMSecsSinceEpoch());
+    const QString icsPath = calDir + QStringLiteral("/%1.ics").arg(eventUid);
+
+    QFile icsFile(icsPath);
+    if (icsFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&icsFile);
+        out << "BEGIN:VCALENDAR\n"
+            << "VERSION:2.0\n"
+            << "PRODID:-//Kity//KDE Plasma 6.8//ES\n"
+            << "BEGIN:VEVENT\n"
+            << "UID:" << eventUid << "\n"
+            << "DTSTAMP:" << QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd'T'hhmmss'Z'")) << "\n"
+            << "DTSTART:" << ev.startTime.toUTC().toString(QStringLiteral("yyyyMMdd'T'hhmmss'Z'")) << "\n"
+            << "DTEND:" << ev.endTime.toUTC().toString(QStringLiteral("yyyyMMdd'T'hhmmss'Z'")) << "\n"
+            << "SUMMARY:" << ev.title << "\n";
+        if (!ev.description.isEmpty()) {
+            out << "DESCRIPTION:" << ev.description << "\n";
+        }
+        out << "END:VEVENT\n"
+            << "END:VCALENDAR\n";
+        icsFile.close();
+    }
+
+    // Import event into KOrganizer if client is korganizer
+    const QString client = readConfigString(QStringLiteral("defaultCalendarClient"), QStringLiteral("korganizer")).toLower();
+    if (client == QStringLiteral("korganizer")) {
+        const QString korganizer = QStandardPaths::findExecutable(QStringLiteral("korganizer"));
+        if (!korganizer.isEmpty()) {
+            QProcess::startDetached(korganizer, QStringList() << QStringLiteral("-m") << icsPath);
+        }
+    }
+
+    // Trigger Akonadi synchronization for Google Calendar and other resources
+    QDBusInterface agentMgr(QStringLiteral("org.freedesktop.Akonadi.Control"),
+                            QStringLiteral("/AgentManager"),
+                            QStringLiteral("org.freedesktop.Akonadi.AgentManager"),
+                            QDBusConnection::sessionBus());
+    if (agentMgr.isValid()) {
+        const QDBusReply<QStringList> reply = agentMgr.call(QStringLiteral("agentInstances"));
+        if (reply.isValid()) {
+            for (const QString &inst : reply.value()) {
+                if (inst.startsWith(QStringLiteral("akonadi_google_resource")) || inst.startsWith(QStringLiteral("akonadi_ical_resource"))) {
+                    agentMgr.call(QStringLiteral("agentInstanceSynchronize"), inst);
+                }
+            }
+        }
+    }
+
     ScheduledReminder r;
-    r.id = QStringLiteral("cal_%1").arg(QDateTime::currentMSecsSinceEpoch());
+    r.id = eventUid;
     r.text = ev.title;
     r.targetTime = ev.startTime;
     r.notified = false;
     m_scheduledReminders.append(r);
     saveScheduledReminders();
+
+    // Prepare generative UI EventCard
+    QVariantMap eventCard;
+    eventCard[QStringLiteral("title")] = ev.title;
+    eventCard[QStringLiteral("startTime")] = ev.startTime.toString(QStringLiteral("HH:mm"));
+    eventCard[QStringLiteral("endTime")] = ev.endTime.toString(QStringLiteral("HH:mm"));
+    eventCard[QStringLiteral("dateFormatted")] = QLocale(QLocale::Spanish, QLocale::Spain).toString(ev.startTime.date(), QStringLiteral("dddd, d 'de' MMMM"));
+    eventCard[QStringLiteral("dayNumber")] = ev.startTime.toString(QStringLiteral("d"));
+    eventCard[QStringLiteral("monthShort")] = QLocale(QLocale::Spanish, QLocale::Spain).toString(ev.startTime.date(), QStringLiteral("MMM")).toUpper();
+    eventCard[QStringLiteral("description")] = ev.description;
+    eventCard[QStringLiteral("calendarName")] = QStringLiteral("Google Calendar (César Conte)");
+    m_pendingCardType = QStringLiteral("event");
+    m_pendingCardData = eventCard;
+
+    KNotification::event(QStringLiteral("notification"),
+                         i18n("Cita agendada"),
+                         QStringLiteral("%1 (%2)").arg(ev.title, ev.startTime.toString(QStringLiteral("dd/MM/yyyy HH:mm"))),
+                         QStringLiteral("x-office-calendar"));
 
     openCalendarService(ev);
     return true;
@@ -3454,16 +5454,20 @@ bool KityApplet::createCalendarEvent(const QString &title, const QString &datePr
 
 void KityApplet::openCalendarService(const ParsedCalendarEvent &ev) const
 {
-    const QString client = readConfigString(QStringLiteral("defaultCalendarClient"), QStringLiteral("proton"));
+    const QString client = readConfigString(QStringLiteral("defaultCalendarClient"), QStringLiteral("korganizer")).toLower();
     if (client == QStringLiteral("google")) {
         QDesktopServices::openUrl(buildGoogleCalendarTemplateUrl(ev));
-    } else {
-        // Proton Calendar or default system calendar
+    } else if (client == QStringLiteral("proton")) {
         const QString protonApp = QStandardPaths::findExecutable(QStringLiteral("proton-mail"));
         if (!protonApp.isEmpty()) {
-            QProcess::startDetached(protonApp, QStringList());
+            QProcess::startDetached(protonApp, QStringList() << QStringLiteral("proton-inbox://open_calendar"));
         } else {
             QDesktopServices::openUrl(QUrl(QStringLiteral("https://calendar.proton.me")));
+        }
+    } else {
+        const QString korganizer = QStandardPaths::findExecutable(QStringLiteral("korganizer"));
+        if (!korganizer.isEmpty()) {
+            QProcess::startDetached(korganizer, QStringList());
         }
     }
 }
@@ -3486,13 +5490,14 @@ QUrl KityApplet::buildGoogleCalendarTemplateUrl(const ParsedCalendarEvent &ev) c
 
 void KityApplet::composeEmail(const QString &to, const QString &subject, const QString &body, const QString &service) const
 {
-    if (service == QStringLiteral("proton")) {
-        const QString protonApp = QStandardPaths::findExecutable(QStringLiteral("proton-mail"));
-        if (!protonApp.isEmpty()) {
-            QProcess::startDetached(protonApp, QStringList());
-            return;
-        }
-    } else if (service == QStringLiteral("gmail")) {
+    QUrl mailtoUrl(QStringLiteral("mailto:") + to);
+    QUrlQuery q;
+    if (!subject.isEmpty()) q.addQueryItem(QStringLiteral("subject"), subject);
+    if (!body.isEmpty()) q.addQueryItem(QStringLiteral("body"), body);
+    mailtoUrl.setQuery(q);
+
+    const QString client = service.isEmpty() ? readConfigString(QStringLiteral("defaultEmailClient"), QStringLiteral("proton")) : service;
+    if (client == QStringLiteral("gmail")) {
         QUrl gmailUrl(QStringLiteral("https://mail.google.com/mail/"));
         QUrlQuery gq;
         gq.addQueryItem(QStringLiteral("view"), QStringLiteral("cm"));
@@ -3505,12 +5510,14 @@ void KityApplet::composeEmail(const QString &to, const QString &subject, const Q
         return;
     }
 
+    // Official Proton Mail desktop app takes precedence with pre-filled compose window
+    const QString protonApp = QStandardPaths::findExecutable(QStringLiteral("proton-mail"));
+    if (!protonApp.isEmpty()) {
+        QProcess::startDetached(protonApp, QStringList() << mailtoUrl.toString());
+        return;
+    }
+
     // Default mailto fallback
-    QUrl mailtoUrl(QStringLiteral("mailto:") + to);
-    QUrlQuery q;
-    if (!subject.isEmpty()) q.addQueryItem(QStringLiteral("subject"), subject);
-    if (!body.isEmpty()) q.addQueryItem(QStringLiteral("body"), body);
-    mailtoUrl.setQuery(q);
     QDesktopServices::openUrl(mailtoUrl);
 }
 
@@ -3581,8 +5588,10 @@ QString KityApplet::normalizeForMatch(const QString &text) const
 QByteArray KityApplet::httpGetSync(const QUrl &url, int timeoutMs) const
 {
     QNetworkAccessManager mgr;
+    mgr.setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
     QNetworkRequest req(url);
-    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("KityApplet/1.0"));
+    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"));
+    req.setRawHeader("Accept-Language", "es-ES,es;q=0.9,en;q=0.8");
 
     QNetworkReply *reply = mgr.get(req);
     QEventLoop loop;
@@ -3627,6 +5636,104 @@ QByteArray KityApplet::httpPostJsonSync(const QUrl &url, const QJsonObject &payl
     reply->abort();
     reply->deleteLater();
     return QByteArray();
+}
+
+QByteArray KityApplet::httpPostFormSync(const QUrl &url, const QByteArray &formData, int timeoutMs) const
+{
+    QNetworkAccessManager mgr;
+    mgr.setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
+    QNetworkRequest req(url);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded"));
+    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"));
+    req.setRawHeader("Accept-Language", "es-ES,es;q=0.9,en;q=0.8");
+    req.setRawHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+
+    QNetworkReply *reply = mgr.post(req, formData);
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+    connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    timer.start(timeoutMs);
+    loop.exec();
+
+    if (reply->isFinished() && reply->error() == QNetworkReply::NoError) {
+        const QByteArray data = reply->readAll();
+        reply->deleteLater();
+        return data;
+    }
+    reply->abort();
+    reply->deleteLater();
+    return QByteArray();
+}
+
+QVariantMap KityApplet::queryActiveMedia() const
+{
+    QProcess p;
+    p.start(QStringLiteral("playerctl"), {QStringLiteral("metadata"), QStringLiteral("--format"), QStringLiteral("{{ playerName }}|||{{ status }}|||{{ artist }}|||{{ title }}|||{{ album }}|||{{ mpris:artUrl }}")});
+    if (!p.waitForFinished(1000)) {
+        return QVariantMap();
+    }
+    const QString out = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+    if (out.isEmpty()) {
+        return QVariantMap();
+    }
+
+    const QStringList parts = out.split(QStringLiteral("|||"));
+    if (parts.size() < 4) {
+        return QVariantMap();
+    }
+
+    QVariantMap res;
+    res[QStringLiteral("player")] = parts.value(0).trimmed();
+    res[QStringLiteral("status")] = parts.value(1).trimmed();
+    res[QStringLiteral("artist")] = parts.value(2).trimmed();
+    res[QStringLiteral("title")] = parts.value(3).trimmed();
+    res[QStringLiteral("album")] = parts.value(4).trimmed();
+    res[QStringLiteral("artUrl")] = parts.value(5).trimmed();
+    return res;
+}
+
+void KityApplet::controlMedia(const QString &action)
+{
+    const QString act = action.trimmed().toLower();
+    if (act == QStringLiteral("play-pause")) {
+        QProcess::execute(QStringLiteral("playerctl"), {QStringLiteral("play-pause")});
+    } else if (act == QStringLiteral("next")) {
+        QProcess::execute(QStringLiteral("playerctl"), {QStringLiteral("next")});
+    } else if (act == QStringLiteral("previous")) {
+        QProcess::execute(QStringLiteral("playerctl"), {QStringLiteral("previous")});
+    } else if (act == QStringLiteral("stop")) {
+        QProcess::execute(QStringLiteral("playerctl"), {QStringLiteral("stop")});
+    }
+}
+
+void KityApplet::openKOrganizer() const
+{
+    const QString korganizer = QStandardPaths::findExecutable(QStringLiteral("korganizer"));
+    if (!korganizer.isEmpty()) {
+        QProcess::startDetached(korganizer, QStringList());
+    }
+}
+
+QString KityApplet::mobilePairingUrl() const
+{
+    return m_mobileServer ? m_mobileServer->pairingUrl() : QString();
+}
+
+bool KityApplet::shareMobilePairingWithKdeConnect(const QString &deviceId) const
+{
+    if (!m_mobileServer) {
+        return false;
+    }
+    QString targetDev = deviceId;
+    if (targetDev.isEmpty()) {
+        const auto devices = getKdeConnectDevices();
+        if (!devices.isEmpty()) {
+            targetDev = devices.first().id;
+        }
+    }
+    return m_mobileServer->sendPairingUrlViaKdeConnect(targetDev);
 }
 
 #include "kityapplet.moc"

@@ -14,6 +14,8 @@ import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PlasmaComponents3
 import org.kde.plasma.plasmoid
 
+import "cards" as Cards
+
 Item {
     id: expandedRoot
     property var widget: null
@@ -211,6 +213,7 @@ Item {
             PlasmaComponents3.ToolButton {
                 id: writingToolsButton
                 icon.name: "document-edit-symbolic"
+                icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                 checkable: true
                 checked: expandedRoot.showWritingTools
                 onClicked: {
@@ -228,6 +231,7 @@ Item {
             PlasmaComponents3.ToolButton {
                 id: visualIntelButton
                 icon.name: "camera-photo-symbolic"
+                icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                 checkable: true
                 checked: expandedRoot.showVisualIntelligence
                 onClicked: {
@@ -245,6 +249,7 @@ Item {
             PlasmaComponents3.ToolButton {
                 id: mathNotesButton
                 icon.name: "view-time-schedule-calculus-symbolic"
+                icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                 checkable: true
                 checked: expandedRoot.showMathNotes
                 onClicked: {
@@ -257,6 +262,22 @@ Item {
                 }
                 QQC2.ToolTip.visible: hovered
                 QQC2.ToolTip.text: i18n("Notas matemáticas (cálculo en vivo con variables, unidades y divisas)")
+            }
+
+            // Kity Mobile Remote Button (Phone as Microphone via Apple Intelligence PWA & KDE Connect)
+            PlasmaComponents3.ToolButton {
+                id: mobileRemoteButton
+                icon.name: "kdeconnect-symbolic"
+                onClicked: {
+                    var shared = Plasmoid.shareMobilePairingWithKdeConnect();
+                    if (shared) {
+                        Plasmoid.statusMessage = i18n("Enlace de Kity Remote enviado a tu teléfono por KDE Connect");
+                    } else {
+                        Qt.openUrlExternally(Plasmoid.mobilePairingUrl);
+                    }
+                }
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.text: i18n("Conectar teléfono como micrófono (Kity Mobile Portal)")
             }
 
             // Clear Conversation Button
@@ -761,6 +782,48 @@ Item {
                                     }
                                 }
 
+                                // Generative Interactive Cards (Phase 5 - UI Generativa)
+                                Cards.WeatherCard {
+                                    visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "weather" && msgDelegate.modelData.cardData !== undefined
+                                    Layout.fillWidth: true
+                                    cardData: msgDelegate.modelData.cardData || ({})
+                                }
+
+                                Cards.MediaCard {
+                                    visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "media" && msgDelegate.modelData.cardData !== undefined
+                                    Layout.fillWidth: true
+                                    cardData: msgDelegate.modelData.cardData || ({})
+                                    onMediaActionTriggered: action => Plasmoid.controlMedia(action)
+                                }
+
+                                Cards.EventCard {
+                                    visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "event" && msgDelegate.modelData.cardData !== undefined
+                                    Layout.fillWidth: true
+                                    cardData: msgDelegate.modelData.cardData || ({})
+                                    onOpenCalendarRequested: Plasmoid.openKOrganizer()
+                                }
+
+                                // Interactive Source Chips (Phase 3 - Deep Web Research & Citations)
+                                Flow {
+                                    visible: !msgDelegate.isUser && msgDelegate.modelData.sources !== undefined && msgDelegate.modelData.sources.length > 0
+                                    Layout.fillWidth: true
+                                    spacing: Kirigami.Units.smallSpacing
+
+                                    Repeater {
+                                        model: msgDelegate.modelData.sources || []
+
+                                        PlasmaComponents3.Button {
+                                            required property var modelData
+                                            icon.name: "globe"
+                                            text: modelData.title || i18n("Fuente")
+                                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                                            onClicked: Qt.openUrlExternally(modelData.url)
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: modelData.url || ""
+                                        }
+                                    }
+                                }
+
                                 RowLayout {
                                     Layout.fillWidth: true
                                     spacing: Kirigami.Units.smallSpacing
@@ -815,7 +878,7 @@ Item {
         // Dynamic status bar when recording, transcribing, thinking, or speaking (collapses when empty)
         PlasmaComponents3.Label {
             Layout.fillWidth: true
-            visible: Plasmoid.statusMessage.length > 0
+            visible: Plasmoid.statusMessage.length > 0 && Plasmoid.state !== "idle"
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             text: Plasmoid.statusMessage
@@ -827,7 +890,7 @@ Item {
         // Bottom Dock (Siri Orb + Prompt Input Bar)
         Rectangle {
             Layout.fillWidth: true
-            implicitHeight: dockCol.implicitHeight + Kirigami.Units.smallSpacing * 2
+            implicitHeight: dockCol.implicitHeight + Kirigami.Units.mediumSpacing * 2
             radius: Kirigami.Units.smallSpacing
             color: (Plasmoid.state === "listening")
                 ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.14)
@@ -840,14 +903,17 @@ Item {
             ColumnLayout {
                 id: dockCol
                 anchors.fill: parent
-                anchors.margins: Kirigami.Units.smallSpacing
-                spacing: Kirigami.Units.smallSpacing
+                anchors.topMargin: Kirigami.Units.mediumSpacing
+                anchors.bottomMargin: Kirigami.Units.mediumSpacing
+                anchors.leftMargin: Kirigami.Units.mediumSpacing
+                anchors.rightMargin: Kirigami.Units.mediumSpacing
+                spacing: Kirigami.Units.mediumSpacing
 
                 // Siri Orb Centered Interactive Voice Control
                 Item {
                     Layout.fillWidth: true
-                    implicitHeight: Kirigami.Units.gridUnit * 4.0
-                    clip: true
+                    implicitHeight: siriOrb.implicitHeight + Kirigami.Units.smallSpacing * 2
+                    clip: false
 
                     SiriOrbAnimation {
                         id: siriOrb

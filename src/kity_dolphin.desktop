@@ -1,0 +1,28 @@
+[Desktop Entry]
+Type=Service
+Name=Kity Inteligencia Artificial
+Name[es]=Kity Inteligencia Artificial
+MimeType=all/all;
+X-KDE-Protocols=file
+Actions=AskKity;SummarizeKity;AddToKnowledge;
+X-KDE-Submenu=Kity Inteligencia Artificial
+X-KDE-Submenu[es]=Kity Inteligencia Artificial
+Icon=org.cesar.kity
+
+[Desktop Action AskKity]
+Name=Preguntar a Kity sobre este archivo…
+Name[es]=Preguntar a Kity sobre este archivo…
+Icon=system-search-symbolic
+Exec=kity --file %f
+
+[Desktop Action SummarizeKity]
+Name=Resumir documento con Kity
+Name[es]=Resumir documento con Kity
+Icon=document-edit-symbolic
+Exec=kity --summarize %f
+
+[Desktop Action AddToKnowledge]
+Name=Añadir a la base de conocimiento local (RAG)
+Name[es]=Añadir a la base de conocimiento local (RAG)
+Icon=bookmark-new
+Exec=kity --add-knowledge %f

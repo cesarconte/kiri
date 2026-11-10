@@ -14,11 +14,14 @@
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QPointer>
 #include <QProcess>
 #include <QQueue>
 #include <QRegularExpression>
 #include <QTimer>
 #include <QVariantList>
+
+class KityMobileServer;
 
 class KityApplet : public Plasma::Applet
 {
@@ -39,9 +42,11 @@ class KityApplet : public Plasma::Applet
     Q_PROPERTY(qreal audioLevel READ audioLevel NOTIFY audioLevelChanged)
     Q_PROPERTY(bool wakeWordEnabled READ wakeWordEnabled WRITE setWakeWordEnabled NOTIFY wakeWordEnabledChanged)
     Q_PROPERTY(QString speechOutputMode READ resolveSpeechOutputMode WRITE setSpeechOutputMode NOTIFY speechOutputModeChanged)
+    Q_PROPERTY(QString panelIconStyle READ panelIconStyle WRITE setPanelIconStyle NOTIFY panelIconStyleChanged)
     Q_PROPERTY(bool vadEnabled READ vadEnabled WRITE setVadEnabled NOTIFY vadEnabledChanged)
     Q_PROPERTY(bool earconsEnabled READ earconsEnabled WRITE setEarconsEnabled NOTIFY earconsEnabledChanged)
     Q_PROPERTY(QString ollamaModel READ resolveOllamaModel WRITE setOllamaModel NOTIFY ollamaModelChanged)
+    Q_PROPERTY(QString mobilePairingUrl READ mobilePairingUrl NOTIFY mobilePairingUrlChanged)
 
 public:
     struct ContactEntry {
@@ -91,6 +96,8 @@ public:
     void setWakeWordEnabled(bool enabled);
     QString resolveSpeechOutputMode() const;
     void setSpeechOutputMode(const QString &mode);
+    QString panelIconStyle() const;
+    Q_INVOKABLE void setPanelIconStyle(const QString &style);
     bool vadEnabled() const;
     void setVadEnabled(bool enabled);
     bool earconsEnabled() const;
@@ -140,6 +147,16 @@ public:
     Q_INVOKABLE void runVisualIntelligence(const QString &captureMode, const QString &action = QStringLiteral("ocr"), const QString &customQuestion = QString());
     Q_INVOKABLE static QVariantMap parseLiveTextEntities(const QString &ocrText);
 
+    // Generative UI & Interactive Cards (Phase 5)
+    Q_INVOKABLE void controlMedia(const QString &action);
+    Q_INVOKABLE void openKOrganizer() const;
+    Q_INVOKABLE QVariantMap queryActiveMedia() const;
+    Q_INVOKABLE QVariantMap fetchWeatherData(const QString &query) const;
+
+    // Mobile Remote & Voice Portal (Apple Intelligence PWA)
+    Q_INVOKABLE QString mobilePairingUrl() const;
+    Q_INVOKABLE bool shareMobilePairingWithKdeConnect(const QString &deviceId = QString()) const;
+
 Q_SIGNALS:
     void stateChanged();
     void statusMessageChanged();
@@ -150,9 +167,11 @@ Q_SIGNALS:
     void audioLevelChanged();
     void transcriptionReady(const QString &text);
     void wakeWordTriggered();
+    void mobilePairingUrlChanged();
     void openRequested();
     void toggleRequested();
     void wakeWordEnabledChanged();
+    void panelIconStyleChanged();
     void speechOutputModeChanged();
     void vadEnabledChanged();
     void earconsEnabledChanged();
@@ -172,6 +191,11 @@ private:
     QString analyzeImageWithVisionModel(const QString &base64Image) const;
     bool detectAndExecuteSystemAction(const QString &input);
 
+    // Tool Calling Engine (Siri / Gemini Live Architecture)
+    QJsonArray buildAvailableTools(const QString &userPrompt) const;
+    QJsonObject executeToolCall(const QString &toolName, const QJsonObject &arguments);
+    void sendOllamaToolFollowUp(const QJsonArray &messages);
+
     // Speech & Audio
     void runWhisperTranscription();
     void checkWakeWordTranscription(const QString &wavPath);
@@ -182,6 +206,8 @@ private:
     QString stripMarkdownForSpeech(const QString &markdown) const;
     void startVad();
     void stopVad();
+    bool isPipeWireEchoCancelAvailable() const;
+    QString resolveAudioRecordingPath() const;
     QByteArray createWavHeader(int dataSize, int sampleRate, int channels, int bitsPerSample) const;
 
     // Config readers
@@ -193,14 +219,25 @@ private:
     QString resolveOllamaUrl() const;
     QString resolveOllamaModel() const;
     QString resolveVisionModel() const;
+    QString resolveGeminiApiKey() const;
+    QString resolveGeminiModel() const;
     QString resolveSystemPrompt() const;
     QString resolveWhisperModelPath() const;
     QString resolveWhisperLanguage() const;
     QString resolvePiperVoicePath() const;
 
+    void sendToGemini(const QString &userPrompt, const QString &injectedContext = QString(), const QString &base64Image = QString());
+    void handleGeminiStreamChunk();
+    void handleGeminiFinished();
+
     // Context retrievers
     QString fetchWebSearchContext(const QString &query) const;
+    QString extractCleanArticleText(const QString &html) const;
+    QString fetchDeepWebPageContent(const QUrl &url) const;
     QString fetchWeatherContext(const QString &query) const;
+    QString extractCityFromQuery(const QString &query) const;
+    QString resolveDefaultLocation() const;
+    static QString wmoCodeToSpanish(int code);
     QString fetchDynamicLocalContext(const QString &query, const QString &intent) const;
     QString fetchKnowledgeBaseContext(const QString &query) const;
     QString collectSystemVitals() const;
@@ -225,10 +262,10 @@ private:
     // Calendar, Contacts & KDE Connect
     ParsedCalendarEvent parseCalendarEventPrompt(const QString &prompt, const QDateTime &now) const;
     int monthNameToNumber(const QString &name) const;
-    bool createCalendarEvent(const QString &title, const QString &datePrompt);
+    Q_INVOKABLE bool createCalendarEvent(const QString &title, const QString &datePrompt);
     void openCalendarService(const ParsedCalendarEvent &ev) const;
     QUrl buildGoogleCalendarTemplateUrl(const ParsedCalendarEvent &ev) const;
-    void composeEmail(const QString &to, const QString &subject, const QString &body, const QString &service) const;
+    Q_INVOKABLE void composeEmail(const QString &to, const QString &subject, const QString &body, const QString &service = QStringLiteral("proton")) const;
 
     QList<KdeConnectDevice> getKdeConnectDevices() const;
     QString getKdeConnectBattery(const QString &deviceId) const;
@@ -264,6 +301,7 @@ private:
     // HTTP Helpers
     QByteArray httpGetSync(const QUrl &url, int timeoutMs = 4000) const;
     QByteArray httpPostJsonSync(const QUrl &url, const QJsonObject &payload, int timeoutMs = 8000) const;
+    QByteArray httpPostFormSync(const QUrl &url, const QByteArray &formData, int timeoutMs = 4000) const;
 
     // State members
     QString m_state = QStringLiteral("idle");
@@ -280,8 +318,15 @@ private:
     // Network & Process
     QNetworkAccessManager *m_nam = nullptr;
     QNetworkReply *m_currentOllamaReply = nullptr;
+    QNetworkReply *m_currentGeminiReply = nullptr;
+    QList<QPair<QString, QString>> m_geminiSources;
+    QJsonArray m_currentChatMessages;
+    QJsonArray m_pendingToolCalls;
+    bool m_isToolFollowUpRound = false;
     QProcess *m_recordProcess = nullptr;
     QProcess *m_ttsProcess = nullptr;
+    QPointer<QProcess> m_pwPlayProcess;
+    int m_bargeInVoiceFrames = 0;
     QProcess *m_wakeWordProcess = nullptr;
     QByteArray m_wakeWordPcmBuffer;
     bool m_wakeWordEvaluating = false;
@@ -300,4 +345,11 @@ private:
 
     QList<ContactEntry> m_contacts;
     QList<ScheduledReminder> m_scheduledReminders;
+
+    // Generative UI pending cards
+    QString m_pendingCardType;
+    QVariantMap m_pendingCardData;
+
+    // Mobile Remote Web/WebSocket Server
+    KityMobileServer *m_mobileServer = nullptr;
 };
