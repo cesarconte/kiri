@@ -236,18 +236,24 @@ int main(int argc, char *argv[])
         }
 
         if (window) {
-            if (p.isSet(toggleOption)) {
-                if (window->isVisible() && window->visibility() != QWindow::Minimized) {
-                    window->hide();
+            const auto bringToFront = [window]() {
+                if (window->visibility() == QWindow::Minimized) {
+                    window->showNormal();
                 } else {
                     window->show();
-                    window->raise();
-                    window->requestActivate();
                 }
-            } else {
-                window->show();
                 window->raise();
                 window->requestActivate();
+            };
+
+            // Toggle only hides when Kity is visible AND focused. If it is
+            // visible but behind other windows (or on another desktop), the
+            // user expects it to come to the front, not to disappear.
+            if (p.isSet(toggleOption) && window->isVisible() && window->isActive()
+                && window->visibility() != QWindow::Minimized) {
+                window->hide();
+            } else {
+                bringToFront();
             }
         }
     };
