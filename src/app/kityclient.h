@@ -182,7 +182,10 @@ public:
     Q_INVOKABLE void newConversation();
     Q_INVOKABLE void selectConversation(const QString &id);
     Q_INVOKABLE void togglePinConversation(const QString &id);
+    Q_INVOKABLE void renameConversation(const QString &id, const QString &newTitle);
     Q_INVOKABLE void deleteConversation(const QString &id);
+    Q_INVOKABLE void deleteConversations(const QStringList &ids);
+    Q_INVOKABLE void attachFiles(const QStringList &fileUrls);
     Q_INVOKABLE void launchSpotlightCategory(const QString &category);
     Q_INVOKABLE void previewSelectedVoice();
 

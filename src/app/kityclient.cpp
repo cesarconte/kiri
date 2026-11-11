@@ -13,6 +13,8 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QFileSystemWatcher>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -21,6 +23,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTextDocument>
+#include <QUrl>
 #include <QUuid>
 #include <KSharedConfig>
 #include <KConfigGroup>
@@ -139,6 +142,39 @@ KityClient::KityClient(QObject *parent)
 
     loadConversations();
     connect(this, &KityClient::messagesChanged, this, &KityClient::syncActiveConversationFromMessages);
+
+    auto *cfgWatcher = new QFileSystemWatcher(this);
+    const QString cfgDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+    const QString cfgFile = cfgDir + QStringLiteral("/kityrc");
+    if (!cfgDir.isEmpty()) {
+        cfgWatcher->addPath(cfgDir);
+    }
+    if (QFile::exists(cfgFile)) {
+        cfgWatcher->addPath(cfgFile);
+    }
+    auto reloadKityrc = [this, cfgWatcher, cfgFile]() {
+        if (QFile::exists(cfgFile) && !cfgWatcher->files().contains(cfgFile)) {
+            cfgWatcher->addPath(cfgFile);
+        }
+        KSharedConfig::Ptr rc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+        rc->reparseConfiguration();
+        KConfigGroup g = rc->group(QStringLiteral("General"));
+        m_ollamaModel = g.readEntry(QStringLiteral("ollamaModel"), m_ollamaModel);
+        m_siriMode = g.readEntry(QStringLiteral("siriMode"), m_siriMode);
+        m_voiceAccent = g.readEntry(QStringLiteral("voiceAccent"), m_voiceAccent);
+        m_voiceIndex = g.readEntry(QStringLiteral("voiceIndex"), m_voiceIndex);
+        m_voicePace = g.readEntry(QStringLiteral("voicePace"), m_voicePace);
+        m_voiceExpressivity = g.readEntry(QStringLiteral("voiceExpressivity"), m_voiceExpressivity);
+        const QString newRetention = g.readEntry(QStringLiteral("historyRetention"), m_historyRetention);
+        m_previewLines = g.readEntry(QStringLiteral("previewLines"), m_previewLines);
+        m_openToMode = g.readEntry(QStringLiteral("openToMode"), m_openToMode);
+        if (newRetention != m_historyRetention) {
+            setHistoryRetention(newRetention);
+        }
+        Q_EMIT goldenGatePrefsChanged();
+    };
+    connect(cfgWatcher, &QFileSystemWatcher::fileChanged, this, reloadKityrc);
+    connect(cfgWatcher, &QFileSystemWatcher::directoryChanged, this, reloadKityrc);
 }
 
 void KityClient::setupDBus()
@@ -983,18 +1019,102 @@ void KityClient::togglePinConversation(const QString &id)
     }
 }
 
-void KityClient::deleteConversation(const QString &id)
+void KityClient::renameConversation(const QString &id, const QString &newTitle)
 {
+    const QString trimmed = newTitle.trimmed();
+    if (trimmed.isEmpty()) {
+        return;
+    }
     for (int i = 0; i < m_conversations.size(); ++i) {
-        if (m_conversations[i].toMap().value(QStringLiteral("id")).toString() == id) {
-            m_conversations.removeAt(i);
+        QVariantMap map = m_conversations[i].toMap();
+        if (map.value(QStringLiteral("id")).toString() == id) {
+            map[QStringLiteral("title")] = trimmed;
+            m_conversations[i] = map;
             saveConversations();
-            if (m_activeConversationId == id && !m_conversations.isEmpty()) {
-                selectConversation(m_conversations.first().toMap().value(QStringLiteral("id")).toString());
-            }
             Q_EMIT conversationsChanged();
             return;
         }
+    }
+}
+
+void KityClient::deleteConversation(const QString &id)
+{
+    deleteConversations(QStringList{id});
+}
+
+void KityClient::deleteConversations(const QStringList &ids)
+{
+    if (ids.isEmpty()) {
+        return;
+    }
+    bool removedAny = false;
+    for (int i = m_conversations.size() - 1; i >= 0; --i) {
+        if (ids.contains(m_conversations[i].toMap().value(QStringLiteral("id")).toString())) {
+            m_conversations.removeAt(i);
+            removedAny = true;
+        }
+    }
+    if (removedAny) {
+        if (m_conversations.isEmpty()) {
+            newConversation();
+            return;
+        }
+        saveConversations();
+        if (ids.contains(m_activeConversationId)) {
+            selectConversation(m_conversations.first().toMap().value(QStringLiteral("id")).toString());
+        }
+        Q_EMIT conversationsChanged();
+    }
+}
+
+void KityClient::attachFiles(const QStringList &fileUrls)
+{
+    if (fileUrls.isEmpty()) {
+        return;
+    }
+    QStringList blocks;
+    QStringList names;
+    for (const QString &raw : fileUrls) {
+        QString localPath = raw;
+        if (localPath.startsWith(QLatin1String("file://"))) {
+            localPath = QUrl(localPath).toLocalFile();
+        }
+        QFileInfo fi(localPath);
+        if (!fi.exists() || !fi.isFile()) {
+            continue;
+        }
+        names.append(fi.fileName());
+        const QString ext = fi.suffix().toLower();
+        QString extracted;
+        if (ext == QLatin1String("pdf")) {
+            QProcess pPdf;
+            pPdf.start(QStringLiteral("pdftotext"), {localPath, QStringLiteral("-")});
+            pPdf.waitForFinished(4000);
+            extracted = QString::fromUtf8(pPdf.readAllStandardOutput()).trimmed();
+        } else if (ext == QLatin1String("png") || ext == QLatin1String("jpg") || ext == QLatin1String("jpeg") || ext == QLatin1String("webp")) {
+            QProcess pOcr;
+            pOcr.start(QStringLiteral("tesseract"), {localPath, QStringLiteral("stdout"), QStringLiteral("--psm"), QStringLiteral("3")});
+            pOcr.waitForFinished(4000);
+            extracted = QString::fromUtf8(pOcr.readAllStandardOutput()).trimmed();
+            if (extracted.isEmpty()) {
+                extracted = QStringLiteral("[Imagen adjunta: %1]").arg(fi.fileName());
+            }
+        } else {
+            QFile f(localPath);
+            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                extracted = QString::fromUtf8(f.readAll()).trimmed();
+            }
+        }
+        if (!extracted.isEmpty()) {
+            blocks.append(QStringLiteral("### %1\n%2").arg(fi.fileName(), extracted.left(6000)));
+        }
+    }
+    if (!blocks.isEmpty()) {
+        const QString prompt = QStringLiteral("He adjuntado %1 (%2). Analiza su contenido y dime los puntos principales:\n\n%3")
+            .arg(names.size() == 1 ? QStringLiteral("el archivo") : QStringLiteral("los archivos"),
+                 names.join(QStringLiteral(", ")),
+                 blocks.join(QStringLiteral("\n\n")));
+        sendMessage(prompt, false);
     }
 }
 

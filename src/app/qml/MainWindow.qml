@@ -9,6 +9,7 @@ import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import QtQuick.Window
+import QtQuick.Dialogs as QtDialogs
 
 import org.kde.kirigami as Kirigami
 import CachyOS.UI
@@ -26,7 +27,7 @@ CachyWindow {
     showTrafficLights: !root.compactMode
     showTitleBarDivider: !root.compactMode
     showWindowFrame: true
-    sidebarVisible: !root.compactMode && !root.showPreferences
+    sidebarVisible: !root.compactMode
     sidebarWidth: 272
     cornerRadius: root.compactMode ? (root.compactWorking ? 31 : 24) : CachyTheme.radiusWindow
     backgroundColor: root.compactMode ? Qt.rgba(0.07, 0.08, 0.11, 0.90) : "transparent"
@@ -39,11 +40,52 @@ CachyWindow {
     property bool showWritingTools: false
     property bool showVisualIntelligence: false
     property bool showMathNotes: false
-    property bool showPreferences: false
     property bool showSearchFilter: false
     property string searchQuery: ""
     property var mathResults: []
     property string visualCaptureScope: "region"
+    property var selectedConversationIds: []
+    property string renamingConversationId: ""
+    property string renamingTitleText: ""
+    property string deletingConversationId: ""
+
+    QtDialogs.FileDialog {
+        id: photoAttachDialog
+        title: i18n("Añadir fotos a la conversación de Kity")
+        fileMode: QtDialogs.FileDialog.OpenFiles
+        nameFilters: [i18n("Imágenes (*.png *.jpg *.jpeg *.webp *.bmp *.gif)"), i18n("Todos los archivos (*)")]
+        onAccepted: {
+            let urls = [];
+            for (let i = 0; i < selectedFiles.length; ++i) {
+                urls.push(selectedFiles[i].toString());
+            }
+            if (urls.length > 0) {
+                if (root.compactMode) {
+                    root.compactAnswerVisible = true;
+                }
+                kityClient.attachFiles(urls);
+            }
+        }
+    }
+
+    QtDialogs.FileDialog {
+        id: fileAttachDialog
+        title: i18n("Añadir archivos a la conversación de Kity")
+        fileMode: QtDialogs.FileDialog.OpenFiles
+        nameFilters: [i18n("Todos los archivos (*.*)"), i18n("Documentos y código (*.txt *.md *.json *.csv *.py *.cpp *.h *.qml *.sh)")]
+        onAccepted: {
+            let urls = [];
+            for (let i = 0; i < selectedFiles.length; ++i) {
+                urls.push(selectedFiles[i].toString());
+            }
+            if (urls.length > 0) {
+                if (root.compactMode) {
+                    root.compactAnswerVisible = true;
+                }
+                kityClient.attachFiles(urls);
+            }
+        }
+    }
 
     readonly property bool isVoiceActive: kityClient.state === "listening" || kityClient.state === "thinking" || kityClient.state === "speaking"
     readonly property bool isDark: CachyTheme.isDark
@@ -118,14 +160,18 @@ CachyWindow {
     Shortcut {
         sequence: "Escape"
         onActivated: {
-            if (root.compactMode) {
+            if (root.renamingConversationId !== "") {
+                root.renamingConversationId = "";
+            } else if (root.deletingConversationId !== "") {
+                root.deletingConversationId = "";
+            } else if (root.selectedConversationIds.length > 0) {
+                root.selectedConversationIds = [];
+            } else if (root.compactMode) {
                 if (root.compactAnswerVisible) {
                     root.compactAnswerVisible = false;
                 } else {
                     root.hide();
                 }
-            } else if (root.showPreferences) {
-                root.showPreferences = false;
             } else if (kityClient.state === "thinking") {
                 kityClient.stopGeneration();
             } else if (kityClient.isSpeaking) {
@@ -143,6 +189,16 @@ CachyWindow {
         Row {
             spacing: 6
             anchors.verticalCenter: parent.verticalCenter
+
+            // Multi-select Delete Button (Shown when 1+ conversations are Ctrl-selected)
+            CachyToolbarButton {
+                visible: root.selectedConversationIds.length > 0
+                text: "🗑 (" + root.selectedConversationIds.length + ")"
+                tooltipText: i18n("Eliminar conversaciones seleccionadas")
+                onClicked: {
+                    root.deletingConversationId = "__MULTI__";
+                }
+            }
 
             // View Mode Toggle (2-column Grid vs 1-column List)
             CachyToolbarButton {
@@ -170,9 +226,64 @@ CachyWindow {
                 visible: root.showSearchFilter
                 Layout.fillWidth: true
                 isSearch: true
-                placeholderText: i18n("Filter chats...")
+                placeholderText: i18n("Filtrar conversaciones...")
                 text: root.searchQuery
                 onTextChanged: root.searchQuery = text
+            }
+
+            // Delete Confirmation Banner (macOS 27 Golden Gate: "Eliminar" -> "Eliminar")
+            Rectangle {
+                visible: root.deletingConversationId !== ""
+                Layout.fillWidth: true
+                implicitHeight: delBannerCol.implicitHeight + 16
+                radius: 12
+                color: CachyTheme.withAlpha(CachyTheme.dangerColor, 0.16)
+                border.width: 1
+                border.color: CachyTheme.withAlpha(CachyTheme.dangerColor, 0.45)
+
+                ColumnLayout {
+                    id: delBannerCol
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 6
+
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 11
+                        font.bold: true
+                        color: CachyTheme.textPrimary
+                        text: root.deletingConversationId === "__MULTI__"
+                            ? i18n("¿Eliminar definitivamente las %1 conversaciones seleccionadas?", root.selectedConversationIds.length)
+                            : i18n("¿Eliminar definitivamente esta conversación?")
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        CachyButton {
+                            Layout.fillWidth: true
+                            text: i18n("Cancelar")
+                            onClicked: root.deletingConversationId = ""
+                        }
+
+                        CachyButton {
+                            Layout.fillWidth: true
+                            destructive: true
+                            text: i18n("Eliminar")
+                            onClicked: {
+                                if (root.deletingConversationId === "__MULTI__") {
+                                    kityClient.deleteConversations(root.selectedConversationIds);
+                                    root.selectedConversationIds = [];
+                                } else {
+                                    kityClient.deleteConversation(root.deletingConversationId);
+                                }
+                                root.deletingConversationId = "";
+                            }
+                        }
+                    }
+                }
             }
 
             // Scrollable Conversation History Cards (2-column Grid or List)
@@ -199,6 +310,8 @@ CachyWindow {
                             required property int index
 
                             readonly property bool isCurrent: modelData.id === kityClient.activeConversationId
+                            readonly property bool isMultiSelected: root.selectedConversationIds.indexOf(modelData.id) !== -1
+                            readonly property bool isRenaming: root.renamingConversationId === modelData.id
                             readonly property bool matchesSearch: root.searchQuery.trim().length === 0
                                 || (modelData.title && modelData.title.toLowerCase().indexOf(root.searchQuery.toLowerCase()) !== -1)
                                 || (modelData.preview && modelData.preview.toLowerCase().indexOf(root.searchQuery.toLowerCase()) !== -1)
@@ -209,12 +322,14 @@ CachyWindow {
                             implicitHeight: convCardCol.implicitHeight + 22
                             radius: 16
 
-                            color: convCard.isCurrent
+                            color: (convCard.isCurrent || convCard.isMultiSelected)
                                 ? (CachyTheme.isDark ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.88))
                                 : (convHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.cardBackground)
 
-                            border.width: convCard.isCurrent ? 2 : 1
-                            border.color: convCard.isCurrent ? "#007AFF" : CachyTheme.specularBorder
+                            border.width: (convCard.isCurrent || convCard.isMultiSelected) ? 2 : 1
+                            border.color: convCard.isMultiSelected
+                                ? "#FF9F0A"
+                                : (convCard.isCurrent ? "#007AFF" : CachyTheme.specularBorder)
 
                             Behavior on color { ColorAnimation { duration: 120 } }
 
@@ -223,10 +338,64 @@ CachyWindow {
                                 cursorShape: Qt.PointingHandCursor
                             }
 
+                            // Left click or Ctrl+Left click (Multi-selection per Apple doc q7ny3g54v9lk)
                             TapHandler {
-                                onTapped: {
-                                    root.showPreferences = false;
-                                    kityClient.selectConversation(convCard.modelData.id);
+                                acceptedButtons: Qt.LeftButton
+                                onTapped: (eventPoint, button) => {
+                                    if (eventPoint.modifiers & Qt.ControlModifier) {
+                                        let arr = root.selectedConversationIds.slice();
+                                        const pos = arr.indexOf(convCard.modelData.id);
+                                        if (pos === -1) {
+                                            arr.push(convCard.modelData.id);
+                                        } else {
+                                            arr.splice(pos, 1);
+                                        }
+                                        root.selectedConversationIds = arr;
+                                    } else {
+                                        root.selectedConversationIds = [];
+                                        kityClient.selectConversation(convCard.modelData.id);
+                                    }
+                                }
+                            }
+
+                            // Right-click Context Menu (Fijar / Desfijar, Renombrar, Eliminar per Apple doc q7ny3g54v9lk)
+                            TapHandler {
+                                acceptedButtons: Qt.RightButton
+                                onTapped: convContextMenu.popup()
+                            }
+
+                            QQC2.Menu {
+                                id: convContextMenu
+
+                                QQC2.MenuItem {
+                                    icon.name: convCard.modelData.pinned ? "window-unpin" : "window-pin"
+                                    text: convCard.modelData.pinned ? i18n("Desfijar") : i18n("Fijar")
+                                    onTriggered: kityClient.togglePinConversation(convCard.modelData.id)
+                                }
+
+                                QQC2.MenuItem {
+                                    icon.name: "edit-rename"
+                                    text: i18n("Renombrar…")
+                                    onTriggered: {
+                                        root.renamingConversationId = convCard.modelData.id;
+                                        root.renamingTitleText = convCard.modelData.title || "";
+                                    }
+                                }
+
+                                QQC2.MenuSeparator {}
+
+                                QQC2.MenuItem {
+                                    icon.name: "edit-delete"
+                                    text: root.selectedConversationIds.length > 1
+                                        ? i18n("Eliminar %1 conversaciones…", root.selectedConversationIds.length)
+                                        : i18n("Eliminar…")
+                                    onTriggered: {
+                                        if (root.selectedConversationIds.length > 1) {
+                                            root.deletingConversationId = "__MULTI__";
+                                        } else {
+                                            root.deletingConversationId = convCard.modelData.id;
+                                        }
+                                    }
                                 }
                             }
 
@@ -263,7 +432,41 @@ CachyWindow {
                                     }
                                 }
 
+                                // Inline Rename Editor when Renombrar is active
+                                RowLayout {
+                                    visible: convCard.isRenaming
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    QQC2.TextField {
+                                        id: renameField
+                                        Layout.fillWidth: true
+                                        text: root.renamingTitleText
+                                        font.pixelSize: 12
+                                        selectByMouse: true
+                                        onAccepted: {
+                                            if (text.trim().length > 0) {
+                                                kityClient.renameConversation(convCard.modelData.id, text.trim());
+                                            }
+                                            root.renamingConversationId = "";
+                                        }
+                                    }
+
+                                    QQC2.ToolButton {
+                                        text: "✓"
+                                        implicitWidth: 22
+                                        implicitHeight: 22
+                                        onClicked: {
+                                            if (renameField.text.trim().length > 0) {
+                                                kityClient.renameConversation(convCard.modelData.id, renameField.text.trim());
+                                            }
+                                            root.renamingConversationId = "";
+                                        }
+                                    }
+                                }
+
                                 QQC2.Label {
+                                    visible: !convCard.isRenaming
                                     Layout.fillWidth: true
                                     text: convCard.modelData.title || i18n("Kity AI")
                                     font.pixelSize: 13
@@ -305,7 +508,6 @@ CachyWindow {
                 text: "✎"
                 tooltipText: i18n("Nueva conversación (Ctrl+N)")
                 onClicked: {
-                    root.showPreferences = false;
                     kityClient.newConversation();
                 }
             }
@@ -392,7 +594,7 @@ CachyWindow {
         }
     ]
 
-    // Trailing Actions: Search, Text Size, Pin, and Preferences (Rightmost)
+    // Trailing Actions: Search, Text Size, Pin, and System Settings (kcm_kity)
     headerActions: [
         Row {
             spacing: 4
@@ -432,7 +634,7 @@ CachyWindow {
                 onClicked: root.compactMode = true
             }
 
-            // Pin Window On Top (Immediately preceding Preferences)
+            // Pin Window On Top (Immediately preceding System Settings)
             QQC2.ToolButton {
                 icon.name: root.isPinned ? "window-pin" : "window-unpin"
                 checkable: true
@@ -442,12 +644,12 @@ CachyWindow {
                 onClicked: root.isPinned = !root.isPinned
             }
 
-            // Preferences Button (Far right)
+            // System Settings -> Kity (kcm_kity) — Zero duplication!
             QQC2.ToolButton {
                 icon.name: "configure"
-                QQC2.ToolTip.text: i18n("Preferencias de Kity (Golden Gate)")
+                QQC2.ToolTip.text: i18n("Abrir Ajustes de Kity en Preferencias del Sistema…")
                 QQC2.ToolTip.visible: hovered
-                onClicked: root.showPreferences = !root.showPreferences
+                onClicked: kityClient.openSettings()
             }
         }
     ]
@@ -848,10 +1050,7 @@ CachyWindow {
                         }
 
                         TapHandler {
-                            onTapped: {
-                                root.compactMode = false;
-                                root.showVisualIntelligence = true;
-                            }
+                            onTapped: plusMenu.popup()
                         }
                     }
 
@@ -906,7 +1105,7 @@ CachyWindow {
 
         // =====================================================================
         // MODEL 2: GOLDEN GATE "THE SIRI APP" MAIN CONVERSATION PANE
-        // Replicates 09_the_siri_app_window.png
+        // Replicates 09_the_siri_app_window.png & Apple Guide q7ny3g54v9lk
         // =====================================================================
         ColumnLayout {
             id: mainContentColumn
@@ -916,7 +1115,7 @@ CachyWindow {
             anchors.rightMargin: CachyTheme.marginWindow
             anchors.bottomMargin: CachyTheme.marginWindow
             spacing: 12
-            visible: !root.showPreferences && !root.compactMode
+            visible: !root.compactMode
 
             // -----------------------------------------------------------------
             // Writing Tools Drawer
@@ -1308,7 +1507,7 @@ CachyWindow {
                 Layout.fillWidth: true
                 spacing: 10
 
-                // Left: Circular [+] Button
+                // Left: Circular [+] Button (Apple Guide q7ny3g54v9lk: Fotos, Archivos, Herramientas)
                 Rectangle {
                     width: 34
                     height: 34
@@ -1319,7 +1518,7 @@ CachyWindow {
 
                     HoverHandler { id: plusHover; cursorShape: Qt.PointingHandCursor }
                     TapHandler {
-                        onTapped: root.showWritingTools = !root.showWritingTools
+                        onTapped: plusMenu.popup()
                     }
 
                     Text {
@@ -1327,6 +1526,51 @@ CachyWindow {
                         text: "+"
                         font.pixelSize: 18
                         color: CachyTheme.textPrimary
+                    }
+
+                    QQC2.Menu {
+                        id: plusMenu
+
+                        QQC2.MenuItem {
+                            icon.name: "image-x-generic"
+                            text: i18n("Fotos…")
+                            onTriggered: photoAttachDialog.open()
+                        }
+
+                        QQC2.MenuItem {
+                            icon.name: "document-open"
+                            text: i18n("Archivos…")
+                            onTriggered: fileAttachDialog.open()
+                        }
+
+                        QQC2.MenuSeparator {}
+
+                        QQC2.MenuItem {
+                            icon.name: "document-edit-symbolic"
+                            text: i18n("Herramientas de Escritura")
+                            onTriggered: {
+                                root.compactMode = false;
+                                root.showWritingTools = !root.showWritingTools;
+                            }
+                        }
+
+                        QQC2.MenuItem {
+                            icon.name: "camera-photo-symbolic"
+                            text: i18n("Inteligencia Visual (Capturar pantalla)")
+                            onTriggered: {
+                                root.compactMode = false;
+                                root.showVisualIntelligence = !root.showVisualIntelligence;
+                            }
+                        }
+
+                        QQC2.MenuItem {
+                            icon.name: "accessories-calculator"
+                            text: i18n("Notas Matemáticas")
+                            onTriggered: {
+                                root.compactMode = false;
+                                root.showMathNotes = !root.showMathNotes;
+                            }
+                        }
                     }
                 }
 
@@ -1392,490 +1636,6 @@ CachyWindow {
                         source: "audio-input-microphone-symbolic"
                         isMask: true
                         color: kityClient.isRecording ? "#FFFFFF" : CachyTheme.textPrimary
-                    }
-                }
-            }
-        },
-
-        // =====================================================================
-        // 5. GOLDEN GATE SIRI & VOICE PREFERENCES ("Guided by voices")
-        // Replicates 10b_siri_voice_window.png & "The Siri app" settings
-        // =====================================================================
-        Rectangle {
-            id: preferencesModal
-            anchors.fill: parent
-            anchors.margins: CachyTheme.marginWindow
-            visible: root.showPreferences && !root.compactMode
-            color: "transparent"
-
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 14
-
-                // Header Bar with Back "<" Chevron and Title "Voice & Kity Settings"
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 10
-
-                    CachyToolbarButton {
-                        text: "‹ Back"
-                        onClicked: root.showPreferences = false
-                    }
-
-                    Text {
-                        text: i18n("Kity & Voice — macOS Golden Gate")
-                        font.pixelSize: 16
-                        font.weight: Font.Bold
-                        color: CachyTheme.textPrimary
-                    }
-
-                    Item { Layout.fillWidth: true }
-                }
-
-                QQC2.ScrollView {
-                    id: prefScroll
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    contentWidth: availableWidth
-                    QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
-                    clip: true
-
-                    ColumnLayout {
-                        width: prefScroll.availableWidth
-                        spacing: 14
-
-                        // =====================================================
-                        // CARD 1: "Customize Your Siri Voice" (10b_siri_voice_window.png)
-                        // =====================================================
-                        CachyCard {
-                            Layout.fillWidth: true
-
-                            contentItem: ColumnLayout {
-                                spacing: 14
-
-                                // Top Row: Title on Left, Glowing Star/Flower Acoustic Wave Visualizer on Right
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 16
-
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        Layout.alignment: Qt.AlignTop
-                                        spacing: 4
-
-                                        Text {
-                                            text: i18n("Customize Your Kity Voice")
-                                            font.pixelSize: 14
-                                            font.weight: Font.Bold
-                                            color: CachyTheme.textPrimary
-                                        }
-                                        Text {
-                                            Layout.fillWidth: true
-                                            wrapMode: Text.WordWrap
-                                            text: i18n("You'll hear this voice in Kity, Maps, and system responses.")
-                                            font.pixelSize: 12
-                                            color: CachyTheme.textSecondary
-                                        }
-                                    }
-
-                                    // Dark Rectangular Acoustic Star Visualizer (10b_siri_voice_window.png)
-                                    Rectangle {
-                                        Layout.preferredWidth: 230
-                                        Layout.preferredHeight: 126
-                                        radius: 12
-                                        color: "#070709"
-                                        border.width: 1
-                                        border.color: Qt.rgba(1, 1, 1, 0.16)
-                                        clip: true
-
-                                        // Concentric acoustic flower/star rings
-                                        Repeater {
-                                            model: 4
-
-                                            Rectangle {
-                                                required property int index
-                                                anchors.centerIn: parent
-                                                readonly property real waveScale: 1.0 + 0.12 * Math.sin(root.animTime * 3.0 - index * 0.9)
-                                                width: (46 + index * 24) * waveScale
-                                                height: (46 + index * 24) * waveScale
-                                                radius: width * 0.38
-                                                rotation: index * 22.5 + root.animTime * 12
-                                                color: "transparent"
-                                                border.width: 1.4
-                                                border.color: Qt.rgba(1, 1, 1, (0.28 - index * 0.05) * (0.5 + kityClient.voiceExpressivity * 0.5))
-                                            }
-                                        }
-
-                                        // Bright glowing white core orb
-                                        Rectangle {
-                                            anchors.centerIn: parent
-                                            width: 44
-                                            height: 44
-                                            radius: 22
-                                            color: Qt.rgba(1, 1, 1, 0.24)
-
-                                            Rectangle {
-                                                anchors.centerIn: parent
-                                                width: 28
-                                                height: 28
-                                                radius: 14
-                                                color: "#FFFFFF"
-                                            }
-                                        }
-
-                                        TapHandler {
-                                            onTapped: kityClient.previewSelectedVoice()
-                                        }
-                                    }
-                                }
-
-                                CachyDivider { Layout.fillWidth: true }
-
-                                // Row 1: Accent
-                                RowLayout {
-                                    Layout.fillWidth: true
-
-                                    Text {
-                                        text: i18n("Accent")
-                                        font.pixelSize: 13
-                                        color: CachyTheme.textPrimary
-                                        Layout.fillWidth: true
-                                    }
-
-                                    QQC2.ComboBox {
-                                        Layout.preferredWidth: 180
-                                        model: ["Spanish (Spain)", "Spanish (Latin America)", "American", "British"]
-                                        currentIndex: Math.max(0, model.indexOf(kityClient.voiceAccent))
-                                        onActivated: index => kityClient.voiceAccent = model[index]
-                                    }
-                                }
-
-                                CachyDivider { Layout.fillWidth: true }
-
-                                // Row 2: Voice (7 Colored Circular Orbs - 10b_siri_voice_window.png)
-                                RowLayout {
-                                    Layout.fillWidth: true
-
-                                    Text {
-                                        text: i18n("Voice")
-                                        font.pixelSize: 13
-                                        color: CachyTheme.textPrimary
-                                        Layout.fillWidth: true
-                                    }
-
-                                    Row {
-                                        spacing: 10
-
-                                        Repeater {
-                                            model: [
-                                                "#30D158", // 1: Green
-                                                "#FFD60A", // 2: Yellow
-                                                "#FF9F0A", // 3: Orange
-                                                "#FF375F", // 4: Red-Pink (Default selected in Golden Gate)
-                                                "#BF5AF2", // 5: Magenta
-                                                "#5E5CE6", // 6: Indigo
-                                                "#64D2FF"  // 7: Blue
-                                            ]
-
-                                            Item {
-                                                required property string modelData
-                                                required property int index
-                                                width: 28
-                                                height: 28
-
-                                                readonly property bool isSelected: kityClient.voiceIndex === index
-
-                                                // Outer selection ring
-                                                Rectangle {
-                                                    anchors.centerIn: parent
-                                                    width: 28
-                                                    height: 28
-                                                    radius: 14
-                                                    color: "transparent"
-                                                    border.width: parent.isSelected ? 2 : 0
-                                                    border.color: parent.modelData
-                                                }
-
-                                                // Inner colored voice circle
-                                                Rectangle {
-                                                    anchors.centerIn: parent
-                                                    width: 21
-                                                    height: 21
-                                                    radius: 10.5
-                                                    color: parent.modelData
-
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        visible: parent.parent.isSelected
-                                                        text: (parent.parent.index + 1).toString()
-                                                        color: "#FFFFFF"
-                                                        font.pixelSize: 11
-                                                        font.bold: true
-                                                    }
-                                                }
-
-                                                HoverHandler { cursorShape: Qt.PointingHandCursor }
-                                                TapHandler {
-                                                    onTapped: {
-                                                        kityClient.voiceIndex = index;
-                                                        kityClient.previewSelectedVoice();
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                CachyDivider { Layout.fillWidth: true }
-
-                                // Row 3: Pace Slider (Red/Pink track matching 10b_siri_voice_window.png)
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 16
-
-                                    Text {
-                                        text: i18n("Pace")
-                                        font.pixelSize: 13
-                                        color: CachyTheme.textPrimary
-                                        Layout.preferredWidth: 120
-                                    }
-
-                                    Item { Layout.fillWidth: true }
-
-                                    QQC2.Slider {
-                                        id: paceSlider
-                                        Layout.preferredWidth: 240
-                                        from: 0.0
-                                        to: 1.0
-                                        value: kityClient.voicePace
-                                        onMoved: kityClient.voicePace = value
-
-                                        background: Rectangle {
-                                            x: paceSlider.leftPadding
-                                            y: paceSlider.topPadding + paceSlider.availableHeight / 2 - height / 2
-                                            width: paceSlider.availableWidth
-                                            height: 6
-                                            radius: 3
-                                            color: CachyTheme.isDark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.14)
-
-                                            Rectangle {
-                                                width: paceSlider.visualPosition * parent.width
-                                                height: parent.height
-                                                radius: 3
-                                                color: "#FF375F"
-                                            }
-                                        }
-                                    }
-                                }
-
-                                CachyDivider { Layout.fillWidth: true }
-
-                                // Row 4: Expressivity Slider (Red/Pink track matching 10b_siri_voice_window.png)
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 16
-
-                                    Text {
-                                        text: i18n("Expressivity")
-                                        font.pixelSize: 13
-                                        color: CachyTheme.textPrimary
-                                        Layout.preferredWidth: 120
-                                    }
-
-                                    Item { Layout.fillWidth: true }
-
-                                    QQC2.Slider {
-                                        id: exprSlider
-                                        Layout.preferredWidth: 240
-                                        from: 0.0
-                                        to: 1.0
-                                        value: kityClient.voiceExpressivity
-                                        onMoved: kityClient.voiceExpressivity = value
-
-                                        background: Rectangle {
-                                            x: exprSlider.leftPadding
-                                            y: exprSlider.topPadding + exprSlider.availableHeight / 2 - height / 2
-                                            width: exprSlider.availableWidth
-                                            height: 6
-                                            radius: 3
-                                            color: CachyTheme.isDark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.14)
-
-                                            Rectangle {
-                                                width: exprSlider.visualPosition * parent.width
-                                                height: parent.height
-                                                radius: 3
-                                                color: "#FF375F"
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // =====================================================
-                        // CARD 2: Conversation History & Shortcut ("The Siri app")
-                        // =====================================================
-                        CachyCard {
-                            Layout.fillWidth: true
-
-                            contentItem: ColumnLayout {
-                                spacing: 12
-
-                                Text {
-                                    text: i18n("Kity AI, Spotlight & Conversation History")
-                                    font.pixelSize: 14
-                                    font.weight: Font.Bold
-                                    color: CachyTheme.textPrimary
-                                }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Text {
-                                        text: i18n("Assistant Experience")
-                                        font.pixelSize: 13
-                                        color: CachyTheme.textPrimary
-                                        Layout.fillWidth: true
-                                    }
-                                    QQC2.ComboBox {
-                                        Layout.preferredWidth: 200
-                                        model: ["Kity AI (Golden Gate)", "Kity Classic", "Off"]
-                                        currentIndex: kityClient.siriMode === "classic" ? 1 : (kityClient.siriMode === "off" ? 2 : 0)
-                                        onActivated: index => kityClient.siriMode = (index === 1 ? "classic" : (index === 2 ? "off" : "ai"))
-                                    }
-                                }
-
-                                CachyDivider { Layout.fillWidth: true }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Text {
-                                        text: i18n("Quick Pill Keyboard Shortcut")
-                                        font.pixelSize: 13
-                                        color: CachyTheme.textPrimary
-                                        Layout.fillWidth: true
-                                    }
-                                    Rectangle {
-                                        height: 26
-                                        width: shortcutBadgeText.implicitWidth + 20
-                                        radius: 8
-                                        color: CachyTheme.surfacePill
-                                        border.width: 1
-                                        border.color: CachyTheme.specularBorder
-                                        Text {
-                                            id: shortcutBadgeText
-                                            anchors.centerIn: parent
-                                            text: i18n("Meta + K")
-                                            font.pixelSize: 12
-                                            font.weight: Font.DemiBold
-                                            color: CachyTheme.textPrimary
-                                        }
-                                    }
-                                }
-
-                                CachyDivider { Layout.fillWidth: true }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Text {
-                                        text: i18n("Conversation Retention")
-                                        font.pixelSize: 13
-                                        color: CachyTheme.textPrimary
-                                        Layout.fillWidth: true
-                                    }
-                                    QQC2.ComboBox {
-                                        Layout.preferredWidth: 160
-                                        model: ["Forever", "1 Year", "30 Days"]
-                                        currentIndex: kityClient.historyRetention === "1year" ? 1 : (kityClient.historyRetention === "30days" ? 2 : 0)
-                                        onActivated: index => kityClient.historyRetention = (index === 1 ? "1year" : (index === 2 ? "30days" : "forever"))
-                                    }
-                                }
-
-                                CachyDivider { Layout.fillWidth: true }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Text {
-                                        text: i18n("Visible Lines in Chat Preview")
-                                        font.pixelSize: 13
-                                        color: CachyTheme.textPrimary
-                                        Layout.fillWidth: true
-                                    }
-                                    QQC2.ComboBox {
-                                        Layout.preferredWidth: 160
-                                        model: ["2 Lines", "4 Lines", "6 Lines"]
-                                        currentIndex: kityClient.previewLines <= 2 ? 0 : (kityClient.previewLines >= 6 ? 2 : 1)
-                                        onActivated: index => kityClient.previewLines = (index === 0 ? 2 : (index === 2 ? 6 : 4))
-                                    }
-                                }
-
-                                CachyDivider { Layout.fillWidth: true }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Text {
-                                        text: i18n("Open Kity App To")
-                                        font.pixelSize: 13
-                                        color: CachyTheme.textPrimary
-                                        Layout.fillWidth: true
-                                    }
-                                    QQC2.ComboBox {
-                                        Layout.preferredWidth: 200
-                                        model: ["Past Conversations", "Brand-New Conversation"]
-                                        currentIndex: kityClient.openToMode === "new" ? 1 : 0
-                                        onActivated: index => kityClient.openToMode = (index === 1 ? "new" : "past")
-                                    }
-                                }
-                            }
-                        }
-
-                        // =====================================================
-                        // CARD 3: Local & Cloud Intelligence Backend
-                        // =====================================================
-                        CachyCard {
-                            Layout.fillWidth: true
-
-                            contentItem: ColumnLayout {
-                                spacing: 12
-
-                                Text {
-                                    text: i18n("AFM 3 / Local Ollama & Hands-Free Wake Word")
-                                    font.pixelSize: 14
-                                    font.weight: Font.Bold
-                                    color: CachyTheme.textPrimary
-                                }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Text {
-                                        text: i18n("Listen for «¡Hola Kity!»")
-                                        font.pixelSize: 13
-                                        color: CachyTheme.textPrimary
-                                        Layout.fillWidth: true
-                                    }
-                                    CachySwitch {
-                                        checked: kityClient.wakeWordEnabled
-                                        onToggled: checked => kityClient.wakeWordEnabled = checked
-                                    }
-                                }
-
-                                CachyDivider { Layout.fillWidth: true }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Text {
-                                        text: i18n("Active Language Model (LLM)")
-                                        font.pixelSize: 13
-                                        color: CachyTheme.textPrimary
-                                        Layout.fillWidth: true
-                                    }
-                                    QQC2.ComboBox {
-                                        Layout.preferredWidth: 200
-                                        model: kityClient.availableModels.length > 0 ? kityClient.availableModels : [kityClient.ollamaModel || "llama3.2:3b"]
-                                        onActivated: index => kityClient.setOllamaModel(model[index])
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }
