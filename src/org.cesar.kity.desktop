@@ -12,7 +12,19 @@ Categories=Utility;AudioVideo;System;
 StartupWMClass=org.cesar.kity
 StartupNotify=true
 MimeType=x-scheme-handler/kity;
-Actions=NewChat;Listen;OCR;AskScreen;WritingTools;
+Actions=QuickPill;OpenApp;NewChat;Listen;OCR;AskScreen;WritingTools;
+
+[Desktop Action QuickPill]
+Name=Cápsula Rápida (Search or Ask)
+Name[es]=Cápsula Rápida (Search or Ask)
+Exec=kity --pill
+Icon=system-search-symbolic
+
+[Desktop Action OpenApp]
+Name=Abrir aplicación completa de Kity
+Name[es]=Abrir aplicación completa de Kity
+Exec=kity --app
+Icon=org.cesar.kity
 
 [Desktop Action NewChat]
 Name=Nueva conversación

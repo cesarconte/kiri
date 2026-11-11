@@ -29,90 +29,6 @@
 
 #include "kityclient.h"
 
-// Handles Double-Press Meta (⌘) both via KWin ModifierOnlyShortcuts D-Bus and in-window KeyEvents
-class MetaDoubleTapHandler : public QObject
-{
-    Q_OBJECT
-    Q_CLASSINFO("D-Bus Interface", "org.cesar.kity.App")
-
-public:
-    explicit MetaDoubleTapHandler(QQuickWindow *window, QObject *parent = nullptr)
-        : QObject(parent)
-        , m_window(window)
-    {
-        m_singleTapTimer.setSingleShot(true);
-        m_singleTapTimer.setInterval(330);
-        connect(&m_singleTapTimer, &QTimer::timeout, this, []() {
-            // Forward single Meta tap to Plasma Application Launcher
-            QDBusMessage msg = QDBusMessage::createMethodCall(
-                QStringLiteral("org.kde.plasmashell"),
-                QStringLiteral("/PlasmaShell"),
-                QStringLiteral("org.kde.PlasmaShell"),
-                QStringLiteral("activateLauncherMenu"));
-            QDBusConnection::sessionBus().asyncCall(msg);
-        });
-    }
-
-public Q_SLOTS:
-    Q_SCRIPTABLE void handleMetaTap()
-    {
-        if (m_singleTapTimer.isActive()) {
-            m_singleTapTimer.stop();
-            togglePill();
-        } else {
-            m_singleTapTimer.start();
-        }
-    }
-
-    Q_SCRIPTABLE void togglePill()
-    {
-        if (!m_window) {
-            return;
-        }
-        const bool isCompact = m_window->property("compactMode").toBool();
-        if (m_window->isVisible() && m_window->isActive() && isCompact) {
-            m_window->hide();
-        } else {
-            m_window->setProperty("compactMode", true);
-            m_window->show();
-            m_window->raise();
-            m_window->requestActivate();
-        }
-    }
-
-protected:
-    bool eventFilter(QObject *watched, QEvent *event) override
-    {
-        if (event->type() == QEvent::KeyPress) {
-            auto *ke = static_cast<QKeyEvent *>(event);
-            if ((ke->key() == Qt::Key_Meta || ke->key() == Qt::Key_Super_L || ke->key() == Qt::Key_Super_R) && !ke->isAutoRepeat()) {
-                m_onlyMetaPressed = true;
-            } else {
-                m_onlyMetaPressed = false;
-            }
-        } else if (event->type() == QEvent::KeyRelease) {
-            auto *ke = static_cast<QKeyEvent *>(event);
-            if ((ke->key() == Qt::Key_Meta || ke->key() == Qt::Key_Super_L || ke->key() == Qt::Key_Super_R) && !ke->isAutoRepeat() && m_onlyMetaPressed) {
-                m_onlyMetaPressed = false;
-                const qint64 now = QDateTime::currentMSecsSinceEpoch();
-                if (now - m_lastMetaReleaseMs <= 350) {
-                    m_lastMetaReleaseMs = 0;
-                    togglePill();
-                    return true;
-                }
-                m_lastMetaReleaseMs = now;
-            }
-        }
-        return QObject::eventFilter(watched, event);
-    }
-
-private:
-    QQuickWindow *m_window = nullptr;
-    QTimer m_singleTapTimer;
-    bool m_onlyMetaPressed = false;
-    qint64 m_lastMetaReleaseMs = 0;
-};
-
 int main(int argc, char *argv[])
 {
     QQuickWindow::setDefaultAlphaBuffer(true);
@@ -151,9 +67,13 @@ int main(int argc, char *argv[])
                                     i18n("Alternar visibilidad de la ventana de Kity"));
     parser.addOption(toggleOption);
 
-    QCommandLineOption compactOption(QStringList() << QStringLiteral("compact"),
-                                     i18n("Abrir en modo píldora flotante compacta (Siri Island)"));
+    QCommandLineOption compactOption(QStringList() << QStringLiteral("p") << QStringLiteral("pill") << QStringLiteral("compact"),
+                                     i18n("Abrir en modo Cápsula Rápida flotante (Golden Gate Search or Ask)"));
     parser.addOption(compactOption);
+
+    QCommandLineOption appOption(QStringList() << QStringLiteral("a") << QStringLiteral("app") << QStringLiteral("full"),
+                                 i18n("Abrir directamente la aplicación completa de Kity de 2 paneles"));
+    parser.addOption(appOption);
 
     QCommandLineOption fileOption(QStringList() << QStringLiteral("f") << QStringLiteral("file"),
                                   i18n("Analizar o preguntar sobre un archivo seleccionado"),
@@ -201,13 +121,6 @@ int main(int argc, char *argv[])
 
     QObject *rootObj = engine.rootObjects().first();
     QQuickWindow *window = qobject_cast<QQuickWindow *>(rootObj);
-    auto *metaHandler = new MetaDoubleTapHandler(window, &app);
-    app.installEventFilter(metaHandler);
-    QDBusConnection::sessionBus().registerService(QStringLiteral("org.cesar.kity.App"));
-    QDBusConnection::sessionBus().registerObject(
-        QStringLiteral("/KityApp"),
-        metaHandler,
-        QDBusConnection::ExportAllSlots);
 
     if (window) {
         auto updateBlurRegion = [window]() {
@@ -222,9 +135,18 @@ int main(int argc, char *argv[])
         QObject::connect(window, &QWindow::heightChanged, window, updateBlurRegion);
     }
 
-    auto handleCommandLine = [&](const QCommandLineParser &p) {
-        if (p.isSet(compactOption) && window) {
-            window->setProperty("compactMode", true);
+    auto handleCommandLine = [&](const QCommandLineParser &p, bool isSecondActivation) {
+        if (window) {
+            if (p.isSet(appOption)) {
+                window->setProperty("compactMode", false);
+            } else if (p.isSet(compactOption)) {
+                window->setProperty("compactMode", true);
+                window->setProperty("compactAnswerVisible", false);
+            } else if (!isSecondActivation || !window->isVisible()) {
+                // Default invocation (Meta + K or kity -t when hidden) opens the Golden Gate Quick Pill
+                window->setProperty("compactMode", true);
+                window->setProperty("compactAnswerVisible", false);
+            }
         }
         if (p.isSet(newChatOption)) {
             client.clearHistory();
@@ -321,6 +243,7 @@ int main(int argc, char *argv[])
             if (!action.isEmpty()) {
                 client.applyWritingTool(action);
             } else if (window) {
+                window->setProperty("compactMode", false);
                 window->setProperty("showWritingTools", true);
             }
         } else if (!p.positionalArguments().isEmpty()) {
@@ -344,10 +267,14 @@ int main(int argc, char *argv[])
                 window->requestActivate();
             };
 
-            // Toggle only hides when Kity is visible AND focused. If it is
-            // visible but behind other windows (or on another desktop), the
-            // user expects it to come to the front, not to disappear.
-            if (p.isSet(toggleOption) && window->isVisible() && window->isActive()
+            const bool hasExplicitAction = p.isSet(appOption) || p.isSet(compactOption)
+                || p.isSet(newChatOption) || p.isSet(listenOption) || p.isSet(ocrOption)
+                || p.isSet(askScreenOption) || p.isSet(writingToolsOption) || p.isSet(writingActionOption)
+                || p.isSet(fileOption) || p.isSet(summarizeOption) || !p.positionalArguments().isEmpty();
+
+            // Toggle (Meta + K or kity -t) hides Kity when it is already visible AND focused.
+            if (isSecondActivation && (p.isSet(toggleOption) || !hasExplicitAction)
+                && window->isVisible() && window->isActive()
                 && window->visibility() != QWindow::Minimized) {
                 window->hide();
             } else {
@@ -356,7 +283,7 @@ int main(int argc, char *argv[])
         }
     };
 
-    handleCommandLine(parser);
+    handleCommandLine(parser, false);
 
     QObject::connect(&service, &KDBusService::activateRequested,
                      [&](const QStringList &arguments, const QString &workingDirectory) {
@@ -368,6 +295,7 @@ int main(int argc, char *argv[])
         secondParser.addOption(newChatOption);
         secondParser.addOption(toggleOption);
         secondParser.addOption(compactOption);
+        secondParser.addOption(appOption);
         secondParser.addOption(fileOption);
         secondParser.addOption(summarizeOption);
         secondParser.addOption(addKnowledgeOption);
@@ -375,10 +303,8 @@ int main(int argc, char *argv[])
         secondParser.addOption(writingActionOption);
         secondParser.addPositionalArgument(QStringLiteral("input"), i18n("Pregunta de texto o ruta de archivo opcional"));
         secondParser.parse(arguments);
-        handleCommandLine(secondParser);
+        handleCommandLine(secondParser, true);
     });
 
     return app.exec();
 }
-
-#include "main.moc"

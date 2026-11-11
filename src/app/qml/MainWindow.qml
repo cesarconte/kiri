@@ -25,14 +25,14 @@ CachyWindow {
 
     showTrafficLights: !root.compactMode
     showTitleBarDivider: !root.compactMode
-    showWindowFrame: !(root.compactMode && !root.compactWorking && !root.compactAnswerVisible)
+    showWindowFrame: true
     sidebarVisible: !root.compactMode && !root.showPreferences
     sidebarWidth: 272
     cornerRadius: root.compactMode ? (root.compactWorking ? 31 : 24) : CachyTheme.radiusWindow
-    backgroundColor: root.compactMode ? Qt.rgba(0.08, 0.09, 0.12, 0.88) : "transparent"
+    backgroundColor: root.compactMode ? Qt.rgba(0.07, 0.08, 0.11, 0.90) : "transparent"
 
     property bool isPinned: false
-    property bool compactMode: false
+    property bool compactMode: true
     property bool compactAnswerVisible: false
     readonly property bool compactWorking: root.compactMode && (kityClient.state === "thinking" || kityClient.state === "transcribing")
 
@@ -64,14 +64,11 @@ CachyWindow {
     onCompactModeChanged: {
         if (!compactMode) {
             root.compactAnswerVisible = false;
-            root.width = 860;
-            root.height = 600;
         }
-        updateWindowFlags();
     }
 
     function updateWindowFlags() {
-        if (compactMode || isPinned) {
+        if (isPinned) {
             root.flags = Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint;
         } else {
             root.flags = Qt.Window | Qt.FramelessWindowHint;
@@ -427,6 +424,14 @@ CachyWindow {
                 }
             }
 
+            // Switch to Quick Pill ("Search or Ask") Mode
+            QQC2.ToolButton {
+                text: "⤡"
+                QQC2.ToolTip.text: i18n("Cambiar a Cápsula Rápida (Search or Ask)")
+                QQC2.ToolTip.visible: hovered
+                onClicked: root.compactMode = true
+            }
+
             // Pin Window On Top (Immediately preceding Preferences)
             QQC2.ToolButton {
                 icon.name: root.isPinned ? "window-pin" : "window-unpin"
@@ -597,6 +602,28 @@ CachyWindow {
 
                             TapHandler {
                                 onTapped: kityClient.toggleRecording()
+                            }
+                        }
+
+                        // Expand to Full Kity App (⤢) button
+                        Rectangle {
+                            width: 28
+                            height: 28
+                            radius: 14
+                            color: expandPillHover.hovered ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.12)
+
+                            HoverHandler { id: expandPillHover; cursorShape: Qt.PointingHandCursor }
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "⤢"
+                                color: "#FFFFFF"
+                                font.pixelSize: 13
+                                font.bold: true
+                            }
+
+                            TapHandler {
+                                onTapped: root.compactMode = false
                             }
                         }
                     }
@@ -1716,7 +1743,7 @@ CachyWindow {
                                         Text {
                                             id: shortcutBadgeText
                                             anchors.centerIn: parent
-                                            text: i18n("Press Meta (⌘) Twice")
+                                            text: i18n("Meta + K")
                                             font.pixelSize: 12
                                             font.weight: Font.DemiBold
                                             color: CachyTheme.textPrimary
