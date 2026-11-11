@@ -115,6 +115,7 @@ CachyWindow {
     // =========================================================================
     headerCenter: [
         Rectangle {
+            anchors.centerIn: parent
             height: 26
             width: siriPillRow.implicitWidth + 20
             radius: 13
