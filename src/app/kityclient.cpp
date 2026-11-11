@@ -600,9 +600,19 @@ QStringList KityClient::evaluateMathNotes(const QString &text) const
 
 QString KityClient::renderMarkdown(const QString &markdown) const
 {
+    QString normalized = markdown;
+    // Prevent indented bullets ("    • " or "    - ") from being parsed as non-wrapping <pre> blocks
+    static const QRegularExpression indentedBulletRe(
+        QStringLiteral("(?m)^[ \\t]{2,}([•\\-\\*]\\s+)"));
+    normalized.replace(indentedBulletRe, QStringLiteral("- "));
+
     QTextDocument doc;
-    doc.setMarkdown(markdown);
-    return doc.toHtml();
+    doc.setMarkdown(normalized);
+    QString html = doc.toHtml();
+    // Ensure <pre> blocks wrap instead of overflowing horizontally
+    html.replace(QStringLiteral("white-space: pre;"), QStringLiteral("white-space: pre-wrap; word-wrap: break-word;"));
+    html.replace(QStringLiteral("white-space:pre;"), QStringLiteral("white-space: pre-wrap; word-wrap: break-word;"));
+    return html;
 }
 
 void KityClient::speakText(const QString &text)

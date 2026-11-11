@@ -788,20 +788,33 @@ CachyWindow {
                     }
                 }
 
-                // Scrollable Answer Content
-                QQC2.ScrollView {
+                // Scrollable Answer Content (Strictly vertical, zero horizontal overflow)
+                Flickable {
+                    id: spotAnswerFlickable
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    contentWidth: width
+                    contentHeight: spotAnswerText.implicitHeight + 8
+                    flickableDirection: Flickable.VerticalOnly
+                    boundsBehavior: Flickable.StopAtBounds
                     clip: true
 
+                    QQC2.ScrollBar.vertical: QQC2.ScrollBar {
+                        policy: QQC2.ScrollBar.AsNeeded
+                    }
+
                     TextEdit {
-                        width: parent.width
+                        id: spotAnswerText
+                        width: Math.max(100, spotAnswerFlickable.width - 16)
                         readOnly: true
                         selectByMouse: true
+                        cursorVisible: false
+                        activeFocusOnPress: false
                         wrapMode: TextEdit.Wrap
                         color: "#FFFFFF"
                         font.pixelSize: 13
                         textFormat: TextEdit.RichText
+                        onLinkActivated: link => Qt.openUrlExternally(link)
                         text: {
                             if (kityClient.streamingText.length > 0) {
                                 return kityClient.renderMarkdown(kityClient.streamingText);
@@ -1062,6 +1075,8 @@ CachyWindow {
                         model: root.mathResults
                         QQC2.Label {
                             required property string modelData
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
                             font.family: "monospace"
                             color: CachyTheme.textPrimary
                             text: modelData
@@ -1087,6 +1102,7 @@ CachyWindow {
                     Text {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
                         text: i18n("What can I help you with?")
                         font.pixelSize: 22
                         font.weight: Font.Bold
@@ -1097,181 +1113,186 @@ CachyWindow {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
-                        text: i18n("Double-press Meta (⌘) anytime for the quick floating pill, or start a conversation below.")
+                        text: i18n("Press Meta + K anytime for the quick floating pill, or start a conversation below.")
                         font.pixelSize: 13
                         color: CachyTheme.textSecondary
                     }
                 }
 
-                // Message List (Clean Golden Gate Document Presentation)
-                QQC2.ScrollView {
+                // Message List (Clean Golden Gate Document Presentation - strictly vertical)
+                ListView {
+                    id: chatListView
                     anchors.fill: parent
                     visible: kityClient.messages.length > 0
+                    spacing: 16
                     clip: true
+                    flickableDirection: Flickable.VerticalOnly
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: kityClient.messages
 
-                    ListView {
-                        id: chatListView
-                        anchors.fill: parent
-                        spacing: 16
-                        model: kityClient.messages
+                    QQC2.ScrollBar.vertical: QQC2.ScrollBar {
+                        policy: QQC2.ScrollBar.AsNeeded
+                    }
 
-                        onCountChanged: Qt.callLater(() => chatListView.positionViewAtEnd())
+                    onCountChanged: Qt.callLater(() => chatListView.positionViewAtEnd())
 
-                        Connections {
-                            target: kityClient
-                            function onStreamingTextChanged() {
-                                chatListView.positionViewAtEnd();
-                            }
+                    Connections {
+                        target: kityClient
+                        function onStreamingTextChanged() {
+                            chatListView.positionViewAtEnd();
                         }
+                    }
 
-                        footer: Item {
-                            width: chatListView.width
-                            visible: kityClient.streamingText.length > 0
-                            height: visible ? streamText.implicitHeight + 24 : 0
+                    footer: Item {
+                        width: chatListView.width
+                        visible: kityClient.streamingText.length > 0
+                        height: visible ? streamText.implicitHeight + 24 : 0
 
+                        TextEdit {
+                            id: streamText
+                            width: Math.max(100, parent.width - 18)
+                            readOnly: true
+                            selectByMouse: true
+                            cursorVisible: false
+                            activeFocusOnPress: false
+                            wrapMode: TextEdit.Wrap
+                            color: CachyTheme.textPrimary
+                            font.pixelSize: Math.round(14 * kityClient.textScale)
+                            textFormat: TextEdit.RichText
+                            text: kityClient.renderMarkdown(kityClient.streamingText)
+                        }
+                    }
+
+                    delegate: Item {
+                        id: msgDelegate
+                        required property var modelData
+                        required property int index
+
+                        width: chatListView.width
+                        implicitHeight: msgCol.implicitHeight + 12
+
+                        readonly property bool isUser: modelData.role === "user"
+                        readonly property var detectedCmds: !isUser
+                            ? kityClient.extractTerminalCommands(modelData.content)
+                            : []
+
+                        ColumnLayout {
+                            id: msgCol
+                            width: Math.max(100, parent.width - 16)
+                            spacing: 8
+
+                            // User Prompt Chip
+                            Rectangle {
+                                visible: msgDelegate.isUser
+                                Layout.alignment: Qt.AlignRight
+                                Layout.maximumWidth: msgCol.width * 0.82
+                                implicitWidth: Math.min(msgCol.width * 0.82, userPromptText.implicitWidth + 24)
+                                implicitHeight: userPromptText.implicitHeight + 14
+                                radius: 16
+                                color: CachyTheme.withAlpha(CachyTheme.accentColor, 0.18)
+                                border.width: 1
+                                border.color: CachyTheme.withAlpha(CachyTheme.accentColor, 0.45)
+
+                                Text {
+                                    id: userPromptText
+                                    anchors.centerIn: parent
+                                    width: Math.min(implicitWidth, msgCol.width * 0.82 - 24)
+                                    wrapMode: Text.WordWrap
+                                    color: CachyTheme.textPrimary
+                                    font.pixelSize: Math.round(13 * kityClient.textScale)
+                                    font.weight: Font.Medium
+                                    text: msgDelegate.modelData.content || ""
+                                }
+                            }
+
+                            // Assistant Document-Style Response (09_the_siri_app_window.png)
                             TextEdit {
-                                id: streamText
-                                width: parent.width - 16
+                                visible: !msgDelegate.isUser
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: msgCol.width
                                 readOnly: true
                                 selectByMouse: true
+                                cursorVisible: false
+                                activeFocusOnPress: false
                                 wrapMode: TextEdit.Wrap
                                 color: CachyTheme.textPrimary
                                 font.pixelSize: Math.round(14 * kityClient.textScale)
                                 textFormat: TextEdit.RichText
-                                text: kityClient.renderMarkdown(kityClient.streamingText)
+                                onLinkActivated: link => Qt.openUrlExternally(link)
+                                text: kityClient.renderMarkdown(msgDelegate.modelData.content || "")
                             }
-                        }
 
-                        delegate: Item {
-                            id: msgDelegate
-                            required property var modelData
-                            required property int index
+                            // Source Citation Pills (Matching "Apple Newsroom +2" / "TechCrunch +2" in 09_the_siri_app_window.png)
+                            Flow {
+                                visible: !msgDelegate.isUser && msgDelegate.modelData.sources !== undefined && msgDelegate.modelData.sources.length > 0
+                                Layout.fillWidth: true
+                                spacing: 6
 
-                            width: chatListView.width
-                            implicitHeight: msgCol.implicitHeight + 12
+                                Repeater {
+                                    model: msgDelegate.modelData.sources || []
 
-                            readonly property bool isUser: modelData.role === "user"
-                            readonly property var detectedCmds: !isUser
-                                ? kityClient.extractTerminalCommands(modelData.content)
-                                : []
+                                    Rectangle {
+                                        required property var modelData
+                                        height: 22
+                                        width: srcLabel.implicitWidth + 16
+                                        radius: 11
+                                        color: CachyTheme.surfacePill
+                                        border.width: 1
+                                        border.color: CachyTheme.specularBorder
 
-                            ColumnLayout {
-                                id: msgCol
-                                width: parent.width - 12
-                                spacing: 8
+                                        Text {
+                                            id: srcLabel
+                                            anchors.centerIn: parent
+                                            text: modelData.title || i18n("Source +1")
+                                            font.pixelSize: 11
+                                            color: CachyTheme.textSecondary
+                                        }
 
-                                // User Prompt Chip or Clean Assistant Document Block
-                                Rectangle {
-                                    visible: msgDelegate.isUser
-                                    Layout.alignment: Qt.AlignRight
-                                    Layout.maximumWidth: parent.width * 0.82
-                                    implicitWidth: userPromptText.implicitWidth + 24
-                                    implicitHeight: userPromptText.implicitHeight + 14
-                                    radius: 16
-                                    color: CachyTheme.withAlpha(CachyTheme.accentColor, 0.18)
-                                    border.width: 1
-                                    border.color: CachyTheme.withAlpha(CachyTheme.accentColor, 0.45)
-
-                                    Text {
-                                        id: userPromptText
-                                        anchors.centerIn: parent
-                                        width: Math.min(implicitWidth, msgCol.width * 0.78)
-                                        wrapMode: Text.WordWrap
-                                        color: CachyTheme.textPrimary
-                                        font.pixelSize: Math.round(13 * kityClient.textScale)
-                                        font.weight: Font.Medium
-                                        text: msgDelegate.modelData.content || ""
-                                    }
-                                }
-
-                                // Assistant Document-Style Response (09_the_siri_app_window.png)
-                                TextEdit {
-                                    visible: !msgDelegate.isUser
-                                    Layout.fillWidth: true
-                                    readOnly: true
-                                    selectByMouse: true
-                                    cursorVisible: false
-                                    activeFocusOnPress: false
-                                    wrapMode: TextEdit.Wrap
-                                    color: CachyTheme.textPrimary
-                                    font.pixelSize: Math.round(14 * kityClient.textScale)
-                                    textFormat: TextEdit.RichText
-                                    onLinkActivated: link => Qt.openUrlExternally(link)
-                                    text: kityClient.renderMarkdown(msgDelegate.modelData.content || "")
-                                }
-
-                                // Source Citation Pills (Matching "Apple Newsroom +2" / "TechCrunch +2" in 09_the_siri_app_window.png)
-                                Flow {
-                                    visible: !msgDelegate.isUser && msgDelegate.modelData.sources !== undefined && msgDelegate.modelData.sources.length > 0
-                                    Layout.fillWidth: true
-                                    spacing: 6
-
-                                    Repeater {
-                                        model: msgDelegate.modelData.sources || []
-
-                                        Rectangle {
-                                            required property var modelData
-                                            height: 22
-                                            width: srcLabel.implicitWidth + 16
-                                            radius: 11
-                                            color: CachyTheme.surfacePill
-                                            border.width: 1
-                                            border.color: CachyTheme.specularBorder
-
-                                            Text {
-                                                id: srcLabel
-                                                anchors.centerIn: parent
-                                                text: modelData.title || i18n("Source +1")
-                                                font.pixelSize: 11
-                                                color: CachyTheme.textSecondary
-                                            }
-
-                                            TapHandler {
-                                                onTapped: if (modelData.url) Qt.openUrlExternally(modelData.url)
-                                            }
+                                        TapHandler {
+                                            onTapped: if (modelData.url) Qt.openUrlExternally(modelData.url)
                                         }
                                     }
                                 }
+                            }
 
-                                // Generative Cards
-                                Cards.WeatherCard {
-                                    visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "weather" && msgDelegate.modelData.cardData !== undefined
-                                    Layout.fillWidth: true
-                                    cardData: msgDelegate.modelData.cardData || ({})
+                            // Generative Cards
+                            Cards.WeatherCard {
+                                visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "weather" && msgDelegate.modelData.cardData !== undefined
+                                Layout.fillWidth: true
+                                cardData: msgDelegate.modelData.cardData || ({})
+                            }
+
+                            Cards.MediaCard {
+                                visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "media" && msgDelegate.modelData.cardData !== undefined
+                                Layout.fillWidth: true
+                                cardData: msgDelegate.modelData.cardData || ({})
+                                onMediaActionTriggered: action => kityClient.controlMedia(action)
+                            }
+
+                            Cards.EventCard {
+                                visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "event" && msgDelegate.modelData.cardData !== undefined
+                                Layout.fillWidth: true
+                                cardData: msgDelegate.modelData.cardData || ({})
+                                onOpenCalendarRequested: kityClient.openKOrganizer()
+                            }
+
+                            // Subtle Copy & Speak Actions
+                            RowLayout {
+                                visible: !msgDelegate.isUser
+                                spacing: 6
+
+                                QQC2.ToolButton {
+                                    icon.name: "edit-copy"
+                                    implicitWidth: 26
+                                    implicitHeight: 26
+                                    onClicked: kityClient.copyToClipboard(msgDelegate.modelData.content)
                                 }
 
-                                Cards.MediaCard {
-                                    visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "media" && msgDelegate.modelData.cardData !== undefined
-                                    Layout.fillWidth: true
-                                    cardData: msgDelegate.modelData.cardData || ({})
-                                    onMediaActionTriggered: action => kityClient.controlMedia(action)
-                                }
-
-                                Cards.EventCard {
-                                    visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "event" && msgDelegate.modelData.cardData !== undefined
-                                    Layout.fillWidth: true
-                                    cardData: msgDelegate.modelData.cardData || ({})
-                                    onOpenCalendarRequested: kityClient.openKOrganizer()
-                                }
-
-                                // Subtle Copy & Speak Actions
-                                RowLayout {
-                                    visible: !msgDelegate.isUser
-                                    spacing: 6
-
-                                    QQC2.ToolButton {
-                                        icon.name: "edit-copy"
-                                        implicitWidth: 26
-                                        implicitHeight: 26
-                                        onClicked: kityClient.copyToClipboard(msgDelegate.modelData.content)
-                                    }
-
-                                    QQC2.ToolButton {
-                                        icon.name: "audio-volume-high"
-                                        implicitWidth: 26
-                                        implicitHeight: 26
-                                        onClicked: kityClient.speakText(msgDelegate.modelData.content)
-                                    }
+                                QQC2.ToolButton {
+                                    icon.name: "audio-volume-high"
+                                    implicitWidth: 26
+                                    implicitHeight: 26
+                                    onClicked: kityClient.speakText(msgDelegate.modelData.content)
                                 }
                             }
                         }
