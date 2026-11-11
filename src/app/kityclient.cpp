@@ -10,15 +10,18 @@
 #include <QDBusReply>
 #include <QDBusArgument>
 #include <QDBusVariant>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTextDocument>
+#include <QUuid>
 
 // =========================================================================
 // KityConfigHelper implementation
@@ -120,6 +123,19 @@ KityClient::KityClient(QObject *parent)
 
     QSettings settings(QStringLiteral("cesar"), QStringLiteral("kity"));
     m_ollamaModel = settings.value(QStringLiteral("ollamaModel"), QStringLiteral("llama3.2:3b")).toString();
+    m_sidebarViewMode = settings.value(QStringLiteral("GoldenGate/sidebarViewMode"), QStringLiteral("grid")).toString();
+    m_siriMode = settings.value(QStringLiteral("GoldenGate/siriMode"), QStringLiteral("ai")).toString();
+    m_voiceAccent = settings.value(QStringLiteral("GoldenGate/voiceAccent"), QStringLiteral("Spanish (Spain)")).toString();
+    m_voiceIndex = settings.value(QStringLiteral("GoldenGate/voiceIndex"), 3).toInt();
+    m_voicePace = settings.value(QStringLiteral("GoldenGate/voicePace"), 0.68).toDouble();
+    m_voiceExpressivity = settings.value(QStringLiteral("GoldenGate/voiceExpressivity"), 0.88).toDouble();
+    m_historyRetention = settings.value(QStringLiteral("GoldenGate/historyRetention"), QStringLiteral("forever")).toString();
+    m_previewLines = settings.value(QStringLiteral("GoldenGate/previewLines"), 4).toInt();
+    m_openToMode = settings.value(QStringLiteral("GoldenGate/openToMode"), QStringLiteral("past")).toString();
+    m_textScale = settings.value(QStringLiteral("GoldenGate/textScale"), 1.0).toDouble();
+
+    loadConversations();
+    connect(this, &KityClient::messagesChanged, this, &KityClient::syncActiveConversationFromMessages);
 }
 
 void KityClient::setupDBus()
@@ -655,4 +671,339 @@ bool KityClient::shareMobilePairingWithKdeConnect(const QString &deviceId) const
         copyToClipboard(mobilePairingUrl());
     }
     return reply.isValid() ? reply.value() : false;
+}
+
+// =========================================================================
+// macOS 27 Golden Gate: Conversations & Voice Settings
+// =========================================================================
+
+void KityClient::loadConversations()
+{
+    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity");
+    QDir().mkpath(dataDir);
+    const QString convFile = dataDir + QStringLiteral("/conversations.json");
+    QFile f(convFile);
+    if (f.open(QIODevice::ReadOnly)) {
+        const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+        if (doc.isArray()) {
+            m_conversations = doc.array().toVariantList();
+        }
+    }
+
+    if (m_conversations.isEmpty()) {
+        // Seed initial Golden Gate conversations matching "The Siri app" screenshot
+        auto makeConv = [](const QString &id, const QString &timeLabel, const QString &title, const QString &preview, bool pinned, const QVariantList &msgs) {
+            QVariantMap map;
+            map[QStringLiteral("id")] = id;
+            map[QStringLiteral("timeLabel")] = timeLabel;
+            map[QStringLiteral("title")] = title;
+            map[QStringLiteral("preview")] = preview;
+            map[QStringLiteral("pinned")] = pinned;
+            map[QStringLiteral("messages")] = msgs;
+            return map;
+        };
+
+        QVariantList siriAiMsgs;
+        {
+            QVariantMap u;
+            u[QStringLiteral("role")] = QStringLiteral("user");
+            u[QStringLiteral("content")] = QStringLiteral("Tell me what's new with Kity AI in Golden Gate");
+            siriAiMsgs.append(u);
+
+            QVariantMap a;
+            a[QStringLiteral("role")] = QStringLiteral("assistant");
+            a[QStringLiteral("content")] = QStringLiteral(
+                "### Writing Tools\n"
+                "Kity can now generate text drafts from scratch, shorten content, or turn bullet points into prose. "
+                "It also provides automatic proofreading for spelling and grammar as you type across the system.\n\n"
+                "### Dedicated Kity App\n"
+                "For the first time, Kity has a standalone app that acts as a conversational chatbot with a full conversation sidebar, "
+                "allowing you to look up past answers and continue older conversations with context intact.\n\n"
+                "### Voice and Dictation\n"
+                "The assistant features a brand-new voice experience that is more conversational and detailed. "
+                "You can customize Kity's expressiveness and speaking pace to suit your preferences.");
+            QVariantList sources;
+            QVariantMap s1; s1[QStringLiteral("title")] = QStringLiteral("CachyOS Intelligence +2"); s1[QStringLiteral("url")] = QStringLiteral("https://cachyos.org");
+            sources.append(s1);
+            a[QStringLiteral("sources")] = sources;
+            siriAiMsgs.append(a);
+        }
+
+        m_conversations.append(makeConv(
+            QStringLiteral("conv-siri-ai"),
+            QStringLiteral("7:05 AM"),
+            QStringLiteral("Kity AI"),
+            QStringLiteral("Kity recently introduced a completely rebuilt digital assistant powered by the next generation of local & cloud intelligence..."),
+            true,
+            m_messages.isEmpty() ? siriAiMsgs : m_messages));
+
+        m_conversations.append(makeConv(
+            QStringLiteral("conv-features"),
+            QStringLiteral("Sunday"),
+            QStringLiteral("Golden Gate Features"),
+            QStringLiteral("In macOS Golden Gate, Liquid Glass introduces a continuous opacity slider, edge-to-edge sidebars, and bouncy stoplights..."),
+            false,
+            QVariantList()));
+
+        m_conversations.append(makeConv(
+            QStringLiteral("conv-notes"),
+            QStringLiteral("Sunday"),
+            QStringLiteral("Markdown in Notes"),
+            QStringLiteral("I've exported your note into clean Markdown format with horizontal dividers..."),
+            false,
+            QVariantList()));
+
+        m_conversations.append(makeConv(
+            QStringLiteral("conv-system"),
+            QStringLiteral("Sunday"),
+            QStringLiteral("System Status"),
+            QStringLiteral("Kernel BORE and Wayland compositor running at < 1ms frame latency..."),
+            false,
+            QVariantList()));
+
+        saveConversations();
+    }
+
+    if (!m_conversations.isEmpty()) {
+        m_activeConversationId = m_conversations.first().toMap().value(QStringLiteral("id")).toString();
+        if (m_messages.isEmpty()) {
+            m_messages = m_conversations.first().toMap().value(QStringLiteral("messages")).toList();
+            Q_EMIT messagesChanged();
+        }
+    }
+    Q_EMIT conversationsChanged();
+    Q_EMIT activeConversationIdChanged();
+}
+
+void KityClient::saveConversations()
+{
+    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity");
+    QDir().mkpath(dataDir);
+    const QString convFile = dataDir + QStringLiteral("/conversations.json");
+    QFile f(convFile);
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        f.write(QJsonDocument(QJsonArray::fromVariantList(m_conversations)).toJson(QJsonDocument::Compact));
+    }
+}
+
+void KityClient::syncActiveConversationFromMessages()
+{
+    if (m_messages.isEmpty() || m_activeConversationId.isEmpty()) {
+        return;
+    }
+
+    QString firstUserPrompt;
+    QString lastAssistantReply;
+    for (const QVariant &v : std::as_const(m_messages)) {
+        const QVariantMap msg = v.toMap();
+        const QString role = msg.value(QStringLiteral("role")).toString();
+        const QString content = msg.value(QStringLiteral("content")).toString().trimmed();
+        if (role == QLatin1String("user") && firstUserPrompt.isEmpty()) {
+            firstUserPrompt = content.left(32);
+        } else if (role == QLatin1String("assistant") && !content.isEmpty()) {
+            lastAssistantReply = content;
+        }
+    }
+
+    for (int i = 0; i < m_conversations.size(); ++i) {
+        QVariantMap map = m_conversations[i].toMap();
+        if (map.value(QStringLiteral("id")).toString() == m_activeConversationId) {
+            if (!firstUserPrompt.isEmpty() && map.value(QStringLiteral("title")).toString() == QLatin1String("New Conversation")) {
+                map[QStringLiteral("title")] = firstUserPrompt;
+            }
+            if (!lastAssistantReply.isEmpty()) {
+                QString cleanPreview = lastAssistantReply;
+                cleanPreview.remove(QRegularExpression(QStringLiteral("[#*`>]+")));
+                map[QStringLiteral("preview")] = cleanPreview.simplified().left(180);
+            }
+            map[QStringLiteral("timeLabel")] = QDateTime::currentDateTime().toString(QStringLiteral("h:mm AP"));
+            map[QStringLiteral("messages")] = m_messages;
+            m_conversations[i] = map;
+            saveConversations();
+            Q_EMIT conversationsChanged();
+            break;
+        }
+    }
+}
+
+void KityClient::newConversation()
+{
+    clearHistory();
+    const QString newId = QStringLiteral("conv-") + QUuid::createUuid().toString(QUuid::WithoutBraces).left(8);
+    QVariantMap map;
+    map[QStringLiteral("id")] = newId;
+    map[QStringLiteral("timeLabel")] = QDateTime::currentDateTime().toString(QStringLiteral("h:mm AP"));
+    map[QStringLiteral("title")] = QStringLiteral("New Conversation");
+    map[QStringLiteral("preview")] = QStringLiteral("Ask Kity anything or start speaking...");
+    map[QStringLiteral("pinned")] = false;
+    map[QStringLiteral("messages")] = QVariantList();
+    m_conversations.prepend(map);
+    m_activeConversationId = newId;
+    saveConversations();
+    Q_EMIT conversationsChanged();
+    Q_EMIT activeConversationIdChanged();
+}
+
+void KityClient::selectConversation(const QString &id)
+{
+    if (m_activeConversationId == id) {
+        return;
+    }
+    for (const QVariant &v : std::as_const(m_conversations)) {
+        const QVariantMap map = v.toMap();
+        if (map.value(QStringLiteral("id")).toString() == id) {
+            m_activeConversationId = id;
+            m_messages = map.value(QStringLiteral("messages")).toList();
+            Q_EMIT activeConversationIdChanged();
+            Q_EMIT messagesChanged();
+            return;
+        }
+    }
+}
+
+void KityClient::togglePinConversation(const QString &id)
+{
+    for (int i = 0; i < m_conversations.size(); ++i) {
+        QVariantMap map = m_conversations[i].toMap();
+        if (map.value(QStringLiteral("id")).toString() == id) {
+            map[QStringLiteral("pinned")] = !map.value(QStringLiteral("pinned")).toBool();
+            m_conversations[i] = map;
+            saveConversations();
+            Q_EMIT conversationsChanged();
+            return;
+        }
+    }
+}
+
+void KityClient::deleteConversation(const QString &id)
+{
+    for (int i = 0; i < m_conversations.size(); ++i) {
+        if (m_conversations[i].toMap().value(QStringLiteral("id")).toString() == id) {
+            m_conversations.removeAt(i);
+            saveConversations();
+            if (m_activeConversationId == id && !m_conversations.isEmpty()) {
+                selectConversation(m_conversations.first().toMap().value(QStringLiteral("id")).toString());
+            }
+            Q_EMIT conversationsChanged();
+            return;
+        }
+    }
+}
+
+void KityClient::launchSpotlightCategory(const QString &category)
+{
+    if (category == QLatin1String("applications")) {
+        QProcess::startDetached(QStringLiteral("qdbus6"), {QStringLiteral("org.kde.krunner"), QStringLiteral("/App"), QStringLiteral("org.kde.krunner.App.display")});
+    } else if (category == QLatin1String("files")) {
+        QProcess::startDetached(QStringLiteral("dolphin"), {});
+    } else if (category == QLatin1String("actions")) {
+        sendMessage(QStringLiteral("Muéstrame las acciones rápidas del sistema que puedes ejecutar por mí."), false);
+    } else if (category == QLatin1String("clipboard")) {
+        const QString clip = QGuiApplication::clipboard() ? QGuiApplication::clipboard()->text() : QString();
+        if (!clip.trimmed().isEmpty()) {
+            sendMessage(QStringLiteral("Analiza o resume este contenido de mi portapapeles:\n\n") + clip.left(2000), false);
+        } else {
+            sendMessage(QStringLiteral("Mi portapapeles está vacío ahora mismo. ¿Qué puedes hacer con lo que copie?"), false);
+        }
+    }
+}
+
+void KityClient::previewSelectedVoice()
+{
+    speakText(QStringLiteral("Hola, soy Kity en macOS Golden Gate. Puedes ajustar mi ritmo y expresividad a tu gusto."));
+}
+
+void KityClient::setSidebarViewMode(const QString &mode)
+{
+    if (m_sidebarViewMode != mode) {
+        m_sidebarViewMode = mode;
+        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/sidebarViewMode"), mode);
+        Q_EMIT goldenGatePrefsChanged();
+    }
+}
+
+void KityClient::setSiriMode(const QString &mode)
+{
+    if (m_siriMode != mode) {
+        m_siriMode = mode;
+        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/siriMode"), mode);
+        Q_EMIT goldenGatePrefsChanged();
+    }
+}
+
+void KityClient::setVoiceAccent(const QString &accent)
+{
+    if (m_voiceAccent != accent) {
+        m_voiceAccent = accent;
+        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/voiceAccent"), accent);
+        Q_EMIT goldenGatePrefsChanged();
+    }
+}
+
+void KityClient::setVoiceIndex(int index)
+{
+    const int clamped = qBound(0, index, 6);
+    if (m_voiceIndex != clamped) {
+        m_voiceIndex = clamped;
+        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/voiceIndex"), clamped);
+        Q_EMIT goldenGatePrefsChanged();
+    }
+}
+
+void KityClient::setVoicePace(qreal pace)
+{
+    const qreal clamped = qBound(0.0, pace, 1.0);
+    if (!qFuzzyCompare(m_voicePace, clamped)) {
+        m_voicePace = clamped;
+        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/voicePace"), clamped);
+        Q_EMIT goldenGatePrefsChanged();
+    }
+}
+
+void KityClient::setVoiceExpressivity(qreal expr)
+{
+    const qreal clamped = qBound(0.0, expr, 1.0);
+    if (!qFuzzyCompare(m_voiceExpressivity, clamped)) {
+        m_voiceExpressivity = clamped;
+        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/voiceExpressivity"), clamped);
+        Q_EMIT goldenGatePrefsChanged();
+    }
+}
+
+void KityClient::setHistoryRetention(const QString &ret)
+{
+    if (m_historyRetention != ret) {
+        m_historyRetention = ret;
+        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/historyRetention"), ret);
+        Q_EMIT goldenGatePrefsChanged();
+    }
+}
+
+void KityClient::setPreviewLines(int lines)
+{
+    const int clamped = qBound(1, lines, 8);
+    if (m_previewLines != clamped) {
+        m_previewLines = clamped;
+        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/previewLines"), clamped);
+        Q_EMIT goldenGatePrefsChanged();
+    }
+}
+
+void KityClient::setOpenToMode(const QString &mode)
+{
+    if (m_openToMode != mode) {
+        m_openToMode = mode;
+        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/openToMode"), mode);
+        Q_EMIT goldenGatePrefsChanged();
+    }
+}
+
+void KityClient::setTextScale(qreal scale)
+{
+    const qreal clamped = qBound(0.85, scale, 1.35);
+    if (!qFuzzyCompare(m_textScale, clamped)) {
+        m_textScale = clamped;
+        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/textScale"), clamped);
+        Q_EMIT goldenGatePrefsChanged();
+    }
 }

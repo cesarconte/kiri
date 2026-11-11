@@ -86,6 +86,20 @@ class KityClient : public QObject
     Q_PROPERTY(QString mobilePairingUrl READ mobilePairingUrl NOTIFY mobilePairingUrlChanged)
     Q_PROPERTY(QObject *configuration READ configuration CONSTANT)
 
+    // macOS 27 Golden Gate: The Siri App Conversations & Voice Preferences
+    Q_PROPERTY(QVariantList conversations READ conversations NOTIFY conversationsChanged)
+    Q_PROPERTY(QString activeConversationId READ activeConversationId WRITE selectConversation NOTIFY activeConversationIdChanged)
+    Q_PROPERTY(QString sidebarViewMode READ sidebarViewMode WRITE setSidebarViewMode NOTIFY goldenGatePrefsChanged)
+    Q_PROPERTY(QString siriMode READ siriMode WRITE setSiriMode NOTIFY goldenGatePrefsChanged)
+    Q_PROPERTY(QString voiceAccent READ voiceAccent WRITE setVoiceAccent NOTIFY goldenGatePrefsChanged)
+    Q_PROPERTY(int voiceIndex READ voiceIndex WRITE setVoiceIndex NOTIFY goldenGatePrefsChanged)
+    Q_PROPERTY(qreal voicePace READ voicePace WRITE setVoicePace NOTIFY goldenGatePrefsChanged)
+    Q_PROPERTY(qreal voiceExpressivity READ voiceExpressivity WRITE setVoiceExpressivity NOTIFY goldenGatePrefsChanged)
+    Q_PROPERTY(QString historyRetention READ historyRetention WRITE setHistoryRetention NOTIFY goldenGatePrefsChanged)
+    Q_PROPERTY(int previewLines READ previewLines WRITE setPreviewLines NOTIFY goldenGatePrefsChanged)
+    Q_PROPERTY(QString openToMode READ openToMode WRITE setOpenToMode NOTIFY goldenGatePrefsChanged)
+    Q_PROPERTY(qreal textScale READ textScale WRITE setTextScale NOTIFY goldenGatePrefsChanged)
+
 public:
     explicit KityClient(QObject *parent = nullptr);
     ~KityClient() override = default;
@@ -141,6 +155,37 @@ public:
     Q_INVOKABLE QString mobilePairingUrl() const;
     Q_INVOKABLE bool shareMobilePairingWithKdeConnect(const QString &deviceId = QString()) const;
 
+    // macOS 27 Golden Gate Methods
+    QVariantList conversations() const { return m_conversations; }
+    QString activeConversationId() const { return m_activeConversationId; }
+    QString sidebarViewMode() const { return m_sidebarViewMode; }
+    void setSidebarViewMode(const QString &mode);
+    QString siriMode() const { return m_siriMode; }
+    void setSiriMode(const QString &mode);
+    QString voiceAccent() const { return m_voiceAccent; }
+    void setVoiceAccent(const QString &accent);
+    int voiceIndex() const { return m_voiceIndex; }
+    void setVoiceIndex(int index);
+    qreal voicePace() const { return m_voicePace; }
+    void setVoicePace(qreal pace);
+    qreal voiceExpressivity() const { return m_voiceExpressivity; }
+    void setVoiceExpressivity(qreal expr);
+    QString historyRetention() const { return m_historyRetention; }
+    void setHistoryRetention(const QString &ret);
+    int previewLines() const { return m_previewLines; }
+    void setPreviewLines(int lines);
+    QString openToMode() const { return m_openToMode; }
+    void setOpenToMode(const QString &mode);
+    qreal textScale() const { return m_textScale; }
+    void setTextScale(qreal scale);
+
+    Q_INVOKABLE void newConversation();
+    Q_INVOKABLE void selectConversation(const QString &id);
+    Q_INVOKABLE void togglePinConversation(const QString &id);
+    Q_INVOKABLE void deleteConversation(const QString &id);
+    Q_INVOKABLE void launchSpotlightCategory(const QString &category);
+    Q_INVOKABLE void previewSelectedVoice();
+
 public Q_SLOTS:
     void syncFromDBus();
 
@@ -160,6 +205,9 @@ Q_SIGNALS:
     void connectionChanged();
     void transcriptionReady(const QString &text);
     void mobilePairingUrlChanged();
+    void conversationsChanged();
+    void activeConversationIdChanged();
+    void goldenGatePrefsChanged();
 
 private Q_SLOTS:
     void onServiceRegistered(const QString &service);
@@ -168,6 +216,9 @@ private Q_SLOTS:
 private:
     void setupDBus();
     void loadLocalHistory();
+    void loadConversations();
+    void saveConversations();
+    void syncActiveConversationFromMessages();
 
     QDBusInterface *m_iface = nullptr;
     QDBusServiceWatcher *m_watcher = nullptr;
@@ -191,4 +242,18 @@ private:
     bool m_earconsEnabled = true;
     QString m_ollamaModel = QStringLiteral("llama3.2:3b");
     bool m_connected = false;
+
+    // Golden Gate Conversations & Voice Settings
+    QVariantList m_conversations;
+    QString m_activeConversationId;
+    QString m_sidebarViewMode = QStringLiteral("grid");
+    QString m_siriMode = QStringLiteral("ai");
+    QString m_voiceAccent = QStringLiteral("Spanish (Spain)");
+    int m_voiceIndex = 3; // #4 Red/Pink orb selected by default (matching 10b_siri_voice_window.png)
+    qreal m_voicePace = 0.68;
+    qreal m_voiceExpressivity = 0.88;
+    QString m_historyRetention = QStringLiteral("forever");
+    int m_previewLines = 4;
+    QString m_openToMode = QStringLiteral("past");
+    qreal m_textScale = 1.0;
 };

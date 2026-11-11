@@ -5,6 +5,11 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QDateTime>
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QElapsedTimer>
+#include <QKeyEvent>
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -15,6 +20,7 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QProcess>
+#include <QTimer>
 #include <KDBusService>
 #include <KNotification>
 #include <KLocalizedString>
@@ -22,6 +28,90 @@
 #include <KWindowEffects>
 
 #include "kityclient.h"
+
+// Handles Double-Press Meta (⌘) both via KWin ModifierOnlyShortcuts D-Bus and in-window KeyEvents
+class MetaDoubleTapHandler : public QObject
+{
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.cesar.kity.App")
+
+public:
+    explicit MetaDoubleTapHandler(QQuickWindow *window, QObject *parent = nullptr)
+        : QObject(parent)
+        , m_window(window)
+    {
+        m_singleTapTimer.setSingleShot(true);
+        m_singleTapTimer.setInterval(330);
+        connect(&m_singleTapTimer, &QTimer::timeout, this, []() {
+            // Forward single Meta tap to Plasma Application Launcher
+            QDBusMessage msg = QDBusMessage::createMethodCall(
+                QStringLiteral("org.kde.plasmashell"),
+                QStringLiteral("/PlasmaShell"),
+                QStringLiteral("org.kde.PlasmaShell"),
+                QStringLiteral("activateLauncherMenu"));
+            QDBusConnection::sessionBus().asyncCall(msg);
+        });
+    }
+
+public Q_SLOTS:
+    Q_SCRIPTABLE void handleMetaTap()
+    {
+        if (m_singleTapTimer.isActive()) {
+            m_singleTapTimer.stop();
+            togglePill();
+        } else {
+            m_singleTapTimer.start();
+        }
+    }
+
+    Q_SCRIPTABLE void togglePill()
+    {
+        if (!m_window) {
+            return;
+        }
+        const bool isCompact = m_window->property("compactMode").toBool();
+        if (m_window->isVisible() && m_window->isActive() && isCompact) {
+            m_window->hide();
+        } else {
+            m_window->setProperty("compactMode", true);
+            m_window->show();
+            m_window->raise();
+            m_window->requestActivate();
+        }
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() == QEvent::KeyPress) {
+            auto *ke = static_cast<QKeyEvent *>(event);
+            if ((ke->key() == Qt::Key_Meta || ke->key() == Qt::Key_Super_L || ke->key() == Qt::Key_Super_R) && !ke->isAutoRepeat()) {
+                m_onlyMetaPressed = true;
+            } else {
+                m_onlyMetaPressed = false;
+            }
+        } else if (event->type() == QEvent::KeyRelease) {
+            auto *ke = static_cast<QKeyEvent *>(event);
+            if ((ke->key() == Qt::Key_Meta || ke->key() == Qt::Key_Super_L || ke->key() == Qt::Key_Super_R) && !ke->isAutoRepeat() && m_onlyMetaPressed) {
+                m_onlyMetaPressed = false;
+                const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                if (now - m_lastMetaReleaseMs <= 350) {
+                    m_lastMetaReleaseMs = 0;
+                    togglePill();
+                    return true;
+                }
+                m_lastMetaReleaseMs = now;
+            }
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    QQuickWindow *m_window = nullptr;
+    QTimer m_singleTapTimer;
+    bool m_onlyMetaPressed = false;
+    qint64 m_lastMetaReleaseMs = 0;
+};
 
 int main(int argc, char *argv[])
 {
@@ -111,10 +201,18 @@ int main(int argc, char *argv[])
 
     QObject *rootObj = engine.rootObjects().first();
     QQuickWindow *window = qobject_cast<QQuickWindow *>(rootObj);
+    auto *metaHandler = new MetaDoubleTapHandler(window, &app);
+    app.installEventFilter(metaHandler);
+    QDBusConnection::sessionBus().registerService(QStringLiteral("org.cesar.kity.App"));
+    QDBusConnection::sessionBus().registerObject(
+        QStringLiteral("/KityApp"),
+        metaHandler,
+        QDBusConnection::ExportAllSlots);
+
     if (window) {
         auto updateBlurRegion = [window]() {
             const bool compact = window->property("compactMode").toBool();
-            const qreal radius = compact ? (window->height() / 2.0) : 22.0;
+            const qreal radius = compact ? 24.0 : 20.0;
             QPainterPath path;
             path.addRoundedRect(QRectF(0, 0, window->width(), window->height()), radius, radius);
             KWindowEffects::enableBlurBehind(window, true, QRegion(path.toFillPolygon().toPolygon()));
@@ -282,3 +380,5 @@ int main(int argc, char *argv[])
 
     return app.exec();
 }
+
+#include "main.moc"

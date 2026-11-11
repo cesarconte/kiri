@@ -19,26 +19,37 @@ CachyWindow {
     id: root
 
     title: i18n("Kity")
-    width: CachyTheme.windowWidthUtility
-    height: 760
+    width: compactMode ? (compactWorking ? 310 : (compactAnswerVisible ? 400 : 420)) : 860
+    height: compactMode ? (compactWorking ? 62 : (compactAnswerVisible ? 520 : 272)) : 600
     color: "transparent"
+
     showTrafficLights: !root.compactMode
-    cornerRadius: root.compactMode ? Math.round(height / 2) : CachyTheme.radiusWindow
+    showTitleBarDivider: !root.compactMode
+    showWindowFrame: !(root.compactMode && !root.compactWorking && !root.compactAnswerVisible)
+    sidebarVisible: !root.compactMode && !root.showPreferences
+    sidebarWidth: 272
+    cornerRadius: root.compactMode ? (root.compactWorking ? 31 : 24) : CachyTheme.radiusWindow
+    backgroundColor: root.compactMode ? Qt.rgba(0.08, 0.09, 0.12, 0.88) : "transparent"
 
     property bool isPinned: false
     property bool compactMode: false
+    property bool compactAnswerVisible: false
+    readonly property bool compactWorking: root.compactMode && (kityClient.state === "thinking" || kityClient.state === "transcribing")
+
     property bool showWritingTools: false
     property bool showVisualIntelligence: false
     property bool showMathNotes: false
     property bool showPreferences: false
+    property bool showSearchFilter: false
+    property string searchQuery: ""
     property var mathResults: []
     property string visualCaptureScope: "region"
 
     readonly property bool isVoiceActive: kityClient.state === "listening" || kityClient.state === "thinking" || kityClient.state === "speaking"
     readonly property bool isDark: CachyTheme.isDark
 
-    minimumWidth: compactMode ? 360 : 440
-    minimumHeight: compactMode ? 64 : 580
+    minimumWidth: compactMode ? 300 : 680
+    minimumHeight: compactMode ? 60 : 480
 
     property real animTime: 0.0
     NumberAnimation on animTime {
@@ -46,17 +57,15 @@ CachyWindow {
         to: 1000.0
         duration: 1000000
         loops: Animation.Infinite
-        running: root.isVoiceActive
+        running: true
     }
 
     onIsPinnedChanged: updateWindowFlags()
     onCompactModeChanged: {
-        if (compactMode) {
-            root.width = 440;
-            root.height = 76;
-        } else {
-            root.width = 540;
-            root.height = 760;
+        if (!compactMode) {
+            root.compactAnswerVisible = false;
+            root.width = 860;
+            root.height = 600;
         }
         updateWindowFlags();
     }
@@ -70,6 +79,7 @@ CachyWindow {
         root.show();
     }
 
+    // Shortcuts
     Shortcut {
         sequences: ["Ctrl+M", "Alt+M"]
         enabled: kityClient.whisperAvailable
@@ -77,26 +87,45 @@ CachyWindow {
     }
 
     Shortcut {
-        sequences: ["Ctrl+Shift+W", "Alt+W"]
+        sequences: ["Ctrl+1", "Alt+1"]
+        enabled: root.compactMode
+        onActivated: kityClient.launchSpotlightCategory("applications")
+    }
+    Shortcut {
+        sequences: ["Ctrl+2", "Alt+2"]
+        enabled: root.compactMode
+        onActivated: kityClient.launchSpotlightCategory("files")
+    }
+    Shortcut {
+        sequences: ["Ctrl+3", "Alt+3"]
+        enabled: root.compactMode
         onActivated: {
-            root.showWritingTools = !root.showWritingTools;
-            if (root.showWritingTools) {
-                root.showVisualIntelligence = false;
-                root.showMathNotes = false;
-            }
+            root.compactAnswerVisible = true;
+            kityClient.launchSpotlightCategory("actions");
         }
+    }
+    Shortcut {
+        sequences: ["Ctrl+4", "Alt+4"]
+        enabled: root.compactMode
+        onActivated: {
+            root.compactAnswerVisible = true;
+            kityClient.launchSpotlightCategory("clipboard");
+        }
+    }
+
+    Shortcut {
+        sequences: ["Ctrl+N"]
+        onActivated: kityClient.newConversation()
     }
 
     Shortcut {
         sequence: "Escape"
         onActivated: {
             if (root.compactMode) {
-                if (kityClient.state === "listening") {
-                    kityClient.stopRecording();
-                } else if (kityClient.isSpeaking) {
-                    kityClient.stopSpeaking();
+                if (root.compactAnswerVisible) {
+                    root.compactAnswerVisible = false;
                 } else {
-                    root.close();
+                    root.hide();
                 }
             } else if (root.showPreferences) {
                 root.showPreferences = false;
@@ -111,15 +140,236 @@ CachyWindow {
     }
 
     // =========================================================================
-    // Header Center: Glowing Iridescent Siri Pill
+    // 1. GOLDEN GATE EDGE-TO-EDGE SIDEBAR ("The Siri app" - 09_the_siri_app_window.png)
     // =========================================================================
+    sidebarHeaderActions: [
+        Row {
+            spacing: 6
+            anchors.verticalCenter: parent.verticalCenter
+
+            // View Mode Toggle (2-column Grid vs 1-column List)
+            CachyToolbarButton {
+                text: kityClient.sidebarViewMode === "grid" ? "⊞" : "☰"
+                tooltipText: kityClient.sidebarViewMode === "grid"
+                    ? i18n("Cambiar a vista de lista")
+                    : i18n("Cambiar a cuadrícula de 2 columnas (Golden Gate)")
+                onClicked: {
+                    kityClient.sidebarViewMode = (kityClient.sidebarViewMode === "grid") ? "list" : "grid";
+                }
+            }
+        }
+    ]
+
+    sidebar: [
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 12
+            anchors.rightMargin: 12
+            anchors.bottomMargin: 12
+            spacing: 8
+
+            // Optional Sidebar Search Filter
+            CachyTextField {
+                visible: root.showSearchFilter
+                Layout.fillWidth: true
+                isSearch: true
+                placeholderText: i18n("Filter chats...")
+                text: root.searchQuery
+                onTextChanged: root.searchQuery = text
+            }
+
+            // Scrollable Conversation History Cards (2-column Grid or List)
+            QQC2.ScrollView {
+                id: sidebarScroll
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: availableWidth
+                QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
+                clip: true
+
+                GridLayout {
+                    width: sidebarScroll.availableWidth
+                    columns: kityClient.sidebarViewMode === "grid" ? 2 : 1
+                    columnSpacing: 10
+                    rowSpacing: 10
+
+                    Repeater {
+                        model: kityClient.conversations
+
+                        Rectangle {
+                            id: convCard
+                            required property var modelData
+                            required property int index
+
+                            readonly property bool isCurrent: modelData.id === kityClient.activeConversationId
+                            readonly property bool matchesSearch: root.searchQuery.trim().length === 0
+                                || (modelData.title && modelData.title.toLowerCase().indexOf(root.searchQuery.toLowerCase()) !== -1)
+                                || (modelData.preview && modelData.preview.toLowerCase().indexOf(root.searchQuery.toLowerCase()) !== -1)
+
+                            visible: matchesSearch
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: kityClient.sidebarViewMode === "grid" ? (sidebarScroll.availableWidth - 10) / 2 : sidebarScroll.availableWidth
+                            implicitHeight: convCardCol.implicitHeight + 22
+                            radius: 16
+
+                            color: convCard.isCurrent
+                                ? (CachyTheme.isDark ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.88))
+                                : (convHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.cardBackground)
+
+                            border.width: convCard.isCurrent ? 2 : 1
+                            border.color: convCard.isCurrent ? "#007AFF" : CachyTheme.specularBorder
+
+                            Behavior on color { ColorAnimation { duration: 120 } }
+
+                            HoverHandler {
+                                id: convHover
+                                cursorShape: Qt.PointingHandCursor
+                            }
+
+                            TapHandler {
+                                onTapped: {
+                                    root.showPreferences = false;
+                                    kityClient.selectConversation(convCard.modelData.id);
+                                }
+                            }
+
+                            ColumnLayout {
+                                id: convCardCol
+                                anchors.fill: parent
+                                anchors.margins: 11
+                                spacing: 4
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    QQC2.Label {
+                                        Layout.fillWidth: true
+                                        text: convCard.modelData.timeLabel || "Today"
+                                        font.pixelSize: 10
+                                        color: CachyTheme.textMuted
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Kirigami.Icon {
+                                        visible: convCard.modelData.pinned === true || convHover.hovered
+                                        source: "window-pin"
+                                        Layout.preferredWidth: 13
+                                        Layout.preferredHeight: 13
+                                        isMask: true
+                                        color: CachyTheme.textSecondary
+                                        opacity: convCard.modelData.pinned ? 0.95 : 0.45
+
+                                        TapHandler {
+                                            onTapped: kityClient.togglePinConversation(convCard.modelData.id)
+                                        }
+                                    }
+                                }
+
+                                QQC2.Label {
+                                    Layout.fillWidth: true
+                                    text: convCard.modelData.title || i18n("Kity AI")
+                                    font.pixelSize: 13
+                                    font.bold: true
+                                    color: CachyTheme.textPrimary
+                                    wrapMode: Text.WordWrap
+                                    maximumLineCount: 2
+                                    elide: Text.ElideRight
+                                }
+
+                                QQC2.Label {
+                                    Layout.fillWidth: true
+                                    text: convCard.modelData.preview || ""
+                                    font.pixelSize: 11
+                                    color: CachyTheme.textSecondary
+                                    wrapMode: Text.WordWrap
+                                    maximumLineCount: kityClient.previewLines
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+
+    // =========================================================================
+    // 2. HEADER TOOLBAR (Main Conversation Pane - 09_the_siri_app_window.png)
+    // =========================================================================
+    headerLeading: [
+        Row {
+            spacing: 6
+            anchors.verticalCenter: parent.verticalCenter
+
+            // Golden Gate New Chat Button (Square + Pencil compose glyph)
+            CachyToolbarButton {
+                iconName: "document-new-symbolic"
+                text: "✎"
+                tooltipText: i18n("Nueva conversación (Ctrl+N)")
+                onClicked: {
+                    root.showPreferences = false;
+                    kityClient.newConversation();
+                }
+            }
+
+            // Writing Tools Quick Button
+            CachyToolbarButton {
+                iconName: "document-edit-symbolic"
+                text: "✦"
+                checkable: true
+                checked: root.showWritingTools
+                tooltipText: i18n("Herramientas de Escritura")
+                onClicked: {
+                    root.showWritingTools = !root.showWritingTools;
+                    if (root.showWritingTools) {
+                        root.showVisualIntelligence = false;
+                        root.showMathNotes = false;
+                    }
+                }
+            }
+
+            // Visual Intelligence Quick Button
+            CachyToolbarButton {
+                iconName: "camera-photo-symbolic"
+                text: "⌖"
+                checkable: true
+                checked: root.showVisualIntelligence
+                tooltipText: i18n("Inteligencia Visual (Spectacle + OCR)")
+                onClicked: {
+                    root.showVisualIntelligence = !root.showVisualIntelligence;
+                    if (root.showVisualIntelligence) {
+                        root.showWritingTools = false;
+                        root.showMathNotes = false;
+                    }
+                }
+            }
+
+            // Math Notes Quick Button
+            CachyToolbarButton {
+                text: "∑"
+                checkable: true
+                checked: root.showMathNotes
+                tooltipText: i18n("Notas Matemáticas")
+                onClicked: {
+                    root.showMathNotes = !root.showMathNotes;
+                    if (root.showMathNotes) {
+                        root.showWritingTools = false;
+                        root.showVisualIntelligence = false;
+                    }
+                }
+            }
+        }
+    ]
+
+    // Center: Glowing Iridescent Kity Pill (Aligned on 22px midline)
     headerCenter: [
         Rectangle {
             anchors.centerIn: parent
             height: 26
             width: siriPillRow.implicitWidth + 20
             radius: 13
-            color: CachyTheme.cardBackground
+            color: CachyTheme.surfacePill
             border.width: 1
             border.color: CachyTheme.specularBorder
 
@@ -145,16 +395,39 @@ CachyWindow {
         }
     ]
 
-    // =========================================================================
-    // Header Actions: Pin & Preferences (Aligned right at 18px margin)
-    // Order: Preferences on the far right, preceded by Pin
-    // =========================================================================
+    // Trailing Actions: Search, Text Size, Pin, and Preferences (Rightmost)
     headerActions: [
         Row {
             spacing: 4
             anchors.verticalCenter: parent.verticalCenter
 
-            // Pin Window On Top (Antecediendo a Preferencias)
+            // Search button (top-right of Golden Gate Siri App)
+            QQC2.ToolButton {
+                icon.name: "search"
+                checkable: true
+                checked: root.showSearchFilter
+                QQC2.ToolTip.text: i18n("Buscar en conversaciones")
+                QQC2.ToolTip.visible: hovered
+                onClicked: root.showSearchFilter = !root.showSearchFilter
+            }
+
+            // Text Size Zoom Toggle (Golden Gate Siri App feature)
+            QQC2.ToolButton {
+                text: "Aa"
+                QQC2.ToolTip.text: i18n("Cambiar tamaño del texto")
+                QQC2.ToolTip.visible: hovered
+                onClicked: {
+                    if (kityClient.textScale < 1.1) {
+                        kityClient.textScale = 1.15;
+                    } else if (kityClient.textScale < 1.25) {
+                        kityClient.textScale = 1.28;
+                    } else {
+                        kityClient.textScale = 1.0;
+                    }
+                }
+            }
+
+            // Pin Window On Top (Immediately preceding Preferences)
             QQC2.ToolButton {
                 icon.name: root.isPinned ? "window-pin" : "window-unpin"
                 checkable: true
@@ -164,10 +437,10 @@ CachyWindow {
                 onClicked: root.isPinned = !root.isPinned
             }
 
-            // Preferences Button (A la derecha del todo)
+            // Preferences Button (Far right)
             QQC2.ToolButton {
                 icon.name: "configure"
-                QQC2.ToolTip.text: i18n("Preferencias de Kity")
+                QQC2.ToolTip.text: i18n("Preferencias de Kity (Golden Gate)")
                 QQC2.ToolTip.visible: hovered
                 onClicked: root.showPreferences = !root.showPreferences
             }
@@ -175,7 +448,7 @@ CachyWindow {
     ]
 
     // =========================================================================
-    // Overlay Layer: Siri Iridescent Halo Shader
+    // 3. OVERLAY LAYER: Siri Iridescent Halo Shader
     // =========================================================================
     overlay: [
         ShaderEffect {
@@ -200,337 +473,418 @@ CachyWindow {
     ]
 
     // =========================================================================
-    // Client Content Area
+    // 4. CLIENT CONTENT AREA
     // =========================================================================
     contentData: [
 
         // =====================================================================
-        // Siri Floating Dynamic Island Layout (Compact Mode)
+        // MODEL 1: GOLDEN GATE QUICK OVERLAY (Invoked via Double-Press Meta)
+        // Replicates:
+        //  - 05_siri_working_pill.png ("Looking into it" + ring of glowing dots)
+        //  - 08_spotlight_search_or_ask.png ("Search or Ask" + 4 quick rows)
+        //  - 06_siri_spotlight_window.png (Floating vertical answer card with ✕ & ⤢)
         // =====================================================================
-        RowLayout {
-            id: compactIslandLayout
+        Item {
+            id: goldenGateCompactOverlay
             anchors.fill: parent
-            anchors.leftMargin: 12
-            anchors.rightMargin: 12
-            anchors.topMargin: 8
-            anchors.bottomMargin: 8
-            spacing: 10
             visible: root.compactMode
 
-            // Drag handler so user can grab and reposition the floating island anywhere
             DragHandler {
                 target: null
-                onActiveChanged: {
-                    if (active) root.startSystemMove();
-                }
+                onActiveChanged: if (active) root.startSystemMove()
             }
 
-            // Left: Siri Orb Animation (Interactive)
-            Item {
-                Layout.preferredWidth: 46
-                Layout.preferredHeight: 46
-                Layout.alignment: Qt.AlignVCenter
-
-                SiriOrbAnimation {
-                    anchors.centerIn: parent
-                    width: parent.width
-                    height: parent.height
-                    assistantState: kityClient.state
-                    audioLevel: kityClient.audioLevel
-                }
-
-                // Click on the orb toggles recording
-                HoverHandler { id: orbHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler {
-                    onTapped: {
-                        if (kityClient.state === "listening") {
-                            kityClient.stopRecording();
-                        } else if (kityClient.isSpeaking) {
-                            kityClient.stopSpeaking();
-                        } else {
-                            kityClient.toggleRecording();
-                        }
-                    }
-                }
-                QQC2.ToolTip.text: kityClient.state === "listening" ? i18n("Detener escucha") : i18n("Hablar por voz")
-                QQC2.ToolTip.visible: orbHover.hovered
-            }
-
-            // Center: Dynamic state and speech ticker
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.alignment: Qt.AlignVCenter
-                spacing: 1
-
-                HoverHandler { id: centerHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler {
-                    onTapped: root.compactMode = false
-                }
-                QQC2.ToolTip.text: i18n("Clic para expandir a conversación completa")
-                QQC2.ToolTip.visible: centerHover.hovered
-
-                RowLayout {
-                    spacing: 6
-
-                    // Mini glowing dot for status
-                    Rectangle {
-                        implicitWidth: 6
-                        implicitHeight: 6
-                        radius: 3
-                        color: {
-                            if (kityClient.state === "listening") return "#00e5ff";
-                            if (kityClient.state === "thinking") return "#b388ff";
-                            if (kityClient.state === "speaking") return "#00e676";
-                            return Kirigami.Theme.highlightColor;
-                        }
-                    }
-
-                    QQC2.Label {
-                        text: {
-                            if (kityClient.state === "listening") return i18n("Escuchando…");
-                            if (kityClient.state === "transcribing") return i18n("Procesando voz…");
-                            if (kityClient.state === "thinking") return i18n("Pensando…");
-                            if (kityClient.state === "speaking") return i18n("Kity");
-                            return i18n("Kity · Asistente");
-                        }
-                        font.bold: true
-                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                        opacity: 0.95
-                    }
-                }
-
-                QQC2.Label {
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                    maximumLineCount: 1
-                    font.pixelSize: Kirigami.Theme.defaultFont.pixelSize - 1
-                    opacity: 0.75
-                    text: {
-                        if (kityClient.streamingText.length > 0) {
-                            return kityClient.streamingText;
-                        }
-                        if (kityClient.statusMessage.length > 0 && kityClient.state !== "idle") {
-                            return kityClient.statusMessage;
-                        }
-                        if (kityClient.messages.length > 0) {
-                            const last = kityClient.messages[kityClient.messages.length - 1];
-                            return (last.role === "assistant" ? "" : "Tú: ") + (last.content || "");
-                        }
-                        return i18n("Toca el orbe para hablar o expandir…");
-                    }
-                }
-            }
-
-            // Right: Actions (Mic toggle, Expand to full chat, Close)
+            // -----------------------------------------------------------------
+            // STATE 1A: "Looking into it" Working Pill (05_siri_working_pill.png)
+            // -----------------------------------------------------------------
             RowLayout {
-                Layout.alignment: Qt.AlignVCenter
-                spacing: 2
+                anchors.fill: parent
+                anchors.leftMargin: 18
+                anchors.rightMargin: 20
+                spacing: 14
+                visible: root.compactWorking
 
-                // Mic Quick Toggle Button
-                QQC2.ToolButton {
-                    icon.name: kityClient.isRecording ? "media-playback-stop" : "audio-input-microphone"
-                    display: QQC2.AbstractButton.IconOnly
-                    QQC2.ToolTip.text: kityClient.isRecording ? i18n("Detener escucha") : i18n("Hablar por voz")
-                    QQC2.ToolTip.visible: hovered
-                    onClicked: kityClient.toggleRecording()
+                // Ring of 8 glowing white dots of varying sizes
+                Item {
+                    Layout.preferredWidth: 32
+                    Layout.preferredHeight: 32
+
+                    Repeater {
+                        model: 8
+
+                        Rectangle {
+                            required property int index
+                            readonly property real angle: (index * Math.PI / 4.0) + (root.animTime * 4.2)
+                            readonly property real dotSize: 2.5 + ((index % 4) * 1.4)
+                            width: dotSize
+                            height: dotSize
+                            radius: dotSize / 2
+                            color: "#FFFFFF"
+                            opacity: 0.45 + 0.55 * Math.sin(angle)
+                            x: 16 + 10.5 * Math.cos(index * Math.PI / 4.0) - width / 2
+                            y: 16 + 10.5 * Math.sin(index * Math.PI / 4.0) - height / 2
+                        }
+                    }
                 }
 
-                // Expand Button
-                QQC2.ToolButton {
-                    icon.name: "window-maximize"
-                    display: QQC2.AbstractButton.IconOnly
-                    QQC2.ToolTip.text: i18n("Expandir a ventana completa")
-                    QQC2.ToolTip.visible: hovered
-                    onClicked: root.compactMode = false
+                Text {
+                    Layout.fillWidth: true
+                    text: i18n("Looking into it")
+                    color: "#FFFFFF"
+                    font.pixelSize: 17
+                    font.weight: Font.Medium
+                    elide: Text.ElideRight
+                }
+            }
+
+            // -----------------------------------------------------------------
+            // STATE 1B: "Search or Ask" + Quick Categories (08_spotlight_search_or_ask.png)
+            // -----------------------------------------------------------------
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 10
+                visible: !root.compactWorking && !root.compactAnswerVisible
+
+                // Top Pill: "Search or Ask" + Mic
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 48
+                    radius: 24
+                    color: Qt.rgba(0.06, 0.07, 0.10, 0.92)
+                    border.width: 1
+                    border.color: Qt.rgba(1, 1, 1, 0.20)
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 18
+                        anchors.rightMargin: 14
+                        spacing: 10
+
+                        QQC2.TextField {
+                            id: spotlightSearchInput
+                            Layout.fillWidth: true
+                            focus: root.compactMode && !root.compactAnswerVisible
+                            placeholderText: i18n("Search or Ask")
+                            placeholderTextColor: Qt.rgba(1, 1, 1, 0.48)
+                            color: "#FFFFFF"
+                            font.pixelSize: 16
+                            background: null
+                            onAccepted: {
+                                if (text.trim().length > 0) {
+                                    root.compactAnswerVisible = true;
+                                    kityClient.sendMessage(text.trim(), false);
+                                    text = "";
+                                }
+                            }
+                        }
+
+                        // Microphone icon
+                        Rectangle {
+                            width: 30
+                            height: 30
+                            radius: 15
+                            color: kityClient.isRecording ? "#FF375F" : "transparent"
+
+                            Kirigami.Icon {
+                                anchors.centerIn: parent
+                                width: 16
+                                height: 16
+                                source: "audio-input-microphone-symbolic"
+                                isMask: true
+                                color: Qt.rgba(1, 1, 1, 0.82)
+                            }
+
+                            TapHandler {
+                                onTapped: kityClient.toggleRecording()
+                            }
+                        }
+                    }
                 }
 
-                // Close Button
-                QQC2.ToolButton {
-                    icon.name: "window-close"
-                    display: QQC2.AbstractButton.IconOnly
-                    QQC2.ToolTip.text: i18n("Ocultar")
-                    QQC2.ToolTip.visible: hovered
-                    onClicked: root.close()
+                // Bottom Card: Applications ⌘1, Files ⌘2, Actions ⌘3, Clipboard ⌘4
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: 18
+                    color: Qt.rgba(0.10, 0.11, 0.15, 0.90)
+                    border.width: 1
+                    border.color: Qt.rgba(1, 1, 1, 0.16)
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 2
+
+                        Repeater {
+                            model: [
+                                { icon: "applications-all-symbolic", label: i18n("Applications"), shortcut: "⌘1", category: "applications" },
+                                { icon: "folder-symbolic", label: i18n("Files"), shortcut: "⌘2", category: "files" },
+                                { icon: "quickopen", label: i18n("Actions"), shortcut: "⌘3", category: "actions" },
+                                { icon: "edit-paste-symbolic", label: i18n("Clipboard"), shortcut: "⌘4", category: "clipboard" }
+                            ]
+
+                            Rectangle {
+                                id: spotRow
+                                required property var modelData
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                radius: 10
+                                color: spotRowHover.hovered ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
+
+                                HoverHandler { id: spotRowHover; cursorShape: Qt.PointingHandCursor }
+                                TapHandler {
+                                    onTapped: {
+                                        if (spotRow.modelData.category === "actions" || spotRow.modelData.category === "clipboard") {
+                                            root.compactAnswerVisible = true;
+                                        }
+                                        kityClient.launchSpotlightCategory(spotRow.modelData.category);
+                                    }
+                                }
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 12
+                                    anchors.rightMargin: 12
+                                    spacing: 12
+
+                                    Kirigami.Icon {
+                                        source: spotRow.modelData.icon
+                                        Layout.preferredWidth: 16
+                                        Layout.preferredHeight: 16
+                                        isMask: true
+                                        color: "#FFFFFF"
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: spotRow.modelData.label
+                                        color: "#FFFFFF"
+                                        font.pixelSize: 14
+                                        font.weight: Font.Medium
+                                    }
+
+                                    Text {
+                                        text: spotRow.modelData.shortcut
+                                        color: Qt.rgba(1, 1, 1, 0.42)
+                                        font.pixelSize: 13
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // -----------------------------------------------------------------
+            // STATE 1C: Spotlight Answer Card (06_siri_spotlight_window.png)
+            // -----------------------------------------------------------------
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 16
+                spacing: 12
+                visible: !root.compactWorking && root.compactAnswerVisible
+
+                // Top Header: Circular ✕ (left), Prompt Pill (center-right), Circular Expand ⤢ (right)
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Rectangle {
+                        width: 28
+                        height: 28
+                        radius: 14
+                        color: Qt.rgba(1, 1, 1, 0.14)
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "✕"
+                            color: "#FFFFFF"
+                            font.pixelSize: 12
+                            font.bold: true
+                        }
+
+                        TapHandler {
+                            onTapped: {
+                                root.compactAnswerVisible = false;
+                                root.hide();
+                            }
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    // Prompt Pill
+                    Rectangle {
+                        Layout.maximumWidth: 240
+                        height: 26
+                        width: Math.min(240, spotPromptLabel.implicitWidth + 20)
+                        radius: 13
+                        color: Qt.rgba(1, 1, 1, 0.08)
+
+                        Text {
+                            id: spotPromptLabel
+                            anchors.centerIn: parent
+                            width: parent.width - 16
+                            elide: Text.ElideRight
+                            color: Qt.rgba(1, 1, 1, 0.72)
+                            font.pixelSize: 12
+                            text: {
+                                for (let i = kityClient.messages.length - 1; i >= 0; --i) {
+                                    if (kityClient.messages[i].role === "user") {
+                                        return kityClient.messages[i].content;
+                                    }
+                                }
+                                return i18n("Tell me what's new with Kity...");
+                            }
+                        }
+                    }
+
+                    // Expand ⤢ Button (Transitions to Full Siri App Window!)
+                    Rectangle {
+                        width: 28
+                        height: 28
+                        radius: 14
+                        color: Qt.rgba(1, 1, 1, 0.14)
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "⤢"
+                            color: "#FFFFFF"
+                            font.pixelSize: 13
+                            font.bold: true
+                        }
+
+                        TapHandler {
+                            onTapped: root.compactMode = false
+                        }
+                    }
+                }
+
+                // Scrollable Answer Content
+                QQC2.ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    TextEdit {
+                        width: parent.width
+                        readOnly: true
+                        selectByMouse: true
+                        wrapMode: TextEdit.Wrap
+                        color: "#FFFFFF"
+                        font.pixelSize: 13
+                        textFormat: TextEdit.RichText
+                        text: {
+                            if (kityClient.streamingText.length > 0) {
+                                return kityClient.renderMarkdown(kityClient.streamingText);
+                            }
+                            for (let i = kityClient.messages.length - 1; i >= 0; --i) {
+                                if (kityClient.messages[i].role === "assistant") {
+                                    return kityClient.renderMarkdown(kityClient.messages[i].content);
+                                }
+                            }
+                            return kityClient.renderMarkdown("### Kity AI\nAsk anything or click **⤢** to open the full Kity conversation app.");
+                        }
+                    }
+                }
+
+                // Bottom Bar: Circular + (left), "Ask Siri/Kity" Pill (center), Circular Mic (right)
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Rectangle {
+                        width: 30
+                        height: 30
+                        radius: 15
+                        color: Qt.rgba(1, 1, 1, 0.14)
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "+"
+                            color: "#FFFFFF"
+                            font.pixelSize: 16
+                        }
+
+                        TapHandler {
+                            onTapped: {
+                                root.compactMode = false;
+                                root.showVisualIntelligence = true;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 32
+                        radius: 16
+                        color: Qt.rgba(1, 1, 1, 0.12)
+                        border.width: 1
+                        border.color: Qt.rgba(1, 1, 1, 0.18)
+
+                        QQC2.TextField {
+                            anchors.fill: parent
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 12
+                            placeholderText: i18n("Ask Kity")
+                            placeholderTextColor: Qt.rgba(1, 1, 1, 0.55)
+                            color: "#FFFFFF"
+                            font.pixelSize: 13
+                            background: null
+                            onAccepted: {
+                                if (text.trim().length > 0) {
+                                    kityClient.sendMessage(text.trim(), false);
+                                    text = "";
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 30
+                        height: 30
+                        radius: 15
+                        color: kityClient.isRecording ? "#FF375F" : Qt.rgba(1, 1, 1, 0.14)
+
+                        Kirigami.Icon {
+                            anchors.centerIn: parent
+                            width: 15
+                            height: 15
+                            source: "audio-input-microphone-symbolic"
+                            isMask: true
+                            color: "#FFFFFF"
+                        }
+
+                        TapHandler {
+                            onTapped: kityClient.toggleRecording()
+                        }
+                    }
                 }
             }
         },
 
         // =====================================================================
-        // Window Content Layout
+        // MODEL 2: GOLDEN GATE "THE SIRI APP" MAIN CONVERSATION PANE
+        // Replicates 09_the_siri_app_window.png
         // =====================================================================
         ColumnLayout {
             id: mainContentColumn
             anchors.fill: parent
-            anchors.topMargin: CachyTheme.spacingSmall
+            anchors.topMargin: 12
             anchors.leftMargin: CachyTheme.marginWindow
             anchors.rightMargin: CachyTheme.marginWindow
             anchors.bottomMargin: CachyTheme.marginWindow
-            spacing: CachyTheme.spacingMedium
+            spacing: 12
             visible: !root.showPreferences && !root.compactMode
 
             // -----------------------------------------------------------------
-            // Sub-header Toolbar: Status LED & Quick Action Toggles (From Plasmoid)
-            // -----------------------------------------------------------------
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-
-                Rectangle {
-                    implicitWidth: 8
-                    implicitHeight: 8
-                    radius: 4
-                    color: {
-                        if (!kityClient.ollamaReachable) return Kirigami.Theme.negativeTextColor;
-                        if (kityClient.state === "listening") return "#00e5ff";
-                        if (kityClient.wakeWordEnabled) return Kirigami.Theme.positiveTextColor;
-                        return Kirigami.Theme.disabledTextColor;
-                    }
-                }
-
-                QQC2.Label {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    font.pixelSize: 11
-                    color: CachyTheme.textPrimary
-                    opacity: 0.85
-                    wrapMode: Text.WordWrap
-                    text: {
-                        if (!kityClient.ollamaReachable) return i18n("Sin conexión con Ollama");
-                        if (kityClient.state === "listening") return i18n("Escuchando…");
-                        if (kityClient.state === "transcribing") return i18n("Transcribiendo…");
-                        if (kityClient.state === "thinking") return i18n("Pensando…");
-                        if (kityClient.state === "speaking") return i18n("Hablando…");
-                        if (kityClient.wakeWordEnabled) return i18n("«¡Hola Kity!» activo");
-                        return i18n("Listo");
-                    }
-                }
-
-                // Quick Toggle for "¡Hola Kity!" Wake Word
-                QQC2.ToolButton {
-                    icon.name: kityClient.wakeWordEnabled ? "mic-on" : "mic-off"
-                    checkable: true
-                    checked: kityClient.wakeWordEnabled
-                    onClicked: kityClient.wakeWordEnabled = !kityClient.wakeWordEnabled
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: kityClient.wakeWordEnabled
-                        ? i18n("Escucha activa «¡Hola Kity!» activada (clic para desactivar)")
-                        : i18n("Activar escucha manos libres «¡Hola Kity!»")
-                }
-
-                // Speech Output Mode Selector Button
-                QQC2.ToolButton {
-                    icon.name: {
-                        const mode = kityClient.speechOutputMode;
-                        if (mode === "always") return "audio-volume-high-symbolic";
-                        if (mode === "voice_only") return "audio-input-microphone-symbolic";
-                        return "audio-volume-muted-symbolic";
-                    }
-                    onClicked: {
-                        const current = kityClient.speechOutputMode;
-                        if (current === "manual") {
-                            kityClient.setSpeechOutputMode("voice_only");
-                        } else if (current === "voice_only") {
-                            kityClient.setSpeechOutputMode("always");
-                        } else {
-                            kityClient.setSpeechOutputMode("manual");
-                            kityClient.stopSpeaking();
-                        }
-                    }
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: {
-                        const mode = kityClient.speechOutputMode;
-                        if (mode === "always") return i18n("Respuestas por voz: Hablar siempre");
-                        if (mode === "voice_only") return i18n("Respuestas por voz: Hablar cuando preguntes por voz");
-                        return i18n("Respuestas por voz: Solo manual");
-                    }
-                }
-
-                // Writing Tools Drawer Toggle
-                QQC2.ToolButton {
-                    icon.name: "document-edit-symbolic"
-                    checkable: true
-                    checked: root.showWritingTools
-                    onClicked: {
-                        root.showWritingTools = !root.showWritingTools;
-                        if (root.showWritingTools) {
-                            root.showVisualIntelligence = false;
-                            root.showMathNotes = false;
-                        }
-                    }
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: i18n("Herramientas de Escritura")
-                }
-
-                // Visual Intelligence Drawer Toggle
-                QQC2.ToolButton {
-                    icon.name: "camera-photo-symbolic"
-                    checkable: true
-                    checked: root.showVisualIntelligence
-                    onClicked: {
-                        root.showVisualIntelligence = !root.showVisualIntelligence;
-                        if (root.showVisualIntelligence) {
-                            root.showWritingTools = false;
-                            root.showMathNotes = false;
-                        }
-                    }
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: i18n("Inteligencia Visual (Spectacle Wayland + OCR)")
-                }
-
-                // Math Notes Drawer Toggle
-                QQC2.ToolButton {
-                    icon.name: "view-time-schedule-calculus-symbolic"
-                    checkable: true
-                    checked: root.showMathNotes
-                    onClicked: {
-                        root.showMathNotes = !root.showMathNotes;
-                        if (root.showMathNotes) {
-                            root.showWritingTools = false;
-                            root.showVisualIntelligence = false;
-                            Qt.callLater(() => mathInput.forceActiveFocus());
-                        }
-                    }
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: i18n("Notas matemáticas (cálculo en vivo con variables)")
-                }
-
-                // Kity Mobile Remote Button (Phone as Microphone via Apple Intelligence PWA & KDE Connect)
-                QQC2.ToolButton {
-                    id: mobileRemoteButton
-                    icon.name: "kdeconnect-symbolic"
-                    onClicked: {
-                        var shared = kityClient.shareMobilePairingWithKdeConnect();
-                        if (shared) {
-                            kityClient.statusMessage = i18n("Enlace de Kity Remote enviado a tu teléfono por KDE Connect");
-                        } else {
-                            Qt.openUrlExternally(kityClient.mobilePairingUrl);
-                        }
-                    }
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: i18n("Conectar teléfono como micrófono (Kity Mobile Portal)")
-                }
-
-                // Clear Conversation Button
-                QQC2.ToolButton {
-                    icon.name: "edit-clear-history-symbolic"
-                    visible: kityClient.messages.length > 0
-                    onClicked: kityClient.clearHistory()
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: i18n("Limpiar conversación")
-                }
-            }
-
-            CachyDivider {
-                Layout.fillWidth: true
-            }
-
-            // -----------------------------------------------------------------
-            // Writing Tools Panel Drawer (Phase 2 - 8 Tools)
+            // Writing Tools Drawer
             // -----------------------------------------------------------------
             Rectangle {
                 Layout.fillWidth: true
                 visible: root.showWritingTools
-                implicitHeight: wtCol.implicitHeight + CachyTheme.spacingSmall * 2
+                implicitHeight: wtCol.implicitHeight + 16
                 radius: CachyTheme.radiusMedium
                 color: CachyTheme.cardBackground
                 border.width: 1
@@ -539,87 +893,41 @@ CachyWindow {
                 ColumnLayout {
                     id: wtCol
                     anchors.fill: parent
-                    anchors.margins: Kirigami.Units.smallSpacing
-                    spacing: Kirigami.Units.smallSpacing
+                    anchors.margins: 8
+                    spacing: 8
 
-                    RowLayout {
+                    QQC2.Label {
                         Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
-
-                        Kirigami.Icon {
-                            source: "document-edit-symbolic"
-                            implicitWidth: Kirigami.Units.iconSizes.small
-                            implicitHeight: Kirigami.Units.iconSizes.small
-                            color: Kirigami.Theme.highlightColor
-                        }
-
-                        QQC2.Label {
-                            Layout.fillWidth: true
-                            font.bold: true
-                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                            color: palette.windowText
-                            text: promptField.text.trim().length > 0
-                                ? i18n("Herramientas de Escritura (usando caja de texto)")
-                                : i18n("Herramientas de Escritura (usando selección / portapapeles Wayland)")
-                            elide: Text.ElideRight
-                        }
+                        font.bold: true
+                        font.pixelSize: 12
+                        color: CachyTheme.textPrimary
+                        text: i18n("✍️ Writing Tools (Apple Intelligence / Golden Gate)")
                     }
 
                     GridLayout {
                         Layout.fillWidth: true
                         columns: 5
-                        columnSpacing: Kirigami.Units.smallSpacing
-                        rowSpacing: Kirigami.Units.smallSpacing
-                        uniformCellWidths: true
+                        columnSpacing: 6
+                        rowSpacing: 6
 
                         Repeater {
                             model: [
-                                { label: i18n("✍️ Corregir"), action: "proofread" },
-                                { label: i18n("📝 Reescribir"), action: "rewrite" },
-                                { label: i18n("😊 Amigable"), action: "friendly" },
-                                { label: i18n("👔 Profesional"), action: "professional" },
-                                { label: i18n("✂️ Conciso"), action: "concise" },
-                                { label: i18n("📊 Resumen"), action: "summary" },
-                                { label: i18n("📌 Claves"), action: "keypoints" },
-                                { label: i18n("📋 Tabla"), action: "table" },
-                                { label: i18n("🌐 A español"), action: "translate:es" },
-                                { label: i18n("🌐 To English"), action: "translate:en" }
+                                { label: i18n("Proofread"), action: "proofread" },
+                                { label: i18n("Rewrite"), action: "rewrite" },
+                                { label: i18n("Friendly"), action: "friendly" },
+                                { label: i18n("Professional"), action: "professional" },
+                                { label: i18n("Concise"), action: "concise" },
+                                { label: i18n("Summary"), action: "summary" },
+                                { label: i18n("Key Points"), action: "keypoints" },
+                                { label: i18n("Table"), action: "table" },
+                                { label: i18n("Español"), action: "translate:es" },
+                                { label: i18n("English"), action: "translate:en" }
                             ]
 
-                            QQC2.Button {
-                                id: wtBtn
+                            CachyButton {
                                 required property var modelData
                                 Layout.fillWidth: true
-                                Layout.minimumHeight: Kirigami.Units.gridUnit * 2.2
                                 text: modelData.label
-                                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                                hoverEnabled: true
-
-                                contentItem: QQC2.Label {
-                                    text: wtBtn.text
-                                    color: wtBtn.down ? palette.highlight : palette.buttonText
-                                    font: wtBtn.font
-                                    elide: Text.ElideRight
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-
-                                background: Rectangle {
-                                    radius: 8
-                                    color: wtBtn.down
-                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
-                                        : (wtBtn.hovered
-                                            ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
-                                            : palette.button)
-                                    border.width: 1
-                                    border.color: wtBtn.hovered
-                                        ? palette.highlight
-                                        : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15)
-
-                                    Behavior on color { ColorAnimation { duration: 150 } }
-                                    Behavior on border.color { ColorAnimation { duration: 150 } }
-                                }
-
                                 onClicked: {
                                     kityClient.applyWritingTool(modelData.action, promptField.text);
                                     root.showWritingTools = false;
@@ -631,156 +939,66 @@ CachyWindow {
             }
 
             // -----------------------------------------------------------------
-            // Visual Intelligence Panel Drawer (Phase 3 - Spectacle + OCR)
+            // Visual Intelligence Drawer
             // -----------------------------------------------------------------
             Rectangle {
                 Layout.fillWidth: true
                 visible: root.showVisualIntelligence
-                implicitHeight: viCol.implicitHeight + CachyTheme.spacingSmall * 2
+                implicitHeight: viRow.implicitHeight + 16
                 radius: CachyTheme.radiusMedium
                 color: CachyTheme.cardBackground
                 border.width: 1
                 border.color: CachyTheme.specularBorder
 
-                ColumnLayout {
-                    id: viCol
+                RowLayout {
+                    id: viRow
                     anchors.fill: parent
-                    anchors.margins: Kirigami.Units.smallSpacing
-                    spacing: Kirigami.Units.smallSpacing
+                    anchors.margins: 8
+                    spacing: 8
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
+                    QQC2.Label {
+                        text: i18n("📷 Visual Intelligence:")
+                        font.bold: true
+                        color: CachyTheme.textPrimary
+                    }
 
-                        Kirigami.Icon {
-                            source: "camera-photo-symbolic"
-                            implicitWidth: Kirigami.Units.iconSizes.small
-                            implicitHeight: Kirigami.Units.iconSizes.small
-                            color: Kirigami.Theme.highlightColor
-                        }
+                    QQC2.ComboBox {
+                        Layout.preferredWidth: 130
+                        model: [
+                            { label: i18n("Region"), scope: "region" },
+                            { label: i18n("Active Window"), scope: "window" },
+                            { label: i18n("Full Screen"), scope: "fullscreen" }
+                        ]
+                        textRole: "label"
+                        onActivated: index => root.visualCaptureScope = model[index].scope
+                    }
 
-                        QQC2.Label {
-                            Layout.fillWidth: true
-                            font.bold: true
-                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                            color: palette.windowText
-                            text: i18n("Inteligencia Visual (Spectacle Wayland + Tesseract OCR)")
-                            elide: Text.ElideRight
+                    CachyButton {
+                        text: i18n("Extract Text (OCR)")
+                        onClicked: {
+                            kityClient.runVisualIntelligence(root.visualCaptureScope, "ocr");
+                            root.showVisualIntelligence = false;
                         }
                     }
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
-
-                        QQC2.Label {
-                            text: i18n("Capturar:")
-                            font: Kirigami.Theme.smallFont
-                            color: palette.windowText
-                        }
-
-                        QQC2.ComboBox {
-                            id: viScopeCombo
-                            Layout.preferredWidth: 140
-                            model: [
-                                { label: i18n("Región"), scope: "region" },
-                                { label: i18n("Ventana activa"), scope: "window" },
-                                { label: i18n("Pantalla completa"), scope: "fullscreen" }
-                            ]
-                            textRole: "label"
-                            onActivated: index => root.visualCaptureScope = model[index].scope
-                        }
-
-                        QQC2.Button {
-                            id: ocrBtn
-                            text: i18n("📄 Extraer texto (OCR)")
-                            icon.name: "document-edit-symbolic"
-                            hoverEnabled: true
-
-                            contentItem: RowLayout {
-                                spacing: Kirigami.Units.smallSpacing
-                                Kirigami.Icon {
-                                    source: ocrBtn.icon.name
-                                    implicitWidth: Kirigami.Units.iconSizes.small
-                                    implicitHeight: Kirigami.Units.iconSizes.small
-                                    color: ocrBtn.down ? palette.highlight : palette.buttonText
-                                }
-                                QQC2.Label {
-                                    text: ocrBtn.text
-                                    color: ocrBtn.down ? palette.highlight : palette.buttonText
-                                    font: ocrBtn.font
-                                }
-                            }
-
-                            background: Rectangle {
-                                radius: 8
-                                color: ocrBtn.down
-                                    ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
-                                    : (ocrBtn.hovered
-                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
-                                        : palette.button)
-                                border.width: 1
-                                border.color: ocrBtn.hovered
-                                    ? palette.highlight
-                                    : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15)
-                            }
-
-                            onClicked: {
-                                kityClient.runVisualIntelligence(root.visualCaptureScope, "ocr");
-                                root.showVisualIntelligence = false;
-                            }
-                        }
-
-                        QQC2.Button {
-                            id: descBtn
-                            text: i18n("🔍 Describir")
-                            icon.name: "image-x-generic-symbolic"
-                            hoverEnabled: true
-
-                            contentItem: RowLayout {
-                                spacing: Kirigami.Units.smallSpacing
-                                Kirigami.Icon {
-                                    source: descBtn.icon.name
-                                    implicitWidth: Kirigami.Units.iconSizes.small
-                                    implicitHeight: Kirigami.Units.iconSizes.small
-                                    color: descBtn.down ? palette.highlight : palette.buttonText
-                                }
-                                QQC2.Label {
-                                    text: descBtn.text
-                                    color: descBtn.down ? palette.highlight : palette.buttonText
-                                    font: descBtn.font
-                                }
-                            }
-
-                            background: Rectangle {
-                                radius: 8
-                                color: descBtn.down
-                                    ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
-                                    : (descBtn.hovered
-                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
-                                        : palette.button)
-                                border.width: 1
-                                border.color: descBtn.hovered
-                                    ? palette.highlight
-                                    : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15)
-                            }
-
-                            onClicked: {
-                                kityClient.runVisualIntelligence(root.visualCaptureScope, "describe");
-                                root.showVisualIntelligence = false;
-                            }
+                    CachyButton {
+                        text: i18n("Describe Screen")
+                        primary: true
+                        onClicked: {
+                            kityClient.runVisualIntelligence(root.visualCaptureScope, "describe");
+                            root.showVisualIntelligence = false;
                         }
                     }
                 }
             }
 
             // -----------------------------------------------------------------
-            // Math Notes Panel Drawer (macOS Math Notes live calculator)
+            // Math Notes Drawer
             // -----------------------------------------------------------------
             Rectangle {
                 Layout.fillWidth: true
                 visible: root.showMathNotes
-                implicitHeight: mnCol.implicitHeight + CachyTheme.spacingSmall * 2
+                implicitHeight: mnCol.implicitHeight + 16
                 radius: CachyTheme.radiusMedium
                 color: CachyTheme.cardBackground
                 border.width: 1
@@ -789,92 +1007,22 @@ CachyWindow {
                 ColumnLayout {
                     id: mnCol
                     anchors.fill: parent
-                    anchors.margins: Kirigami.Units.smallSpacing
-                    spacing: Kirigami.Units.smallSpacing
+                    anchors.margins: 8
+                    spacing: 6
 
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
+                        spacing: 8
 
-                        Kirigami.Icon {
-                            source: "view-time-schedule-calculus-symbolic"
-                            implicitWidth: Kirigami.Units.iconSizes.small
-                            implicitHeight: Kirigami.Units.iconSizes.small
-                            color: Kirigami.Theme.highlightColor
-                        }
-
-                        QQC2.Label {
-                            Layout.fillWidth: true
-                            font.bold: true
-                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                            color: palette.windowText
-                            text: i18n("Notas matemáticas (escribe operaciones y pulsa =)")
-                            elide: Text.ElideRight
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
-
-                        QQC2.TextField {
+                        CachyTextField {
                             id: mathInput
                             Layout.fillWidth: true
-                            color: palette.text
-                            placeholderTextColor: palette.placeholderText
-                            selectionColor: palette.highlight
-                            selectedTextColor: palette.highlightedText
-                            font: Kirigami.Theme.defaultFont
-                            placeholderText: i18n("Ejemplo: precio = 250 €, iva = precio * 0.21, total =")
-                            background: Rectangle {
-                                radius: 8
-                                color: palette.base
-                                border.width: mathInput.activeFocus ? 1.5 : 1
-                                border.color: mathInput.activeFocus
-                                    ? palette.highlight
-                                    : Kirigami.ColorUtils.linearInterpolation(palette.base, palette.text, 0.18)
-                            }
-                            onAccepted: {
-                                if (text.trim().length > 0) {
-                                    root.mathResults = kityClient.evaluateMathNotes(text);
-                                }
-                            }
+                            placeholderText: i18n("e.g. price = 250, tax = price * 0.21, total =")
                         }
 
-                        QQC2.Button {
-                            id: calcBtn
-                            text: i18n("Calcular")
-                            icon.name: "checkmark"
-                            hoverEnabled: true
-
-                            contentItem: RowLayout {
-                                spacing: Kirigami.Units.smallSpacing
-                                Kirigami.Icon {
-                                    source: calcBtn.icon.name
-                                    implicitWidth: Kirigami.Units.iconSizes.small
-                                    implicitHeight: Kirigami.Units.iconSizes.small
-                                    color: calcBtn.down ? palette.highlight : palette.buttonText
-                                }
-                                QQC2.Label {
-                                    text: calcBtn.text
-                                    color: calcBtn.down ? palette.highlight : palette.buttonText
-                                    font: calcBtn.font
-                                }
-                            }
-
-                            background: Rectangle {
-                                radius: 8
-                                color: calcBtn.down
-                                    ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
-                                    : (calcBtn.hovered
-                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
-                                        : palette.button)
-                                border.width: 1
-                                border.color: calcBtn.hovered
-                                    ? palette.highlight
-                                    : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15)
-                            }
-
+                        CachyButton {
+                            text: i18n("Calculate")
+                            primary: true
                             onClicked: {
                                 if (mathInput.text.trim().length > 0) {
                                     root.mathResults = kityClient.evaluateMathNotes(mathInput.text);
@@ -883,137 +1031,64 @@ CachyWindow {
                         }
                     }
 
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        visible: root.mathResults.length > 0
-                        spacing: 2
-
-                        Repeater {
-                            model: root.mathResults
-                            delegate: QQC2.Label {
-                                required property string modelData
-                                Layout.fillWidth: true
-                                font.family: "monospace"
-                                color: palette.text
-                                text: modelData
-                            }
+                    Repeater {
+                        model: root.mathResults
+                        QQC2.Label {
+                            required property string modelData
+                            font.family: "monospace"
+                            color: CachyTheme.textPrimary
+                            text: modelData
                         }
                     }
                 }
             }
 
             // -----------------------------------------------------------------
-            // Central Chat & Welcome Area (From Plasmoid)
+            // Main Document-Style Conversation Area (09_the_siri_app_window.png)
             // -----------------------------------------------------------------
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                // Welcome Screen when conversation is empty
+                // Empty State
                 ColumnLayout {
                     anchors.centerIn: parent
-                    width: Math.min(parent.width * 0.94, 460)
+                    width: Math.min(parent.width * 0.9, 440)
                     visible: kityClient.messages.length === 0
-                    spacing: Kirigami.Units.largeSpacing
+                    spacing: 14
 
-                    Kirigami.Heading {
+                    Text {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
-                        level: 2
-                        text: i18n("¿En qué puedo ayudarte?")
-                        wrapMode: Text.WordWrap
+                        text: i18n("What can I help you with?")
+                        font.pixelSize: 22
+                        font.weight: Font.Bold
+                        color: CachyTheme.textPrimary
                     }
 
-                    QQC2.Label {
+                    Text {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
-                        text: i18n("Pulsa la esfera inferior o di «¡Hola Kity!» para hablar, o elige una acción rápida:")
-                        font: Kirigami.Theme.defaultFont
+                        text: i18n("Double-press Meta (⌘) anytime for the quick floating pill, or start a conversation below.")
+                        font.pixelSize: 13
                         color: CachyTheme.textSecondary
-                    }
-
-                    GridLayout {
-                        Layout.fillWidth: true
-                        columns: 2
-                        columnSpacing: Kirigami.Units.smallSpacing + 2
-                        rowSpacing: Kirigami.Units.smallSpacing + 2
-                        uniformCellWidths: true
-
-                        Repeater {
-                            model: [
-                                { label: "🖥️ Analizar pantalla", prompt: "Analiza qué hay en mi pantalla", isWritingTool: false },
-                                { label: "✍️ Herramientas de escritura", prompt: "", isWritingTool: true },
-                                { label: "📋 Resumir copiado", prompt: "Resume lo que he copiado en el portapapeles", isWritingTool: false },
-                                { label: "⚡ Estado del sistema", prompt: "Estado del sistema", isWritingTool: false },
-                                { label: "🎵 ¿Qué canción suena?", prompt: "¿Qué canción está sonando?", isWritingTool: false },
-                                { label: "🌙 Modo oscuro", prompt: "Activa el modo oscuro", isWritingTool: false }
-                            ]
-
-                            QQC2.Button {
-                                id: actionBtn
-                                required property var modelData
-                                Layout.fillWidth: true
-                                Layout.minimumHeight: Kirigami.Units.gridUnit * 2.3
-                                text: modelData.label
-                                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
-                                hoverEnabled: true
-
-                                contentItem: RowLayout {
-                                    spacing: Kirigami.Units.smallSpacing
-                                    QQC2.Label {
-                                        Layout.fillWidth: true
-                                        text: actionBtn.text
-                                        color: actionBtn.down ? palette.highlight : palette.buttonText
-                                        font: actionBtn.font
-                                        elide: Text.ElideRight
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-
-                                background: Rectangle {
-                                    radius: CachyTheme.radiusSmall
-                                    color: actionBtn.down
-                                        ? CachyTheme.cardBackgroundHover
-                                        : (actionBtn.hovered
-                                            ? CachyTheme.cardBackgroundHover
-                                            : CachyTheme.cardBackground)
-                                    border.width: 1
-                                    border.color: CachyTheme.specularBorder
-
-                                    Behavior on color { ColorAnimation { duration: 150 } }
-                                    Behavior on border.color { ColorAnimation { duration: 150 } }
-                                }
-
-                                onClicked: {
-                                    if (modelData.isWritingTool) {
-                                        root.showWritingTools = true;
-                                    } else {
-                                        kityClient.sendMessage(modelData.prompt, false);
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
 
-                // Chat Message List
+                // Message List (Clean Golden Gate Document Presentation)
                 QQC2.ScrollView {
                     anchors.fill: parent
-                    anchors.margins: Kirigami.Units.smallSpacing
                     visible: kityClient.messages.length > 0
                     clip: true
 
                     ListView {
                         id: chatListView
                         anchors.fill: parent
-                        spacing: Kirigami.Units.mediumSpacing
+                        spacing: 16
                         model: kityClient.messages
 
-                        onCountChanged: {
-                            Qt.callLater(() => chatListView.positionViewAtEnd());
-                        }
+                        onCountChanged: Qt.callLater(() => chatListView.positionViewAtEnd())
 
                         Connections {
                             target: kityClient
@@ -1025,35 +1100,18 @@ CachyWindow {
                         footer: Item {
                             width: chatListView.width
                             visible: kityClient.streamingText.length > 0
-                            height: visible ? streamBubble.height + Kirigami.Units.mediumSpacing : 0
+                            height: visible ? streamText.implicitHeight + 24 : 0
 
-                            Rectangle {
-                                id: streamBubble
-                                width: parent.width * 0.92
-                                height: streamText.implicitHeight + CachyTheme.spacingMedium * 2
-                                anchors.left: parent.left
-                                anchors.top: parent.top
-                                anchors.topMargin: CachyTheme.spacingSmall
-                                radius: CachyTheme.radiusMedium
-                                color: CachyTheme.cardBackground
-                                border.width: 1
-                                border.color: CachyTheme.specularBorder
-
-                                TextEdit {
-                                    id: streamText
-                                    x: Kirigami.Units.mediumSpacing
-                                    y: Kirigami.Units.mediumSpacing
-                                    width: streamBubble.width - Kirigami.Units.mediumSpacing * 2
-                                    readOnly: true
-                                    selectByMouse: true
-                                    cursorVisible: false
-                                    activeFocusOnPress: false
-                                    wrapMode: TextEdit.Wrap
-                                    color: Kirigami.Theme.textColor
-                                    font: Kirigami.Theme.defaultFont
-                                    textFormat: TextEdit.RichText
-                                    text: kityClient.renderMarkdown(kityClient.streamingText)
-                                }
+                            TextEdit {
+                                id: streamText
+                                width: parent.width - 16
+                                readOnly: true
+                                selectByMouse: true
+                                wrapMode: TextEdit.Wrap
+                                color: CachyTheme.textPrimary
+                                font.pixelSize: Math.round(14 * kityClient.textScale)
+                                textFormat: TextEdit.RichText
+                                text: kityClient.renderMarkdown(kityClient.streamingText)
                             }
                         }
 
@@ -1063,147 +1121,129 @@ CachyWindow {
                             required property int index
 
                             width: chatListView.width
-                            implicitHeight: bubbleRect.height
+                            implicitHeight: msgCol.implicitHeight + 12
 
                             readonly property bool isUser: modelData.role === "user"
                             readonly property var detectedCmds: !isUser
                                 ? kityClient.extractTerminalCommands(modelData.content)
                                 : []
 
-                            Rectangle {
-                                id: bubbleRect
-                                width: msgDelegate.isUser
-                                    ? Math.min(parent.width * 0.88, Math.max(120, msgColumn.implicitWidth + CachyTheme.spacingMedium * 2))
-                                    : parent.width * 0.92
-                                height: msgColumn.implicitHeight + CachyTheme.spacingMedium * 2
-                                anchors.right: msgDelegate.isUser ? parent.right : undefined
-                                anchors.left: msgDelegate.isUser ? undefined : parent.left
-                                radius: CachyTheme.radiusMedium
-                                color: msgDelegate.isUser
-                                    ? CachyTheme.withAlpha(CachyTheme.accentColor, 0.22)
-                                    : CachyTheme.cardBackground
-                                border.width: 1
-                                border.color: msgDelegate.isUser
-                                    ? CachyTheme.accentColor
-                                    : CachyTheme.specularBorder
+                            ColumnLayout {
+                                id: msgCol
+                                width: parent.width - 12
+                                spacing: 8
 
-                                ColumnLayout {
-                                    id: msgColumn
-                                    x: Kirigami.Units.mediumSpacing
-                                    y: Kirigami.Units.mediumSpacing
-                                    width: bubbleRect.width - Kirigami.Units.mediumSpacing * 2
-                                    spacing: Kirigami.Units.smallSpacing
+                                // User Prompt Chip or Clean Assistant Document Block
+                                Rectangle {
+                                    visible: msgDelegate.isUser
+                                    Layout.alignment: Qt.AlignRight
+                                    Layout.maximumWidth: parent.width * 0.82
+                                    implicitWidth: userPromptText.implicitWidth + 24
+                                    implicitHeight: userPromptText.implicitHeight + 14
+                                    radius: 16
+                                    color: CachyTheme.withAlpha(CachyTheme.accentColor, 0.18)
+                                    border.width: 1
+                                    border.color: CachyTheme.withAlpha(CachyTheme.accentColor, 0.45)
 
-                                    TextEdit {
-                                        id: msgText
-                                        Layout.fillWidth: true
-                                        readOnly: true
-                                        selectByMouse: true
-                                        cursorVisible: false
-                                        activeFocusOnPress: false
-                                        wrapMode: TextEdit.Wrap
-                                        color: Kirigami.Theme.textColor
-                                        font: Kirigami.Theme.defaultFont
-                                        textFormat: msgDelegate.isUser ? TextEdit.PlainText : TextEdit.RichText
-                                        onLinkActivated: link => Qt.openUrlExternally(link)
-                                        text: msgDelegate.isUser
-                                            ? msgDelegate.modelData.content
-                                            : kityClient.renderMarkdown(msgDelegate.modelData.content)
-
-                                        HoverHandler {
-                                            cursorShape: parent.hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor
-                                        }
+                                    Text {
+                                        id: userPromptText
+                                        anchors.centerIn: parent
+                                        width: Math.min(implicitWidth, msgCol.width * 0.78)
+                                        wrapMode: Text.WordWrap
+                                        color: CachyTheme.textPrimary
+                                        font.pixelSize: Math.round(13 * kityClient.textScale)
+                                        font.weight: Font.Medium
+                                        text: msgDelegate.modelData.content || ""
                                     }
+                                }
 
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        spacing: Kirigami.Units.smallSpacing
-                                        visible: msgDelegate.detectedCmds.length > 0
+                                // Assistant Document-Style Response (09_the_siri_app_window.png)
+                                TextEdit {
+                                    visible: !msgDelegate.isUser
+                                    Layout.fillWidth: true
+                                    readOnly: true
+                                    selectByMouse: true
+                                    cursorVisible: false
+                                    activeFocusOnPress: false
+                                    wrapMode: TextEdit.Wrap
+                                    color: CachyTheme.textPrimary
+                                    font.pixelSize: Math.round(14 * kityClient.textScale)
+                                    textFormat: TextEdit.RichText
+                                    onLinkActivated: link => Qt.openUrlExternally(link)
+                                    text: kityClient.renderMarkdown(msgDelegate.modelData.content || "")
+                                }
 
-                                        Repeater {
-                                            model: msgDelegate.detectedCmds
-                                            delegate: RowLayout {
-                                                required property string modelData
-                                                Layout.fillWidth: true
-                                                spacing: Kirigami.Units.smallSpacing
+                                // Source Citation Pills (Matching "Apple Newsroom +2" / "TechCrunch +2" in 09_the_siri_app_window.png)
+                                Flow {
+                                    visible: !msgDelegate.isUser && msgDelegate.modelData.sources !== undefined && msgDelegate.modelData.sources.length > 0
+                                    Layout.fillWidth: true
+                                    spacing: 6
 
-                                                QQC2.Label {
-                                                    Layout.fillWidth: true
-                                                    font.family: "monospace"
-                                                    color: palette.text
-                                                    text: modelData
-                                                    elide: Text.ElideRight
-                                                }
+                                    Repeater {
+                                        model: msgDelegate.modelData.sources || []
 
-                                                QQC2.Button {
-                                                    icon.name: "system-run"
-                                                    text: i18n("Ejecutar en Konsole")
-                                                    onClicked: kityClient.executeCommandInKonsole(modelData)
-                                                }
+                                        Rectangle {
+                                            required property var modelData
+                                            height: 22
+                                            width: srcLabel.implicitWidth + 16
+                                            radius: 11
+                                            color: CachyTheme.surfacePill
+                                            border.width: 1
+                                            border.color: CachyTheme.specularBorder
+
+                                            Text {
+                                                id: srcLabel
+                                                anchors.centerIn: parent
+                                                text: modelData.title || i18n("Source +1")
+                                                font.pixelSize: 11
+                                                color: CachyTheme.textSecondary
+                                            }
+
+                                            TapHandler {
+                                                onTapped: if (modelData.url) Qt.openUrlExternally(modelData.url)
                                             }
                                         }
                                     }
+                                }
 
-                                    // Generative Interactive Cards (Phase 5 - UI Generativa)
-                                    Cards.WeatherCard {
-                                        visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "weather" && msgDelegate.modelData.cardData !== undefined
-                                        Layout.fillWidth: true
-                                        cardData: msgDelegate.modelData.cardData || ({})
+                                // Generative Cards
+                                Cards.WeatherCard {
+                                    visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "weather" && msgDelegate.modelData.cardData !== undefined
+                                    Layout.fillWidth: true
+                                    cardData: msgDelegate.modelData.cardData || ({})
+                                }
+
+                                Cards.MediaCard {
+                                    visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "media" && msgDelegate.modelData.cardData !== undefined
+                                    Layout.fillWidth: true
+                                    cardData: msgDelegate.modelData.cardData || ({})
+                                    onMediaActionTriggered: action => kityClient.controlMedia(action)
+                                }
+
+                                Cards.EventCard {
+                                    visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "event" && msgDelegate.modelData.cardData !== undefined
+                                    Layout.fillWidth: true
+                                    cardData: msgDelegate.modelData.cardData || ({})
+                                    onOpenCalendarRequested: kityClient.openKOrganizer()
+                                }
+
+                                // Subtle Copy & Speak Actions
+                                RowLayout {
+                                    visible: !msgDelegate.isUser
+                                    spacing: 6
+
+                                    QQC2.ToolButton {
+                                        icon.name: "edit-copy"
+                                        implicitWidth: 26
+                                        implicitHeight: 26
+                                        onClicked: kityClient.copyToClipboard(msgDelegate.modelData.content)
                                     }
 
-                                    Cards.MediaCard {
-                                        visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "media" && msgDelegate.modelData.cardData !== undefined
-                                        Layout.fillWidth: true
-                                        cardData: msgDelegate.modelData.cardData || ({})
-                                        onMediaActionTriggered: action => kityClient.controlMedia(action)
-                                    }
-
-                                    Cards.EventCard {
-                                        visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "event" && msgDelegate.modelData.cardData !== undefined
-                                        Layout.fillWidth: true
-                                        cardData: msgDelegate.modelData.cardData || ({})
-                                        onOpenCalendarRequested: kityClient.openKOrganizer()
-                                    }
-
-                                    // Interactive Source Chips (Phase 3 - Deep Web Research & Citations)
-                                    Flow {
-                                        visible: !msgDelegate.isUser && msgDelegate.modelData.sources !== undefined && msgDelegate.modelData.sources.length > 0
-                                        Layout.fillWidth: true
-                                        spacing: Kirigami.Units.smallSpacing
-
-                                        Repeater {
-                                            model: msgDelegate.modelData.sources || []
-
-                                            QQC2.Button {
-                                                required property var modelData
-                                                icon.name: "globe"
-                                                text: modelData.title || i18n("Fuente")
-                                                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                                                onClicked: Qt.openUrlExternally(modelData.url)
-                                                QQC2.ToolTip.visible: hovered
-                                                QQC2.ToolTip.text: modelData.url || ""
-                                            }
-                                        }
-                                    }
-
-                                    RowLayout {
-                                        visible: !msgDelegate.isUser
-                                        Layout.fillWidth: true
-                                        spacing: Kirigami.Units.smallSpacing
-
-                                        QQC2.ToolButton {
-                                            icon.name: "edit-copy"
-                                            QQC2.ToolTip.visible: hovered
-                                            QQC2.ToolTip.text: i18n("Copiar al portapapeles")
-                                            onClicked: kityClient.copyToClipboard(msgDelegate.modelData.content)
-                                        }
-
-                                        QQC2.ToolButton {
-                                            icon.name: "audio-volume-high"
-                                            QQC2.ToolTip.visible: hovered
-                                            QQC2.ToolTip.text: i18n("Escuchar respuesta con voz")
-                                            onClicked: kityClient.speakText(msgDelegate.modelData.content)
-                                        }
+                                    QQC2.ToolButton {
+                                        icon.name: "audio-volume-high"
+                                        implicitWidth: 26
+                                        implicitHeight: 26
+                                        onClicked: kityClient.speakText(msgDelegate.modelData.content)
                                     }
                                 }
                             }
@@ -1212,220 +1252,140 @@ CachyWindow {
                 }
             }
 
-            // Dynamic status bar when recording, transcribing, thinking, or speaking (collapses when empty)
-            QQC2.Label {
-                Layout.fillWidth: true
-                visible: kityClient.statusMessage.length > 0 && kityClient.state !== "idle"
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-                text: kityClient.statusMessage
-                font: Kirigami.Theme.smallFont
-                color: kityClient.state === "error" ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.highlightColor
-                wrapMode: Text.WordWrap
-            }
-
             // -----------------------------------------------------------------
-            // Bottom Dock: Dynamic Animated Siri Orb & Text Input (From Plasmoid)
+            // Bottom Input Bar: Circular [+] | "Ask Siri / Kity" Pill | Circular [🎙]
+            // Exact match to 09_the_siri_app_window.png
             // -----------------------------------------------------------------
-            Rectangle {
+            RowLayout {
                 Layout.fillWidth: true
-                implicitHeight: dockCol.implicitHeight + Kirigami.Units.mediumSpacing * 2
-                radius: Kirigami.Units.smallSpacing * 1.5
-                color: (kityClient.state === "listening")
-                    ? Qt.rgba(CachyTheme.accentColor.r, CachyTheme.accentColor.g, CachyTheme.accentColor.b, 0.14)
-                    : CachyTheme.cardBackground
-                border.width: 1
-                border.color: (kityClient.state === "listening")
-                    ? CachyTheme.accentColor
-                    : CachyTheme.specularBorder
+                spacing: 10
 
-                ColumnLayout {
-                    id: dockCol
-                    anchors.fill: parent
-                    anchors.topMargin: Kirigami.Units.mediumSpacing
-                    anchors.bottomMargin: Kirigami.Units.mediumSpacing
-                    anchors.leftMargin: Kirigami.Units.mediumSpacing
-                    anchors.rightMargin: Kirigami.Units.mediumSpacing
-                    spacing: Kirigami.Units.mediumSpacing
+                // Left: Circular [+] Button
+                Rectangle {
+                    width: 34
+                    height: 34
+                    radius: 17
+                    color: plusHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
+                    border.width: 1
+                    border.color: CachyTheme.specularBorder
 
-                    // Siri Orb Centered Interactive Voice Control (Dynamic Audio Reactivity)
-                    Item {
-                        Layout.fillWidth: true
-                        implicitHeight: siriOrb.implicitHeight + Kirigami.Units.smallSpacing * 2
-                        clip: false
+                    HoverHandler { id: plusHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler {
+                        onTapped: root.showWritingTools = !root.showWritingTools
+                    }
 
-                        SiriOrbAnimation {
-                            id: siriOrb
-                            anchors.centerIn: parent
-                            assistantState: kityClient.state
-                            audioLevel: kityClient.audioLevel
-                            onClicked: {
-                                if (kityClient.isSpeaking) {
-                                    kityClient.stopSpeaking();
-                                } else if (kityClient.state === "thinking") {
-                                    kityClient.stopGeneration();
-                                } else {
-                                    kityClient.toggleRecording();
-                                }
+                    Text {
+                        anchors.centerIn: parent
+                        text: "+"
+                        font.pixelSize: 18
+                        color: CachyTheme.textPrimary
+                    }
+                }
+
+                // Center: "Ask Kity" Pill Input Field
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 36
+                    radius: 18
+                    color: CachyTheme.surfacePill
+                    border.width: promptField.activeFocus ? 1.5 : 1
+                    border.color: promptField.activeFocus ? CachyTheme.accentColor : CachyTheme.specularBorder
+
+                    QQC2.TextField {
+                        id: promptField
+                        anchors.fill: parent
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 14
+                        focus: true
+                        color: CachyTheme.textPrimary
+                        placeholderTextColor: CachyTheme.textMuted
+                        font.pixelSize: 13
+                        background: null
+                        placeholderText: kityClient.isRecording
+                            ? i18n("Listening...")
+                            : i18n("Ask Kity")
+                        onAccepted: {
+                            if (text.trim().length > 0) {
+                                kityClient.sendMessage(text.trim(), false);
+                                text = "";
+                            }
+                        }
+                    }
+                }
+
+                // Right: Circular Microphone Button
+                Rectangle {
+                    width: 34
+                    height: 34
+                    radius: 17
+                    color: kityClient.isRecording
+                        ? "#FF375F"
+                        : (micHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill)
+                    border.width: 1
+                    border.color: kityClient.isRecording ? "#FF375F" : CachyTheme.specularBorder
+
+                    HoverHandler { id: micHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler {
+                        onTapped: {
+                            if (kityClient.isSpeaking) {
+                                kityClient.stopSpeaking();
+                            } else if (kityClient.state === "thinking") {
+                                kityClient.stopGeneration();
+                            } else {
+                                kityClient.toggleRecording();
                             }
                         }
                     }
 
-                    // Bottom Text Input & Send Bar (Cajón de escribir nativo estilo Liquid Glass)
-                    Rectangle {
-                        id: promptInputBox
-                        Layout.fillWidth: true
-                        implicitHeight: Math.max(promptInputRow.implicitHeight + CachyTheme.spacingSmall * 2, 44)
-                        radius: CachyTheme.radiusMedium
-                        color: CachyTheme.cardBackground
-                        border.width: promptField.activeFocus ? 1.5 : 1
-                        border.color: promptField.activeFocus
-                            ? CachyTheme.accentColor
-                            : CachyTheme.specularBorder
-
-                        Behavior on border.color { ColorAnimation { duration: 150 } }
-
-                        RowLayout {
-                            id: promptInputRow
-                            anchors.fill: parent
-                            anchors.leftMargin: Kirigami.Units.mediumSpacing
-                            anchors.rightMargin: Kirigami.Units.smallSpacing
-                            anchors.topMargin: Kirigami.Units.smallSpacing
-                            anchors.bottomMargin: Kirigami.Units.smallSpacing
-                            spacing: Kirigami.Units.smallSpacing
-
-                            QQC2.ScrollView {
-                                id: promptScrollView
-                                Layout.fillWidth: true
-                                Layout.alignment: Qt.AlignVCenter
-                                Layout.maximumHeight: Kirigami.Units.gridUnit * 6
-                                QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
-
-                                QQC2.TextArea {
-                                    id: promptField
-                                    focus: true
-                                    color: palette.text
-                                    placeholderTextColor: palette.placeholderText
-                                    selectionColor: palette.highlight
-                                    selectedTextColor: palette.highlightedText
-                                    font: Kirigami.Theme.defaultFont
-                                    background: null
-                                    placeholderText: kityClient.isRecording
-                                        ? i18n("Escuchando tu voz…")
-                                        : i18n("Pregúntale o pídele cualquier cosa a Kity…")
-                                    enabled: !kityClient.isRecording
-                                    wrapMode: TextEdit.Wrap
-
-                                    Keys.onPressed: event => {
-                                        if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) {
-                                            if (kityClient.state !== "thinking" && text.trim().length > 0) {
-                                                kityClient.sendMessage(text, false);
-                                                text = "";
-                                            }
-                                            event.accepted = true;
-                                        }
-                                    }
-                                }
-                            }
-
-                            QQC2.Button {
-                                id: sendBtn
-                                Layout.alignment: Qt.AlignBottom
-                                Layout.preferredWidth: Kirigami.Units.gridUnit * 2.2
-                                Layout.preferredHeight: Kirigami.Units.gridUnit * 2.2
-                                hoverEnabled: true
-                                enabled: kityClient.state === "thinking" || promptField.text.trim().length > 0
-
-                                contentItem: Kirigami.Icon {
-                                    anchors.centerIn: parent
-                                    source: kityClient.state === "thinking" ? "process-stop-symbolic" : "document-send-symbolic"
-                                    color: sendBtn.enabled
-                                        ? (kityClient.state === "thinking" ? Kirigami.Theme.negativeTextColor : (sendBtn.hovered ? palette.highlight : palette.buttonText))
-                                        : palette.placeholderText
-                                }
-
-                                background: Rectangle {
-                                    radius: 8
-                                    color: sendBtn.down
-                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
-                                        : (sendBtn.hovered
-                                            ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
-                                            : (sendBtn.enabled ? palette.button : "transparent"))
-                                    border.width: 1
-                                    border.color: sendBtn.enabled
-                                        ? (sendBtn.hovered ? palette.highlight : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15))
-                                        : "transparent"
-                                }
-
-                                onClicked: {
-                                    if (kityClient.state === "thinking") {
-                                        kityClient.stopGeneration();
-                                    } else if (promptField.text.trim().length > 0) {
-                                        kityClient.sendMessage(promptField.text, false);
-                                        promptField.text = "";
-                                    }
-                                }
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: kityClient.state === "thinking" ? i18n("Detener generación") : i18n("Enviar mensaje")
-                            }
-                        }
+                    Kirigami.Icon {
+                        anchors.centerIn: parent
+                        width: 16
+                        height: 16
+                        source: "audio-input-microphone-symbolic"
+                        isMask: true
+                        color: kityClient.isRecording ? "#FFFFFF" : CachyTheme.textPrimary
                     }
                 }
             }
         },
 
         // =====================================================================
-        // Redesigned Preferences Modal (Kirigami Liquid Glass Sheet)
+        // 5. GOLDEN GATE SIRI & VOICE PREFERENCES ("Guided by voices")
+        // Replicates 10b_siri_voice_window.png & "The Siri app" settings
         // =====================================================================
         Rectangle {
             id: preferencesModal
             anchors.fill: parent
-            anchors.margins: 4
-            radius: CachyTheme.radiusMedium
-            visible: root.showPreferences
-            color: root.isDark ? Qt.rgba(0.12, 0.12, 0.15, 0.95) : Qt.rgba(0.96, 0.97, 1.0, 0.95)
-            border.width: 1
-            border.color: CachyTheme.specularBorder
+            anchors.margins: CachyTheme.marginWindow
+            visible: root.showPreferences && !root.compactMode
+            color: "transparent"
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: Kirigami.Units.largeSpacing + 4
-                spacing: Kirigami.Units.largeSpacing
+                spacing: 14
 
-                // Header
+                // Header Bar with Back "<" Chevron and Title "Voice & Kity Settings"
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
+                    spacing: 10
 
-                    Kirigami.Icon {
-                        source: "configure"
-                        implicitWidth: Kirigami.Units.iconSizes.medium
-                        implicitHeight: Kirigami.Units.iconSizes.medium
-                        color: Kirigami.Theme.highlightColor
+                    CachyToolbarButton {
+                        text: "‹ Back"
+                        onClicked: root.showPreferences = false
                     }
 
-                    Kirigami.Heading {
-                        text: i18n("Preferencias de Kity")
-                        level: 2
+                    Text {
+                        text: i18n("Kity & Voice — macOS Golden Gate")
+                        font.pixelSize: 16
+                        font.weight: Font.Bold
+                        color: CachyTheme.textPrimary
                     }
 
                     Item { Layout.fillWidth: true }
-
-                    QQC2.ToolButton {
-                        icon.name: "window-close"
-                        onClicked: root.showPreferences = false
-                        QQC2.ToolTip.visible: hovered
-                        QQC2.ToolTip.text: i18n("Cerrar preferencias")
-                    }
                 }
 
-                Kirigami.Separator {
-                    Layout.fillWidth: true
-                }
-
-                // Scrollable Settings Cards Container using native KDE Kirigami.AbstractCard
                 QQC2.ScrollView {
-                    id: prefScrollView
+                    id: prefScroll
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     contentWidth: availableWidth
@@ -1433,392 +1393,270 @@ CachyWindow {
                     clip: true
 
                     ColumnLayout {
-                        width: prefScrollView.availableWidth
-                        spacing: Kirigami.Units.largeSpacing
+                        width: prefScroll.availableWidth
+                        spacing: 14
 
                         // =====================================================
-                        // Group 1: Voz y Activación Manos Libres
+                        // CARD 1: "Customize Your Siri Voice" (10b_siri_voice_window.png)
                         // =====================================================
-                        ColumnLayout {
+                        CachyCard {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
 
-                            QQC2.Label {
-                                text: i18n("🎙️ Voz y Activación Manos Libres")
-                                font.bold: true
-                                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
-                                color: Kirigami.Theme.highlightColor
-                            }
+                            contentItem: ColumnLayout {
+                                spacing: 14
 
-                            Kirigami.AbstractCard {
-                                Layout.fillWidth: true
+                                // Top Row: Title on Left, Glowing Star/Flower Acoustic Wave Visualizer on Right
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 16
 
-                                contentItem: ColumnLayout {
-                                    spacing: Kirigami.Units.mediumSpacing
-
-                                    // Row 1: Wake word
-                                    RowLayout {
+                                    ColumnLayout {
                                         Layout.fillWidth: true
-                                        Layout.minimumHeight: 38
-                                        spacing: Kirigami.Units.mediumSpacing
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            Layout.minimumWidth: 0
-                                            Layout.preferredWidth: 0
-                                            spacing: 2
-                                            QQC2.Label {
-                                                text: i18n("Activación por voz «¡Hola Kity!»")
-                                                font.bold: true
-                                                Layout.fillWidth: true
-                                            }
-                                            QQC2.Label {
-                                                text: i18n("Escuchar en segundo plano sin usar el ratón ni el teclado")
-                                                font: Kirigami.Theme.smallFont
-                                                opacity: 0.75
-                                                wrapMode: Text.WordWrap
-                                                Layout.fillWidth: true
-                                                Layout.minimumWidth: 0
-                                            }
+                                        Layout.alignment: Qt.AlignTop
+                                        spacing: 4
+
+                                        Text {
+                                            text: i18n("Customize Your Kity Voice")
+                                            font.pixelSize: 14
+                                            font.weight: Font.Bold
+                                            color: CachyTheme.textPrimary
                                         }
-                                        QQC2.Switch {
-                                            checked: kityClient.wakeWordEnabled
-                                            onToggled: kityClient.wakeWordEnabled = checked
+                                        Text {
+                                            Layout.fillWidth: true
+                                            wrapMode: Text.WordWrap
+                                            text: i18n("You'll hear this voice in Kity, Maps, and system responses.")
+                                            font.pixelSize: 12
+                                            color: CachyTheme.textSecondary
                                         }
                                     }
 
-                                    Kirigami.Separator { Layout.fillWidth: true }
+                                    // Dark Rectangular Acoustic Star Visualizer (10b_siri_voice_window.png)
+                                    Rectangle {
+                                        Layout.preferredWidth: 230
+                                        Layout.preferredHeight: 126
+                                        radius: 12
+                                        color: "#070709"
+                                        border.width: 1
+                                        border.color: Qt.rgba(1, 1, 1, 0.16)
+                                        clip: true
 
-                                    // Row 2: Speech output mode
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Layout.minimumHeight: 38
-                                        spacing: Kirigami.Units.mediumSpacing
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            Layout.minimumWidth: 0
-                                            Layout.preferredWidth: 0
-                                            spacing: 2
-                                            QQC2.Label {
-                                                text: i18n("Respuestas habladas")
-                                                font.bold: true
-                                                Layout.fillWidth: true
-                                            }
-                                            QQC2.Label {
-                                                text: i18n("Modo de lectura en voz alta de las respuestas")
-                                                font: Kirigami.Theme.smallFont
-                                                opacity: 0.75
-                                                wrapMode: Text.WordWrap
-                                                Layout.fillWidth: true
-                                                Layout.minimumWidth: 0
+                                        // Concentric acoustic flower/star rings
+                                        Repeater {
+                                            model: 4
+
+                                            Rectangle {
+                                                required property int index
+                                                anchors.centerIn: parent
+                                                readonly property real waveScale: 1.0 + 0.12 * Math.sin(root.animTime * 3.0 - index * 0.9)
+                                                width: (46 + index * 24) * waveScale
+                                                height: (46 + index * 24) * waveScale
+                                                radius: width * 0.38
+                                                rotation: index * 22.5 + root.animTime * 12
+                                                color: "transparent"
+                                                border.width: 1.4
+                                                border.color: Qt.rgba(1, 1, 1, (0.28 - index * 0.05) * (0.5 + kityClient.voiceExpressivity * 0.5))
                                             }
                                         }
-                                        QQC2.ComboBox {
-                                            Layout.preferredWidth: 200
+
+                                        // Bright glowing white core orb
+                                        Rectangle {
+                                            anchors.centerIn: parent
+                                            width: 44
+                                            height: 44
+                                            radius: 22
+                                            color: Qt.rgba(1, 1, 1, 0.24)
+
+                                            Rectangle {
+                                                anchors.centerIn: parent
+                                                width: 28
+                                                height: 28
+                                                radius: 14
+                                                color: "#FFFFFF"
+                                            }
+                                        }
+
+                                        TapHandler {
+                                            onTapped: kityClient.previewSelectedVoice()
+                                        }
+                                    }
+                                }
+
+                                CachyDivider { Layout.fillWidth: true }
+
+                                // Row 1: Accent
+                                RowLayout {
+                                    Layout.fillWidth: true
+
+                                    Text {
+                                        text: i18n("Accent")
+                                        font.pixelSize: 13
+                                        color: CachyTheme.textPrimary
+                                        Layout.fillWidth: true
+                                    }
+
+                                    QQC2.ComboBox {
+                                        Layout.preferredWidth: 180
+                                        model: ["Spanish (Spain)", "Spanish (Latin America)", "American", "British"]
+                                        currentIndex: Math.max(0, model.indexOf(kityClient.voiceAccent))
+                                        onActivated: index => kityClient.voiceAccent = model[index]
+                                    }
+                                }
+
+                                CachyDivider { Layout.fillWidth: true }
+
+                                // Row 2: Voice (7 Colored Circular Orbs - 10b_siri_voice_window.png)
+                                RowLayout {
+                                    Layout.fillWidth: true
+
+                                    Text {
+                                        text: i18n("Voice")
+                                        font.pixelSize: 13
+                                        color: CachyTheme.textPrimary
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Row {
+                                        spacing: 10
+
+                                        Repeater {
                                             model: [
-                                                { value: "always", text: i18n("Hablar siempre") },
-                                                { value: "voice_only", text: i18n("Solo si preguntas por voz") },
-                                                { value: "manual", text: i18n("Solo manual") }
+                                                "#30D158", // 1: Green
+                                                "#FFD60A", // 2: Yellow
+                                                "#FF9F0A", // 3: Orange
+                                                "#FF375F", // 4: Red-Pink (Default selected in Golden Gate)
+                                                "#BF5AF2", // 5: Magenta
+                                                "#5E5CE6", // 6: Indigo
+                                                "#64D2FF"  // 7: Blue
                                             ]
-                                            textRole: "text"
-                                            valueRole: "value"
-                                            currentIndex: {
-                                                if (kityClient.speechOutputMode === "always") return 0;
-                                                if (kityClient.speechOutputMode === "voice_only") return 1;
-                                                return 2;
-                                            }
-                                            onActivated: index => {
-                                                kityClient.setSpeechOutputMode(model[index].value);
-                                            }
-                                        }
-                                    }
 
-                                    Kirigami.Separator { Layout.fillWidth: true }
+                                            Item {
+                                                required property string modelData
+                                                required property int index
+                                                width: 28
+                                                height: 28
 
-                                    // Row 3: Earcons
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Layout.minimumHeight: 38
-                                        spacing: Kirigami.Units.mediumSpacing
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            Layout.minimumWidth: 0
-                                            Layout.preferredWidth: 0
-                                            spacing: 2
-                                            QQC2.Label {
-                                                text: i18n("Avisos acústicos (Estilo Siri)")
-                                                font.bold: true
-                                                Layout.fillWidth: true
-                                            }
-                                            QQC2.Label {
-                                                text: i18n("Tono armónico sutil al activar o detener el micrófono")
-                                                font: Kirigami.Theme.smallFont
-                                                opacity: 0.75
-                                                wrapMode: Text.WordWrap
-                                                Layout.fillWidth: true
-                                                Layout.minimumWidth: 0
-                                            }
-                                        }
-                                        QQC2.Switch {
-                                            checked: kityClient.earconsEnabled
-                                            onToggled: kityClient.earconsEnabled = checked
-                                        }
-                                    }
+                                                readonly property bool isSelected: kityClient.voiceIndex === index
 
-                                    Kirigami.Separator { Layout.fillWidth: true }
-
-                                    // Row 4: VAD Silence Detection
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Layout.minimumHeight: 38
-                                        spacing: Kirigami.Units.mediumSpacing
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            Layout.minimumWidth: 0
-                                            Layout.preferredWidth: 0
-                                            spacing: 2
-                                            QQC2.Label {
-                                                text: i18n("Detección de fin de frase (VAD)")
-                                                font.bold: true
-                                                Layout.fillWidth: true
-                                            }
-                                            QQC2.Label {
-                                                text: i18n("Detener la grabación automáticamente cuando termines de hablar")
-                                                font: Kirigami.Theme.smallFont
-                                                opacity: 0.75
-                                                wrapMode: Text.WordWrap
-                                                Layout.fillWidth: true
-                                                Layout.minimumWidth: 0
-                                            }
-                                        }
-                                        QQC2.Switch {
-                                            checked: kityClient.vadEnabled
-                                            onToggled: kityClient.vadEnabled = checked
-                                        }
-                                    }
-
-                                    Kirigami.Separator { Layout.fillWidth: true }
-
-                                    // Row 5: Local Engines Status
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Layout.minimumHeight: 38
-                                        spacing: Kirigami.Units.mediumSpacing
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            Layout.minimumWidth: 0
-                                            Layout.preferredWidth: 0
-                                            spacing: 2
-                                            QQC2.Label {
-                                                text: i18n("Motores de voz locales")
-                                                font.bold: true
-                                                Layout.fillWidth: true
-                                            }
-                                            QQC2.Label {
-                                                text: i18n("Whisper.cpp (STT) y Piper TTS (síntesis neuronal)")
-                                                font: Kirigami.Theme.smallFont
-                                                opacity: 0.75
-                                                wrapMode: Text.WordWrap
-                                                Layout.fillWidth: true
-                                                Layout.minimumWidth: 0
-                                            }
-                                        }
-                                        RowLayout {
-                                            Layout.alignment: Qt.AlignVCenter
-                                            spacing: Kirigami.Units.smallSpacing
-                                            Rectangle {
-                                                implicitWidth: whisperBadgeText.implicitWidth + 14
-                                                implicitHeight: 24
-                                                radius: 12
-                                                color: kityClient.whisperAvailable ? Qt.rgba(0.18, 0.75, 0.35, 0.15) : Qt.rgba(0.9, 0.2, 0.2, 0.15)
-                                                border.width: 1
-                                                border.color: kityClient.whisperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
-                                                QQC2.Label {
-                                                    id: whisperBadgeText
-                                                    anchors.centerIn: parent
-                                                    text: kityClient.whisperAvailable ? i18n("✓ Whisper") : i18n("✗ Whisper")
-                                                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                                                    font.bold: true
-                                                    color: kityClient.whisperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
-                                                }
-                                            }
-                                            Rectangle {
-                                                implicitWidth: piperBadgeText.implicitWidth + 14
-                                                implicitHeight: 24
-                                                radius: 12
-                                                color: kityClient.piperAvailable ? Qt.rgba(0.18, 0.75, 0.35, 0.15) : Qt.rgba(0.9, 0.2, 0.2, 0.15)
-                                                border.width: 1
-                                                border.color: kityClient.piperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
-                                                QQC2.Label {
-                                                    id: piperBadgeText
-                                                    anchors.centerIn: parent
-                                                    text: kityClient.piperAvailable ? i18n("✓ Piper TTS") : i18n("✗ Piper TTS")
-                                                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                                                    font.bold: true
-                                                    color: kityClient.piperAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // =====================================================
-                        // Group 2: Inteligencia Artificial Local (Ollama)
-                        // =====================================================
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
-
-                            QQC2.Label {
-                                text: i18n("🧠 Inteligencia Artificial Local (Ollama)")
-                                font.bold: true
-                                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
-                                color: Kirigami.Theme.highlightColor
-                            }
-
-                            Kirigami.AbstractCard {
-                                Layout.fillWidth: true
-
-                                contentItem: ColumnLayout {
-                                    spacing: Kirigami.Units.mediumSpacing
-
-                                    // Row 1: Connection status
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Layout.minimumHeight: 38
-                                        spacing: Kirigami.Units.mediumSpacing
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            Layout.minimumWidth: 0
-                                            Layout.preferredWidth: 0
-                                            spacing: 2
-                                            QQC2.Label {
-                                                text: i18n("Servidor Ollama")
-                                                font.bold: true
-                                                Layout.fillWidth: true
-                                            }
-                                            RowLayout {
-                                                Layout.fillWidth: true
-                                                spacing: 6
+                                                // Outer selection ring
                                                 Rectangle {
-                                                    implicitWidth: 8
-                                                    implicitHeight: 8
-                                                    radius: 4
-                                                    color: kityClient.ollamaReachable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+                                                    anchors.centerIn: parent
+                                                    width: 28
+                                                    height: 28
+                                                    radius: 14
+                                                    color: "transparent"
+                                                    border.width: parent.isSelected ? 2 : 0
+                                                    border.color: parent.modelData
                                                 }
-                                                QQC2.Label {
-                                                    text: kityClient.ollamaReachable
-                                                        ? i18n("Conectado en localhost:11434")
-                                                        : i18n("No detectado en localhost:11434")
-                                                    font: Kirigami.Theme.smallFont
-                                                    color: kityClient.ollamaReachable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
-                                                    wrapMode: Text.WordWrap
-                                                    Layout.fillWidth: true
-                                                    Layout.minimumWidth: 0
-                                                }
-                                            }
-                                        }
-                                        QQC2.Button {
-                                            id: checkBtn
-                                            Layout.alignment: Qt.AlignVCenter
-                                            property bool isChecking: false
 
-                                            contentItem: RowLayout {
-                                                spacing: Kirigami.Units.smallSpacing
-                                                Kirigami.Icon {
-                                                    id: refreshIcon
-                                                    source: "view-refresh"
-                                                    implicitWidth: Kirigami.Units.iconSizes.small
-                                                    implicitHeight: Kirigami.Units.iconSizes.small
-                                                    Layout.alignment: Qt.AlignVCenter
-                                                    transformOrigin: Item.Center
+                                                // Inner colored voice circle
+                                                Rectangle {
+                                                    anchors.centerIn: parent
+                                                    width: 21
+                                                    height: 21
+                                                    radius: 10.5
+                                                    color: parent.modelData
 
-                                                    RotationAnimation {
-                                                        target: refreshIcon
-                                                        from: 0
-                                                        to: 360
-                                                        duration: 650
-                                                        loops: Animation.Infinite
-                                                        running: checkBtn.isChecking
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        visible: parent.parent.isSelected
+                                                        text: (parent.parent.index + 1).toString()
+                                                        color: "#FFFFFF"
+                                                        font.pixelSize: 11
+                                                        font.bold: true
                                                     }
                                                 }
-                                                QQC2.Label {
-                                                    text: checkBtn.isChecking ? i18n("Comprobando…") : i18n("Comprobar")
-                                                    Layout.alignment: Qt.AlignVCenter
+
+                                                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                                                TapHandler {
+                                                    onTapped: {
+                                                        kityClient.voiceIndex = index;
+                                                        kityClient.previewSelectedVoice();
+                                                    }
                                                 }
-                                            }
-
-                                            onClicked: {
-                                                isChecking = true;
-                                                checkTimer.restart();
-                                                kityClient.checkReadiness();
-                                                kityClient.refreshModels();
-                                            }
-
-                                            Timer {
-                                                id: checkTimer
-                                                interval: 850
-                                                onTriggered: checkBtn.isChecking = false
                                             }
                                         }
                                     }
+                                }
 
-                                    Kirigami.Separator { Layout.fillWidth: true }
+                                CachyDivider { Layout.fillWidth: true }
 
-                                    // Row 2: Active Ollama model selector
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Layout.minimumHeight: 38
-                                        spacing: Kirigami.Units.mediumSpacing
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            Layout.minimumWidth: 0
-                                            Layout.preferredWidth: 0
-                                            spacing: 2
-                                            QQC2.Label {
-                                                text: i18n("Modelo activo de lenguaje (LLM)")
-                                                font.bold: true
-                                                Layout.fillWidth: true
-                                            }
-                                            QQC2.Label {
-                                                text: kityClient.availableModels.length > 0
-                                                    ? i18n("Modelo local de Ollama que procesará tus preguntas y tareas")
-                                                    : i18n("Inicia Ollama y pulsa «Comprobar» para detectar tus modelos")
-                                                font: Kirigami.Theme.smallFont
-                                                opacity: 0.75
-                                                wrapMode: Text.WordWrap
-                                                Layout.fillWidth: true
-                                                Layout.minimumWidth: 0
+                                // Row 3: Pace Slider (Red/Pink track matching 10b_siri_voice_window.png)
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 16
+
+                                    Text {
+                                        text: i18n("Pace")
+                                        font.pixelSize: 13
+                                        color: CachyTheme.textPrimary
+                                        Layout.preferredWidth: 120
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    QQC2.Slider {
+                                        id: paceSlider
+                                        Layout.preferredWidth: 240
+                                        from: 0.0
+                                        to: 1.0
+                                        value: kityClient.voicePace
+                                        onMoved: kityClient.voicePace = value
+
+                                        background: Rectangle {
+                                            x: paceSlider.leftPadding
+                                            y: paceSlider.topPadding + paceSlider.availableHeight / 2 - height / 2
+                                            width: paceSlider.availableWidth
+                                            height: 6
+                                            radius: 3
+                                            color: CachyTheme.isDark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.14)
+
+                                            Rectangle {
+                                                width: paceSlider.visualPosition * parent.width
+                                                height: parent.height
+                                                radius: 3
+                                                color: "#FF375F"
                                             }
                                         }
+                                    }
+                                }
 
-                                        QQC2.ComboBox {
-                                            id: modelSelectorCombo
-                                            Layout.preferredWidth: 210
-                                            Layout.alignment: Qt.AlignVCenter
-                                            model: {
-                                                var list = [];
-                                                for (var i = 0; i < kityClient.availableModels.length; ++i) {
-                                                    var m = kityClient.availableModels[i];
-                                                    // Filter out vision-only auxiliary models from main chat LLM dropdown
-                                                    if (m.indexOf("moondream") === -1) {
-                                                        list.push(m);
-                                                    }
-                                                }
-                                                if (list.length === 0) {
-                                                    list.push(kityClient.ollamaModel ? kityClient.ollamaModel : "llama3.2:3b");
-                                                }
-                                                return list;
-                                            }
-                                            currentIndex: {
-                                                var idx = model.indexOf(kityClient.ollamaModel);
-                                                return idx >= 0 ? idx : 0;
-                                            }
-                                            onActivated: index => {
-                                                if (index >= 0 && index < model.length) {
-                                                    kityClient.setOllamaModel(model[index]);
-                                                }
+                                CachyDivider { Layout.fillWidth: true }
+
+                                // Row 4: Expressivity Slider (Red/Pink track matching 10b_siri_voice_window.png)
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 16
+
+                                    Text {
+                                        text: i18n("Expressivity")
+                                        font.pixelSize: 13
+                                        color: CachyTheme.textPrimary
+                                        Layout.preferredWidth: 120
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    QQC2.Slider {
+                                        id: exprSlider
+                                        Layout.preferredWidth: 240
+                                        from: 0.0
+                                        to: 1.0
+                                        value: kityClient.voiceExpressivity
+                                        onMoved: kityClient.voiceExpressivity = value
+
+                                        background: Rectangle {
+                                            x: exprSlider.leftPadding
+                                            y: exprSlider.topPadding + exprSlider.availableHeight / 2 - height / 2
+                                            width: exprSlider.availableWidth
+                                            height: 6
+                                            radius: 3
+                                            color: CachyTheme.isDark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.14)
+
+                                            Rectangle {
+                                                width: exprSlider.visualPosition * parent.width
+                                                height: parent.height
+                                                radius: 3
+                                                color: "#FF375F"
                                             }
                                         }
                                     }
@@ -1827,133 +1665,165 @@ CachyWindow {
                         }
 
                         // =====================================================
-                        // Group 3: Conocimiento Local y Privacidad (RAG)
+                        // CARD 2: Conversation History & Shortcut ("The Siri app")
                         // =====================================================
-                        ColumnLayout {
+                        CachyCard {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
 
-                            QQC2.Label {
-                                text: i18n("📚 Conocimiento Local y Privacidad (RAG)")
-                                font.bold: true
-                                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
-                                color: Kirigami.Theme.highlightColor
-                            }
+                            contentItem: ColumnLayout {
+                                spacing: 12
 
-                            Kirigami.AbstractCard {
-                                Layout.fillWidth: true
+                                Text {
+                                    text: i18n("Kity AI, Spotlight & Conversation History")
+                                    font.pixelSize: 14
+                                    font.weight: Font.Bold
+                                    color: CachyTheme.textPrimary
+                                }
 
-                                contentItem: ColumnLayout {
-                                    spacing: Kirigami.Units.mediumSpacing
-
-                                    RowLayout {
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: i18n("Assistant Experience")
+                                        font.pixelSize: 13
+                                        color: CachyTheme.textPrimary
                                         Layout.fillWidth: true
-                                        Layout.minimumHeight: 38
-                                        spacing: Kirigami.Units.mediumSpacing
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            Layout.minimumWidth: 0
-                                            Layout.preferredWidth: 0
-                                            spacing: 2
-                                            QQC2.Label {
-                                                text: i18n("Base documental privada")
-                                                font.bold: true
-                                                Layout.fillWidth: true
-                                            }
-                                            QQC2.Label {
-                                                text: i18n("Kity consulta notas y documentos en tu carpeta local (~/.local/share/kity/knowledge/)")
-                                                font: Kirigami.Theme.smallFont
-                                                opacity: 0.75
-                                                wrapMode: Text.WordWrap
-                                                Layout.fillWidth: true
-                                                Layout.minimumWidth: 0
-                                            }
+                                    }
+                                    QQC2.ComboBox {
+                                        Layout.preferredWidth: 200
+                                        model: ["Kity AI (Golden Gate)", "Kity Classic", "Off"]
+                                        currentIndex: kityClient.siriMode === "classic" ? 1 : (kityClient.siriMode === "off" ? 2 : 0)
+                                        onActivated: index => kityClient.siriMode = (index === 1 ? "classic" : (index === 2 ? "off" : "ai"))
+                                    }
+                                }
+
+                                CachyDivider { Layout.fillWidth: true }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: i18n("Quick Pill Keyboard Shortcut")
+                                        font.pixelSize: 13
+                                        color: CachyTheme.textPrimary
+                                        Layout.fillWidth: true
+                                    }
+                                    Rectangle {
+                                        height: 26
+                                        width: shortcutBadgeText.implicitWidth + 20
+                                        radius: 8
+                                        color: CachyTheme.surfacePill
+                                        border.width: 1
+                                        border.color: CachyTheme.specularBorder
+                                        Text {
+                                            id: shortcutBadgeText
+                                            anchors.centerIn: parent
+                                            text: i18n("Press Meta (⌘) Twice")
+                                            font.pixelSize: 12
+                                            font.weight: Font.DemiBold
+                                            color: CachyTheme.textPrimary
                                         }
-                                        QQC2.Button {
-                                            text: i18n("Abrir carpeta")
-                                            icon.name: "document-open-folder"
-                                            Layout.alignment: Qt.AlignVCenter
-                                            onClicked: kityClient.openKnowledgeFolder()
-                                        }
+                                    }
+                                }
+
+                                CachyDivider { Layout.fillWidth: true }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: i18n("Conversation Retention")
+                                        font.pixelSize: 13
+                                        color: CachyTheme.textPrimary
+                                        Layout.fillWidth: true
+                                    }
+                                    QQC2.ComboBox {
+                                        Layout.preferredWidth: 160
+                                        model: ["Forever", "1 Year", "30 Days"]
+                                        currentIndex: kityClient.historyRetention === "1year" ? 1 : (kityClient.historyRetention === "30days" ? 2 : 0)
+                                        onActivated: index => kityClient.historyRetention = (index === 1 ? "1year" : (index === 2 ? "30days" : "forever"))
+                                    }
+                                }
+
+                                CachyDivider { Layout.fillWidth: true }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: i18n("Visible Lines in Chat Preview")
+                                        font.pixelSize: 13
+                                        color: CachyTheme.textPrimary
+                                        Layout.fillWidth: true
+                                    }
+                                    QQC2.ComboBox {
+                                        Layout.preferredWidth: 160
+                                        model: ["2 Lines", "4 Lines", "6 Lines"]
+                                        currentIndex: kityClient.previewLines <= 2 ? 0 : (kityClient.previewLines >= 6 ? 2 : 1)
+                                        onActivated: index => kityClient.previewLines = (index === 0 ? 2 : (index === 2 ? 6 : 4))
+                                    }
+                                }
+
+                                CachyDivider { Layout.fillWidth: true }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: i18n("Open Kity App To")
+                                        font.pixelSize: 13
+                                        color: CachyTheme.textPrimary
+                                        Layout.fillWidth: true
+                                    }
+                                    QQC2.ComboBox {
+                                        Layout.preferredWidth: 200
+                                        model: ["Past Conversations", "Brand-New Conversation"]
+                                        currentIndex: kityClient.openToMode === "new" ? 1 : 0
+                                        onActivated: index => kityClient.openToMode = (index === 1 ? "new" : "past")
                                     }
                                 }
                             }
                         }
 
                         // =====================================================
-                        // Group 4: Ventana y Comportamiento
+                        // CARD 3: Local & Cloud Intelligence Backend
                         // =====================================================
-                        ColumnLayout {
+                        CachyCard {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
 
-                            QQC2.Label {
-                                text: i18n("🪟 Ventana y Comportamiento")
-                                font.bold: true
-                                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
-                                color: Kirigami.Theme.highlightColor
-                            }
+                            contentItem: ColumnLayout {
+                                spacing: 12
 
-                            Kirigami.AbstractCard {
-                                Layout.fillWidth: true
+                                Text {
+                                    text: i18n("AFM 3 / Local Ollama & Hands-Free Wake Word")
+                                    font.pixelSize: 14
+                                    font.weight: Font.Bold
+                                    color: CachyTheme.textPrimary
+                                }
 
-                                contentItem: ColumnLayout {
-                                    spacing: Kirigami.Units.mediumSpacing
-
-                                    RowLayout {
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: i18n("Listen for «¡Hola Kity!»")
+                                        font.pixelSize: 13
+                                        color: CachyTheme.textPrimary
                                         Layout.fillWidth: true
-                                        Layout.minimumHeight: 38
-                                        spacing: Kirigami.Units.mediumSpacing
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            Layout.minimumWidth: 0
-                                            Layout.preferredWidth: 0
-                                            spacing: 2
-                                            QQC2.Label {
-                                                text: i18n("Fijar en primer plano")
-                                                font.bold: true
-                                                Layout.fillWidth: true
-                                            }
-                                            QQC2.Label {
-                                                text: i18n("Mantener la ventana de Kity siempre visible sobre las demás aplicaciones")
-                                                font: Kirigami.Theme.smallFont
-                                                opacity: 0.75
-                                                wrapMode: Text.WordWrap
-                                                Layout.fillWidth: true
-                                                Layout.minimumWidth: 0
-                                            }
-                                        }
-                                        QQC2.Switch {
-                                            checked: root.isPinned
-                                            onToggled: root.isPinned = checked
-                                        }
                                     }
+                                    CachySwitch {
+                                        checked: kityClient.wakeWordEnabled
+                                        onToggled: checked => kityClient.wakeWordEnabled = checked
+                                    }
+                                }
 
-                                    Kirigami.Separator { Layout.fillWidth: true }
+                                CachyDivider { Layout.fillWidth: true }
 
-                                    RowLayout {
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: i18n("Active Language Model (LLM)")
+                                        font.pixelSize: 13
+                                        color: CachyTheme.textPrimary
                                         Layout.fillWidth: true
-                                        Layout.minimumHeight: 38
-                                        spacing: Kirigami.Units.mediumSpacing
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            Layout.minimumWidth: 0
-                                            Layout.preferredWidth: 0
-                                            spacing: 2
-                                            QQC2.Label {
-                                                text: i18n("Atajos de teclado rápidos")
-                                                font.bold: true
-                                                Layout.fillWidth: true
-                                            }
-                                            QQC2.Label {
-                                                text: i18n("Ctrl+M o Alt+M: Activar/detener voz · Esc: Detener generación o cerrar")
-                                                font: Kirigami.Theme.smallFont
-                                                opacity: 0.75
-                                                wrapMode: Text.WordWrap
-                                                Layout.fillWidth: true
-                                                Layout.minimumWidth: 0
-                                            }
-                                        }
+                                    }
+                                    QQC2.ComboBox {
+                                        Layout.preferredWidth: 200
+                                        model: kityClient.availableModels.length > 0 ? kityClient.availableModels : [kityClient.ollamaModel || "llama3.2:3b"]
+                                        onActivated: index => kityClient.setOllamaModel(model[index])
                                     }
                                 }
                             }
