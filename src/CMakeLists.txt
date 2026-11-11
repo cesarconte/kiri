@@ -129,6 +129,7 @@ target_link_libraries(kity PRIVATE
     Qt6::Gui
     Qt6::Quick
     Qt6::Widgets
+    KF6::ConfigCore
     KF6::CoreAddons
     KF6::DBusAddons
     KF6::I18n

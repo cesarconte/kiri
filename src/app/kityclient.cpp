@@ -22,6 +22,8 @@
 #include <QStandardPaths>
 #include <QTextDocument>
 #include <QUuid>
+#include <KSharedConfig>
+#include <KConfigGroup>
 
 // =========================================================================
 // KityConfigHelper implementation
@@ -121,18 +123,19 @@ KityClient::KityClient(QObject *parent)
     setupDBus();
     loadLocalHistory();
 
-    QSettings settings(QStringLiteral("cesar"), QStringLiteral("kity"));
-    m_ollamaModel = settings.value(QStringLiteral("ollamaModel"), QStringLiteral("llama3.2:3b")).toString();
-    m_sidebarViewMode = settings.value(QStringLiteral("GoldenGate/sidebarViewMode"), QStringLiteral("grid")).toString();
-    m_siriMode = settings.value(QStringLiteral("GoldenGate/siriMode"), QStringLiteral("ai")).toString();
-    m_voiceAccent = settings.value(QStringLiteral("GoldenGate/voiceAccent"), QStringLiteral("Spanish (Spain)")).toString();
-    m_voiceIndex = settings.value(QStringLiteral("GoldenGate/voiceIndex"), 3).toInt();
-    m_voicePace = settings.value(QStringLiteral("GoldenGate/voicePace"), 0.68).toDouble();
-    m_voiceExpressivity = settings.value(QStringLiteral("GoldenGate/voiceExpressivity"), 0.88).toDouble();
-    m_historyRetention = settings.value(QStringLiteral("GoldenGate/historyRetention"), QStringLiteral("forever")).toString();
-    m_previewLines = settings.value(QStringLiteral("GoldenGate/previewLines"), 4).toInt();
-    m_openToMode = settings.value(QStringLiteral("GoldenGate/openToMode"), QStringLiteral("past")).toString();
-    m_textScale = settings.value(QStringLiteral("GoldenGate/textScale"), 1.0).toDouble();
+    KSharedConfig::Ptr kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+    KConfigGroup cfg = kityrc->group(QStringLiteral("General"));
+    m_ollamaModel = cfg.readEntry(QStringLiteral("ollamaModel"), QStringLiteral("llama3.2:3b"));
+    m_sidebarViewMode = cfg.readEntry(QStringLiteral("sidebarViewMode"), QStringLiteral("grid"));
+    m_siriMode = cfg.readEntry(QStringLiteral("siriMode"), QStringLiteral("ai"));
+    m_voiceAccent = cfg.readEntry(QStringLiteral("voiceAccent"), QStringLiteral("Spanish (Spain)"));
+    m_voiceIndex = cfg.readEntry(QStringLiteral("voiceIndex"), 3);
+    m_voicePace = cfg.readEntry(QStringLiteral("voicePace"), 0.55);
+    m_voiceExpressivity = cfg.readEntry(QStringLiteral("voiceExpressivity"), 0.65);
+    m_historyRetention = cfg.readEntry(QStringLiteral("historyRetention"), QStringLiteral("forever"));
+    m_previewLines = cfg.readEntry(QStringLiteral("previewLines"), 4);
+    m_openToMode = cfg.readEntry(QStringLiteral("openToMode"), QStringLiteral("past"));
+    m_textScale = cfg.readEntry(QStringLiteral("textScale"), 1.0);
 
     loadConversations();
     connect(this, &KityClient::messagesChanged, this, &KityClient::syncActiveConversationFromMessages);
@@ -617,9 +620,73 @@ QString KityClient::renderMarkdown(const QString &markdown) const
 
 void KityClient::speakText(const QString &text)
 {
+    if (text.trimmed().isEmpty()) {
+        return;
+    }
     if (m_iface && m_iface->isValid()) {
         m_iface->asyncCall(QStringLiteral("speakText"), text);
+        return;
     }
+
+    // Standalone direct TTS synthesis (Edge Neural TTS + PipeWire)
+    const QString edgeCli = QStandardPaths::findExecutable(QStringLiteral("kity-edge-tts"));
+    const QString pwPlay = QStandardPaths::findExecutable(QStringLiteral("pw-play"));
+    if (edgeCli.isEmpty() || pwPlay.isEmpty()) {
+        return;
+    }
+
+    auto resolveEdgeVoiceForOrb = [](const QString &accent, int idx) -> QString {
+        if (accent.contains(QLatin1String("Latin"), Qt::CaseInsensitive)) {
+            static const QStringList voices = {
+                QStringLiteral("es-MX-DaliaNeural"), QStringLiteral("es-MX-JorgeNeural"),
+                QStringLiteral("es-CO-SalomeNeural"), QStringLiteral("es-MX-BeatrizNeural"),
+                QStringLiteral("es-AR-ElenaNeural"), QStringLiteral("es-CL-CatalinaNeural"),
+                QStringLiteral("es-US-PalomaNeural")
+            };
+            return voices.value(idx, voices.at(3));
+        }
+        if (accent.contains(QLatin1String("American"), Qt::CaseInsensitive)) {
+            static const QStringList voices = {
+                QStringLiteral("en-US-AvaNeural"), QStringLiteral("en-US-AndrewNeural"),
+                QStringLiteral("en-US-EmmaNeural"), QStringLiteral("en-US-AriaNeural"),
+                QStringLiteral("en-US-BrianNeural"), QStringLiteral("en-US-JennyNeural"),
+                QStringLiteral("en-US-GuyNeural")
+            };
+            return voices.value(idx, voices.at(3));
+        }
+        if (accent.contains(QLatin1String("British"), Qt::CaseInsensitive)) {
+            static const QStringList voices = {
+                QStringLiteral("en-GB-SoniaNeural"), QStringLiteral("en-GB-RyanNeural"),
+                QStringLiteral("en-GB-LibbyNeural"), QStringLiteral("en-GB-MaisieNeural"),
+                QStringLiteral("en-GB-ThomasNeural"), QStringLiteral("en-GB-AbbiNeural"),
+                QStringLiteral("en-GB-OllieNeural")
+            };
+            return voices.value(idx, voices.at(3));
+        }
+        static const QStringList esVoices = {
+            QStringLiteral("es-ES-AlvaroNeural"), QStringLiteral("es-ES-AbrilNeural"),
+            QStringLiteral("es-ES-ArnauNeural"), QStringLiteral("es-ES-ElviraNeural"),
+            QStringLiteral("es-ES-EstrellaNeural"), QStringLiteral("es-ES-DarioNeural"),
+            QStringLiteral("es-ES-XimenaNeural")
+        };
+        return esVoices.value(idx, esVoices.at(3));
+    };
+
+    const QString voice = resolveEdgeVoiceForOrb(m_voiceAccent, qBound(0, m_voiceIndex, 6));
+    const int ratePct = qRound((m_voicePace - 0.5) * 80.0);
+    const int pitchHz = qRound((m_voiceExpressivity - 0.5) * 28.0);
+    const QString rateArg = QStringLiteral("--rate=%1%2%").arg(ratePct >= 0 ? QStringLiteral("+") : QString()).arg(ratePct);
+    const QString pitchArg = QStringLiteral("--pitch=%1%2Hz").arg(pitchHz >= 0 ? QStringLiteral("+") : QString()).arg(pitchHz);
+
+    auto *ttsProc = new QProcess(this);
+    auto *playProc = new QProcess(this);
+    ttsProc->setStandardOutputProcess(playProc);
+    connect(playProc, &QProcess::finished, this, [ttsProc, playProc](int, QProcess::ExitStatus) {
+        playProc->deleteLater();
+        ttsProc->deleteLater();
+    });
+    ttsProc->start(edgeCli, {QStringLiteral("--voice"), voice, rateArg, pitchArg, QStringLiteral("--text"), text, QStringLiteral("--write-media"), QStringLiteral("-")});
+    playProc->start(pwPlay, {QStringLiteral("-")});
 }
 
 QStringList KityClient::extractTerminalCommands(const QString &markdown) const
@@ -702,13 +769,15 @@ void KityClient::loadConversations()
 
     if (m_conversations.isEmpty()) {
         // Seed initial Golden Gate conversations matching "The Siri app" screenshot
-        auto makeConv = [](const QString &id, const QString &timeLabel, const QString &title, const QString &preview, bool pinned, const QVariantList &msgs) {
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        auto makeConv = [nowMs](const QString &id, const QString &timeLabel, const QString &title, const QString &preview, bool pinned, const QVariantList &msgs) {
             QVariantMap map;
             map[QStringLiteral("id")] = id;
             map[QStringLiteral("timeLabel")] = timeLabel;
             map[QStringLiteral("title")] = title;
             map[QStringLiteral("preview")] = preview;
             map[QStringLiteral("pinned")] = pinned;
+            map[QStringLiteral("updatedAtMs")] = nowMs;
             map[QStringLiteral("messages")] = msgs;
             return map;
         };
@@ -774,6 +843,33 @@ void KityClient::loadConversations()
         saveConversations();
     }
 
+    // Apply Conversation Retention policy ("forever", "1year", "30days")
+    if (m_historyRetention == QLatin1String("30days") || m_historyRetention == QLatin1String("1year")) {
+        const qint64 maxAgeMs = (m_historyRetention == QLatin1String("30days"))
+            ? (30LL * 24LL * 3600LL * 1000LL)
+            : (365LL * 24LL * 3600LL * 1000LL);
+        const qint64 cutoffMs = QDateTime::currentMSecsSinceEpoch() - maxAgeMs;
+        QVariantList filtered;
+        for (const QVariant &v : std::as_const(m_conversations)) {
+            const QVariantMap map = v.toMap();
+            const bool pinned = map.value(QStringLiteral("pinned")).toBool();
+            const qint64 updatedMs = map.value(QStringLiteral("updatedAtMs"), QDateTime::currentMSecsSinceEpoch()).toLongLong();
+            if (pinned || updatedMs >= cutoffMs) {
+                filtered.append(map);
+            }
+        }
+        if (filtered.size() != m_conversations.size() && !filtered.isEmpty()) {
+            m_conversations = filtered;
+            saveConversations();
+        }
+    }
+
+    // Apply "Open Kity App To" setting ("past" vs "new")
+    if (m_openToMode == QLatin1String("new")) {
+        newConversation();
+        return;
+    }
+
     if (!m_conversations.isEmpty()) {
         m_activeConversationId = m_conversations.first().toMap().value(QStringLiteral("id")).toString();
         if (m_messages.isEmpty()) {
@@ -827,6 +923,7 @@ void KityClient::syncActiveConversationFromMessages()
                 map[QStringLiteral("preview")] = cleanPreview.simplified().left(180);
             }
             map[QStringLiteral("timeLabel")] = QDateTime::currentDateTime().toString(QStringLiteral("h:mm AP"));
+            map[QStringLiteral("updatedAtMs")] = QDateTime::currentMSecsSinceEpoch();
             map[QStringLiteral("messages")] = m_messages;
             m_conversations[i] = map;
             saveConversations();
@@ -846,6 +943,7 @@ void KityClient::newConversation()
     map[QStringLiteral("title")] = QStringLiteral("New Conversation");
     map[QStringLiteral("preview")] = QStringLiteral("Ask Kity anything or start speaking...");
     map[QStringLiteral("pinned")] = false;
+    map[QStringLiteral("updatedAtMs")] = QDateTime::currentMSecsSinceEpoch();
     map[QStringLiteral("messages")] = QVariantList();
     m_conversations.prepend(map);
     m_activeConversationId = newId;
@@ -920,14 +1018,30 @@ void KityClient::launchSpotlightCategory(const QString &category)
 
 void KityClient::previewSelectedVoice()
 {
-    speakText(QStringLiteral("Hola, soy Kity en macOS Golden Gate. Puedes ajustar mi ritmo y expresividad a tu gusto."));
+    if (m_voiceAccent.contains(QLatin1String("American"), Qt::CaseInsensitive)
+        || m_voiceAccent.contains(QLatin1String("British"), Qt::CaseInsensitive)) {
+        speakText(QStringLiteral("Hello, I'm Kity in macOS Golden Gate. You can customize my voice, pace, and expressivity."));
+    } else {
+        speakText(QStringLiteral("Hola, soy Kity en macOS Golden Gate. Puedes ajustar mi voz, ritmo y expresividad a tu gusto."));
+    }
+}
+
+static void writeGoldenGateConfigAndNotify(const QString &key, const QVariant &value, QDBusInterface *iface)
+{
+    KSharedConfig::Ptr kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+    KConfigGroup cfg = kityrc->group(QStringLiteral("General"));
+    cfg.writeEntry(key, value);
+    cfg.sync();
+    if (iface && iface->isValid()) {
+        iface->asyncCall(QStringLiteral("reloadConfig"));
+    }
 }
 
 void KityClient::setSidebarViewMode(const QString &mode)
 {
     if (m_sidebarViewMode != mode) {
         m_sidebarViewMode = mode;
-        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/sidebarViewMode"), mode);
+        writeGoldenGateConfigAndNotify(QStringLiteral("sidebarViewMode"), mode, m_iface);
         Q_EMIT goldenGatePrefsChanged();
     }
 }
@@ -936,7 +1050,7 @@ void KityClient::setSiriMode(const QString &mode)
 {
     if (m_siriMode != mode) {
         m_siriMode = mode;
-        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/siriMode"), mode);
+        writeGoldenGateConfigAndNotify(QStringLiteral("siriMode"), mode, m_iface);
         Q_EMIT goldenGatePrefsChanged();
     }
 }
@@ -945,7 +1059,7 @@ void KityClient::setVoiceAccent(const QString &accent)
 {
     if (m_voiceAccent != accent) {
         m_voiceAccent = accent;
-        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/voiceAccent"), accent);
+        writeGoldenGateConfigAndNotify(QStringLiteral("voiceAccent"), accent, m_iface);
         Q_EMIT goldenGatePrefsChanged();
     }
 }
@@ -955,7 +1069,7 @@ void KityClient::setVoiceIndex(int index)
     const int clamped = qBound(0, index, 6);
     if (m_voiceIndex != clamped) {
         m_voiceIndex = clamped;
-        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/voiceIndex"), clamped);
+        writeGoldenGateConfigAndNotify(QStringLiteral("voiceIndex"), clamped, m_iface);
         Q_EMIT goldenGatePrefsChanged();
     }
 }
@@ -965,7 +1079,7 @@ void KityClient::setVoicePace(qreal pace)
     const qreal clamped = qBound(0.0, pace, 1.0);
     if (!qFuzzyCompare(m_voicePace, clamped)) {
         m_voicePace = clamped;
-        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/voicePace"), clamped);
+        writeGoldenGateConfigAndNotify(QStringLiteral("voicePace"), clamped, m_iface);
         Q_EMIT goldenGatePrefsChanged();
     }
 }
@@ -975,7 +1089,7 @@ void KityClient::setVoiceExpressivity(qreal expr)
     const qreal clamped = qBound(0.0, expr, 1.0);
     if (!qFuzzyCompare(m_voiceExpressivity, clamped)) {
         m_voiceExpressivity = clamped;
-        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/voiceExpressivity"), clamped);
+        writeGoldenGateConfigAndNotify(QStringLiteral("voiceExpressivity"), clamped, m_iface);
         Q_EMIT goldenGatePrefsChanged();
     }
 }
@@ -984,7 +1098,8 @@ void KityClient::setHistoryRetention(const QString &ret)
 {
     if (m_historyRetention != ret) {
         m_historyRetention = ret;
-        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/historyRetention"), ret);
+        writeGoldenGateConfigAndNotify(QStringLiteral("historyRetention"), ret, m_iface);
+        loadConversations();
         Q_EMIT goldenGatePrefsChanged();
     }
 }
@@ -994,7 +1109,7 @@ void KityClient::setPreviewLines(int lines)
     const int clamped = qBound(1, lines, 8);
     if (m_previewLines != clamped) {
         m_previewLines = clamped;
-        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/previewLines"), clamped);
+        writeGoldenGateConfigAndNotify(QStringLiteral("previewLines"), clamped, m_iface);
         Q_EMIT goldenGatePrefsChanged();
     }
 }
@@ -1003,7 +1118,7 @@ void KityClient::setOpenToMode(const QString &mode)
 {
     if (m_openToMode != mode) {
         m_openToMode = mode;
-        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/openToMode"), mode);
+        writeGoldenGateConfigAndNotify(QStringLiteral("openToMode"), mode, m_iface);
         Q_EMIT goldenGatePrefsChanged();
     }
 }
@@ -1013,7 +1128,7 @@ void KityClient::setTextScale(qreal scale)
     const qreal clamped = qBound(0.85, scale, 1.35);
     if (!qFuzzyCompare(m_textScale, clamped)) {
         m_textScale = clamped;
-        QSettings(QStringLiteral("cesar"), QStringLiteral("kity")).setValue(QStringLiteral("GoldenGate/textScale"), clamped);
+        writeGoldenGateConfigAndNotify(QStringLiteral("textScale"), clamped, m_iface);
         Q_EMIT goldenGatePrefsChanged();
     }
 }

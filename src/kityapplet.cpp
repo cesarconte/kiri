@@ -354,9 +354,14 @@ QString KityApplet::resolveGeminiModel() const
 
 QString KityApplet::resolveSystemPrompt() const
 {
-    return readConfigString(QStringLiteral("systemPrompt"),
+    QString basePrompt = readConfigString(QStringLiteral("systemPrompt"),
         QStringLiteral("Eres Kity, un asistente de voz e inteligencia artificial nativo para KDE Plasma en CachyOS Linux. "
                        "Responde SIEMPRE en español de España (castellano), de forma concisa, clara, directa y natural, optimizada para síntesis de voz (TTS)."));
+    const QString siriMode = readConfigString(QStringLiteral("siriMode"), QStringLiteral("ai")).toLower();
+    if (siriMode == QLatin1String("classic")) {
+        basePrompt += QStringLiteral("\n\n[MODO KITY CLASSIC]: Responde SIEMPRE en una o dos frases muy breves y directas (máximo 30 palabras), sin encabezados ni listas largas, al estilo del asistente clásico de voz.");
+    }
+    return basePrompt;
 }
 
 QString KityApplet::resolveWhisperModelPath() const
@@ -612,6 +617,12 @@ void KityApplet::sendMessage(const QString &text, bool fromVoice)
     m_messages.append(userMsg);
     Q_EMIT messagesChanged();
     saveConversationHistory();
+
+    const QString siriMode = readConfigString(QStringLiteral("siriMode"), QStringLiteral("ai")).toLower();
+    if (siriMode == QLatin1String("off")) {
+        appendAssistantMessage(i18n("Kity está desactivado en las Preferencias (Assistant Experience: Off). Selecciónalo como «Kity AI» o «Kity Classic» para activarlo."), false);
+        return;
+    }
 
     // 1. Check if input matches an immediate system action
     if (detectAndExecuteSystemAction(trimmed)) {
@@ -2476,6 +2487,90 @@ void KityApplet::speakSentence(const QString &sentence)
     const QString piperCli = QStandardPaths::findExecutable(QStringLiteral("piper"));
     const QString piperVoicePath = resolvePiperVoicePath();
 
+    // Golden Gate Voice Customization parameters (Accent, 7 Voice Orbs, Pace, Expressivity)
+    const QString voiceAccent = readConfigString(QStringLiteral("voiceAccent"), QStringLiteral("Spanish (Spain)"));
+    const int voiceIndex = qBound(0, readConfigInt(QStringLiteral("voiceIndex"), 3), 6);
+    const double voicePace = qBound(0.0, readConfigDouble(QStringLiteral("voicePace"), 0.55), 1.0);
+    const double voiceExpressivity = qBound(0.0, readConfigDouble(QStringLiteral("voiceExpressivity"), 0.65), 1.0);
+
+    auto resolveEdgeVoiceForOrb = [](const QString &accent, int idx) -> QString {
+        if (accent.contains(QLatin1String("Latin"), Qt::CaseInsensitive)) {
+            static const QStringList voices = {
+                QStringLiteral("es-MX-DaliaNeural"), QStringLiteral("es-MX-JorgeNeural"),
+                QStringLiteral("es-CO-SalomeNeural"), QStringLiteral("es-MX-BeatrizNeural"),
+                QStringLiteral("es-AR-ElenaNeural"), QStringLiteral("es-CL-CatalinaNeural"),
+                QStringLiteral("es-US-PalomaNeural")
+            };
+            return voices.value(idx, voices.at(3));
+        }
+        if (accent.contains(QLatin1String("American"), Qt::CaseInsensitive)) {
+            static const QStringList voices = {
+                QStringLiteral("en-US-AvaNeural"), QStringLiteral("en-US-AndrewNeural"),
+                QStringLiteral("en-US-EmmaNeural"), QStringLiteral("en-US-AriaNeural"),
+                QStringLiteral("en-US-BrianNeural"), QStringLiteral("en-US-JennyNeural"),
+                QStringLiteral("en-US-GuyNeural")
+            };
+            return voices.value(idx, voices.at(3));
+        }
+        if (accent.contains(QLatin1String("British"), Qt::CaseInsensitive)) {
+            static const QStringList voices = {
+                QStringLiteral("en-GB-SoniaNeural"), QStringLiteral("en-GB-RyanNeural"),
+                QStringLiteral("en-GB-LibbyNeural"), QStringLiteral("en-GB-MaisieNeural"),
+                QStringLiteral("en-GB-ThomasNeural"), QStringLiteral("en-GB-AbbiNeural"),
+                QStringLiteral("en-GB-OllieNeural")
+            };
+            return voices.value(idx, voices.at(3));
+        }
+        static const QStringList esVoices = {
+            QStringLiteral("es-ES-AlvaroNeural"), QStringLiteral("es-ES-AbrilNeural"),
+            QStringLiteral("es-ES-ArnauNeural"), QStringLiteral("es-ES-ElviraNeural"),
+            QStringLiteral("es-ES-EstrellaNeural"), QStringLiteral("es-ES-DarioNeural"),
+            QStringLiteral("es-ES-XimenaNeural")
+        };
+        return esVoices.value(idx, esVoices.at(3));
+    };
+
+    auto resolveGoogleVoiceForOrb = [](const QString &accent, int idx, QString &langCodeOut) -> QString {
+        if (accent.contains(QLatin1String("Latin"), Qt::CaseInsensitive)) {
+            langCodeOut = QStringLiteral("es-US");
+            static const QStringList voices = {
+                QStringLiteral("es-US-Neural2-A"), QStringLiteral("es-US-Neural2-B"),
+                QStringLiteral("es-US-Neural2-C"), QStringLiteral("es-US-Neural2-A"),
+                QStringLiteral("es-US-Studio-B"), QStringLiteral("es-US-Wavenet-A"),
+                QStringLiteral("es-US-Wavenet-B")
+            };
+            return voices.value(idx, voices.at(3));
+        }
+        if (accent.contains(QLatin1String("American"), Qt::CaseInsensitive)) {
+            langCodeOut = QStringLiteral("en-US");
+            static const QStringList voices = {
+                QStringLiteral("en-US-Neural2-C"), QStringLiteral("en-US-Neural2-D"),
+                QStringLiteral("en-US-Neural2-E"), QStringLiteral("en-US-Neural2-F"),
+                QStringLiteral("en-US-Neural2-G"), QStringLiteral("en-US-Neural2-H"),
+                QStringLiteral("en-US-Neural2-I")
+            };
+            return voices.value(idx, voices.at(3));
+        }
+        if (accent.contains(QLatin1String("British"), Qt::CaseInsensitive)) {
+            langCodeOut = QStringLiteral("en-GB");
+            static const QStringList voices = {
+                QStringLiteral("en-GB-Neural2-A"), QStringLiteral("en-GB-Neural2-B"),
+                QStringLiteral("en-GB-Neural2-C"), QStringLiteral("en-GB-Neural2-D"),
+                QStringLiteral("en-GB-Neural2-F"), QStringLiteral("en-GB-Wavenet-A"),
+                QStringLiteral("en-GB-Wavenet-B")
+            };
+            return voices.value(idx, voices.at(3));
+        }
+        langCodeOut = QStringLiteral("es-ES");
+        static const QStringList esVoices = {
+            QStringLiteral("es-ES-Neural2-B"), QStringLiteral("es-ES-Neural2-A"),
+            QStringLiteral("es-ES-Neural2-C"), QStringLiteral("es-ES-Neural2-F"),
+            QStringLiteral("es-ES-Neural2-D"), QStringLiteral("es-ES-Neural2-E"),
+            QStringLiteral("es-ES-Neural2-F")
+        };
+        return esVoices.value(idx, esVoices.at(3));
+    };
+
     // 1. Google Cloud Text-to-Speech API (Neural2 / Journey / Studio voices)
     if (ttsEngine == QLatin1String("google") && !googleApiKey.isEmpty()) {
         m_isSpeakingSentence = true;
@@ -2485,17 +2580,19 @@ void KityApplet::speakSentence(const QString &sentence)
             startWakeWordListener();
         }
 
-        const QString googleVoice = readConfigString(QStringLiteral("googleVoice"), QStringLiteral("es-ES-Neural2-F"));
+        QString langCode = QStringLiteral("es-ES");
+        const QString googleVoice = resolveGoogleVoiceForOrb(voiceAccent, voiceIndex, langCode);
         QJsonObject inputObj;
         inputObj[QStringLiteral("text")] = sentence;
 
         QJsonObject voiceObj;
-        voiceObj[QStringLiteral("languageCode")] = QStringLiteral("es-ES");
+        voiceObj[QStringLiteral("languageCode")] = langCode;
         voiceObj[QStringLiteral("name")] = googleVoice;
-        voiceObj[QStringLiteral("ssmlGender")] = QStringLiteral("FEMALE");
 
         QJsonObject audioConfig;
         audioConfig[QStringLiteral("audioEncoding")] = QStringLiteral("MP3");
+        audioConfig[QStringLiteral("speakingRate")] = 0.65 + (voicePace * 0.75);
+        audioConfig[QStringLiteral("pitch")] = (voiceExpressivity - 0.5) * 10.0;
 
         QJsonObject payload;
         payload[QStringLiteral("input")] = inputObj;
@@ -2550,7 +2647,12 @@ void KityApplet::speakSentence(const QString &sentence)
             startWakeWordListener();
         }
 
-        const QString edgeVoice = readConfigString(QStringLiteral("edgeVoice"), QStringLiteral("es-ES-ElviraNeural"));
+        const QString edgeVoice = resolveEdgeVoiceForOrb(voiceAccent, voiceIndex);
+        const int ratePct = qRound((voicePace - 0.5) * 80.0);
+        const int pitchHz = qRound((voiceExpressivity - 0.5) * 28.0);
+        const QString rateArg = QStringLiteral("--rate=%1%2%").arg(ratePct >= 0 ? QStringLiteral("+") : QString()).arg(ratePct);
+        const QString pitchArg = QStringLiteral("--pitch=%1%2Hz").arg(pitchHz >= 0 ? QStringLiteral("+") : QString()).arg(pitchHz);
+
         m_ttsProcess = new QProcess(this);
         m_pwPlayProcess = new QProcess(this);
 
@@ -2558,6 +2660,8 @@ void KityApplet::speakSentence(const QString &sentence)
 
         QStringList edgeArgs;
         edgeArgs << QStringLiteral("--voice") << edgeVoice
+                 << rateArg
+                 << pitchArg
                  << QStringLiteral("--text") << sentence
                  << QStringLiteral("--write-media") << QStringLiteral("-");
 
@@ -2589,7 +2693,11 @@ void KityApplet::speakSentence(const QString &sentence)
                  << QStringLiteral("--output_file") << QStringLiteral("-");
     } else if (!piperCli.isEmpty() && !piperVoicePath.isEmpty()) {
         execProg = piperCli;
+        const double lengthScale = 1.35 - (voicePace * 0.65);
+        const double noiseScale = 0.35 + (voiceExpressivity * 0.50);
         execArgs << QStringLiteral("--model") << piperVoicePath
+                 << QStringLiteral("--length_scale") << QString::number(lengthScale, 'f', 2)
+                 << QStringLiteral("--noise_scale") << QString::number(noiseScale, 'f', 2)
                  << QStringLiteral("--output_file") << QStringLiteral("-");
     } else if (!kokoroCli.isEmpty()) {
         execProg = kokoroCli;
