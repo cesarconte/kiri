@@ -12,7 +12,7 @@ Categories=Utility;AudioVideo;System;
 StartupWMClass=org.cesar.kity
 StartupNotify=true
 MimeType=x-scheme-handler/kity;
-Actions=NewChat;Listen;OCR;
+Actions=NewChat;Listen;OCR;AskScreen;WritingTools;
 
 [Desktop Action NewChat]
 Name=Nueva conversación
@@ -31,3 +31,15 @@ Name=Captura de pantalla inteligente (Live Text)
 Name[es]=Captura de pantalla inteligente (Live Text)
 Exec=kity --ocr
 Icon=rectangular-snip-symbolic
+
+[Desktop Action AskScreen]
+Name=Preguntar sobre esta pantalla
+Name[es]=Preguntar sobre esta pantalla
+Exec=kity --ask-screen
+Icon=system-search-symbolic
+
+[Desktop Action WritingTools]
+Name=Herramientas de Escritura (Apple Intelligence)
+Name[es]=Herramientas de Escritura (Apple Intelligence)
+Exec=kity --writing-tools
+Icon=document-edit-symbolic

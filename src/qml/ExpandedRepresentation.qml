@@ -11,7 +11,6 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 
 import org.kde.kirigami as Kirigami
-import org.kde.plasma.components as PlasmaComponents3
 import org.kde.plasma.plasmoid
 
 import "cards" as Cards
@@ -127,7 +126,7 @@ Item {
                 }
             }
 
-            PlasmaComponents3.Label {
+            QQC2.Label {
                 Layout.fillWidth: true
                 font: Kirigami.Theme.smallFont
                 opacity: 0.85
@@ -156,7 +155,7 @@ Item {
             }
 
             // Quick Toggle for "¡Hola Kity!" Wake Word
-            PlasmaComponents3.ToolButton {
+            QQC2.ToolButton {
                 id: wakeWordButton
                 visible: Plasmoid.whisperAvailable
                 icon.name: Plasmoid.wakeWordEnabled ? "mic-on" : "mic-off"
@@ -174,7 +173,7 @@ Item {
             }
 
             // Speech Output Mode Selector Button
-            PlasmaComponents3.ToolButton {
+            QQC2.ToolButton {
                 id: speechModeButton
                 icon.name: {
                     const mode = Plasmoid.configuration.speechOutputMode;
@@ -210,7 +209,7 @@ Item {
             }
 
             // Apple Intelligence Writing Tools Toggle Button
-            PlasmaComponents3.ToolButton {
+            QQC2.ToolButton {
                 id: writingToolsButton
                 icon.name: "document-edit-symbolic"
                 icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
@@ -228,7 +227,7 @@ Item {
             }
 
             // Visual Intelligence & Live Text Toggle Button (Phase 3 - Spectacle Wayland + OCR)
-            PlasmaComponents3.ToolButton {
+            QQC2.ToolButton {
                 id: visualIntelButton
                 icon.name: "camera-photo-symbolic"
                 icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
@@ -246,7 +245,7 @@ Item {
             }
 
             // Math Notes Toggle Button (macOS Math Notes: live multi-line calculator with variables)
-            PlasmaComponents3.ToolButton {
+            QQC2.ToolButton {
                 id: mathNotesButton
                 icon.name: "view-time-schedule-calculus-symbolic"
                 icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
@@ -265,7 +264,7 @@ Item {
             }
 
             // Kity Mobile Remote Button (Phone as Microphone via Apple Intelligence PWA & KDE Connect)
-            PlasmaComponents3.ToolButton {
+            QQC2.ToolButton {
                 id: mobileRemoteButton
                 icon.name: "kdeconnect-symbolic"
                 onClicked: {
@@ -281,7 +280,7 @@ Item {
             }
 
             // Clear Conversation Button
-            PlasmaComponents3.ToolButton {
+            QQC2.ToolButton {
                 icon.name: "edit-clear-history-symbolic"
                 visible: Plasmoid.messages.length > 0
                 onClicked: Plasmoid.clearHistory()
@@ -322,7 +321,7 @@ Item {
                         color: Kirigami.Theme.highlightColor
                     }
 
-                    PlasmaComponents3.Label {
+                    QQC2.Label {
                         Layout.fillWidth: true
                         font.bold: true
                         font.pixelSize: Kirigami.Theme.smallFont.pixelSize
@@ -354,7 +353,7 @@ Item {
                             { action: "translate:es", label: i18n("🌐 → Español") }
                         ]
 
-                        PlasmaComponents3.Button {
+                        QQC2.Button {
                             required property var modelData
                             Layout.fillWidth: true
                             text: modelData.label
@@ -400,7 +399,7 @@ Item {
                     Layout.fillHeight: true
                     Layout.preferredWidth: parent.width * 0.58
 
-                    PlasmaComponents3.TextArea {
+                    QQC2.TextArea {
                         id: mathInput
                         font.family: "monospace"
                         wrapMode: TextEdit.NoWrap
@@ -420,7 +419,7 @@ Item {
                     Repeater {
                         model: expandedRoot.mathResults
 
-                        PlasmaComponents3.Label {
+                        QQC2.Label {
                             required property var modelData
                             width: parent.width
                             height: mathInput.font.pixelSize > 0 ? Math.round(mathInput.font.pixelSize * 1.5) : Kirigami.Units.gridUnit
@@ -464,7 +463,7 @@ Item {
                         color: Kirigami.Theme.highlightColor
                     }
 
-                    PlasmaComponents3.Label {
+                    QQC2.Label {
                         font.bold: true
                         font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                         text: i18n("Inteligencia Visual y Live Text:")
@@ -479,7 +478,7 @@ Item {
                             { scope: "fullscreen", label: i18n("🖥️ Pantalla") }
                         ]
 
-                        PlasmaComponents3.ToolButton {
+                        QQC2.ToolButton {
                             required property var modelData
                             text: modelData.label
                             font: Kirigami.Theme.smallFont
@@ -504,7 +503,7 @@ Item {
                             { action: "explain", label: i18n("🔍 Explicar / Analizar") }
                         ]
 
-                        PlasmaComponents3.Button {
+                        QQC2.Button {
                             required property var modelData
                             Layout.fillWidth: true
                             text: modelData.label
@@ -555,7 +554,7 @@ Item {
                     wrapMode: Text.WordWrap
                 }
 
-                PlasmaComponents3.Label {
+                QQC2.Label {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
                     opacity: 0.75
@@ -580,10 +579,44 @@ Item {
                             { label: "🌙 Modo oscuro", prompt: "Activa el modo oscuro", isWritingTool: false }
                         ]
 
-                        PlasmaComponents3.Button {
+                        QQC2.Button {
+                            id: expActionBtn
                             required property var modelData
                             Layout.fillWidth: true
+                            Layout.minimumHeight: Kirigami.Units.gridUnit * 2.3
                             text: modelData.label
+                            font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                            hoverEnabled: true
+
+                            contentItem: RowLayout {
+                                spacing: Kirigami.Units.smallSpacing
+                                QQC2.Label {
+                                    Layout.fillWidth: true
+                                    text: expActionBtn.text
+                                    color: expActionBtn.down ? palette.highlight : palette.buttonText
+                                    font: expActionBtn.font
+                                    elide: Text.ElideRight
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+
+                            background: Rectangle {
+                                radius: 10
+                                color: expActionBtn.down
+                                    ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
+                                    : (expActionBtn.hovered
+                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
+                                        : palette.button)
+                                border.width: 1
+                                border.color: expActionBtn.hovered
+                                    ? palette.highlight
+                                    : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15)
+
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                                Behavior on border.color { ColorAnimation { duration: 150 } }
+                            }
+
                             onClicked: {
                                 if (modelData.isWritingTool) {
                                     expandedRoot.showWritingTools = true;
@@ -756,7 +789,7 @@ Item {
                                                     text: cmdCard.modelData
                                                 }
 
-                                                PlasmaComponents3.Button {
+                                                QQC2.Button {
                                                     icon.name: "media-playback-start-symbolic"
                                                     text: i18n("Ejecutar en Konsole")
                                                     onClicked: {
@@ -766,7 +799,7 @@ Item {
                                                     QQC2.ToolTip.text: i18n("Ejecutar orden en una ventana interactiva de Konsole")
                                                 }
 
-                                                PlasmaComponents3.ToolButton {
+                                                QQC2.ToolButton {
                                                     icon.name: "edit-copy-symbolic"
                                                     flat: true
                                                     implicitWidth: Kirigami.Units.iconSizes.smallMedium
@@ -812,7 +845,7 @@ Item {
                                     Repeater {
                                         model: msgDelegate.modelData.sources || []
 
-                                        PlasmaComponents3.Button {
+                                        QQC2.Button {
                                             required property var modelData
                                             icon.name: "globe"
                                             text: modelData.title || i18n("Fuente")
@@ -828,7 +861,7 @@ Item {
                                     Layout.fillWidth: true
                                     spacing: Kirigami.Units.smallSpacing
 
-                                    PlasmaComponents3.Label {
+                                    QQC2.Label {
                                         text: expandedRoot.formatTimestamp(msgDelegate.modelData.timestamp ?? "")
                                         font: Kirigami.Theme.smallFont
                                         opacity: 0.55
@@ -837,7 +870,7 @@ Item {
                                     Item { Layout.fillWidth: true }
 
                                     // Speak / Stop button on Assistant responses
-                                    PlasmaComponents3.ToolButton {
+                                    QQC2.ToolButton {
                                         visible: !msgDelegate.isUser && msgDelegate.modelData.content.length > 0
                                         icon.name: Plasmoid.isSpeaking ? "media-playback-stop-symbolic" : "audio-volume-high-symbolic"
                                         flat: true
@@ -855,7 +888,7 @@ Item {
                                     }
 
                                     // Copy message button
-                                    PlasmaComponents3.ToolButton {
+                                    QQC2.ToolButton {
                                         visible: msgDelegate.modelData.content.length > 0
                                         icon.name: "edit-copy-symbolic"
                                         flat: true
@@ -876,7 +909,7 @@ Item {
         }
 
         // Dynamic status bar when recording, transcribing, thinking, or speaking (collapses when empty)
-        PlasmaComponents3.Label {
+        QQC2.Label {
             Layout.fillWidth: true
             visible: Plasmoid.statusMessage.length > 0 && Plasmoid.state !== "idle"
             horizontalAlignment: Text.AlignHCenter
@@ -933,52 +966,102 @@ Item {
                 }
 
                 // Bottom Text Input & Send Bar (Clean, without redundant mic button)
-                RowLayout {
+                Rectangle {
+                    id: promptInputBox
                     Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
+                    implicitHeight: Math.max(promptInputRow.implicitHeight + Kirigami.Units.smallSpacing * 2, Kirigami.Units.gridUnit * 2.5)
+                    radius: 12
+                    color: palette.base
+                    border.width: promptField.activeFocus ? 1.5 : 1
+                    border.color: promptField.activeFocus
+                        ? palette.highlight
+                        : Kirigami.ColorUtils.linearInterpolation(palette.base, palette.text, 0.18)
 
-                    PlasmaComponents3.ScrollView {
-                        id: promptScrollView
-                        Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignBottom
-                        Layout.maximumHeight: Kirigami.Units.gridUnit * 6
-                        QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
 
-                        PlasmaComponents3.TextArea {
-                            id: promptField
-                            focus: true
-                            placeholderText: Plasmoid.isRecording
-                                ? i18n("Escuchando tu voz…")
-                                : i18n("Pregúntale o pídele cualquier cosa a Kity…")
-                            enabled: !Plasmoid.isRecording
-                            wrapMode: TextEdit.Wrap
+                    RowLayout {
+                        id: promptInputRow
+                        anchors.fill: parent
+                        anchors.leftMargin: Kirigami.Units.mediumSpacing
+                        anchors.rightMargin: Kirigami.Units.smallSpacing
+                        anchors.topMargin: Kirigami.Units.smallSpacing
+                        anchors.bottomMargin: Kirigami.Units.smallSpacing
+                        spacing: Kirigami.Units.smallSpacing
 
-                            Keys.onPressed: event => {
-                                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) {
-                                    if (Plasmoid.state !== "thinking" && text.trim().length > 0) {
-                                        Plasmoid.sendMessage(text, false);
-                                        text = "";
+                        QQC2.ScrollView {
+                            id: promptScrollView
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            Layout.maximumHeight: Kirigami.Units.gridUnit * 6
+                            QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
+
+                            QQC2.TextArea {
+                                id: promptField
+                                focus: true
+                                color: palette.text
+                                placeholderTextColor: palette.placeholderText
+                                selectionColor: palette.highlight
+                                selectedTextColor: palette.highlightedText
+                                font: Kirigami.Theme.defaultFont
+                                background: null
+                                placeholderText: Plasmoid.isRecording
+                                    ? i18n("Escuchando tu voz…")
+                                    : i18n("Pregúntale o pídele cualquier cosa a Kity…")
+                                enabled: !Plasmoid.isRecording
+                                wrapMode: TextEdit.Wrap
+
+                                Keys.onPressed: event => {
+                                    if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) {
+                                        if (Plasmoid.state !== "thinking" && text.trim().length > 0) {
+                                            Plasmoid.sendMessage(text, false);
+                                            text = "";
+                                        }
+                                        event.accepted = true;
                                     }
-                                    event.accepted = true;
                                 }
                             }
                         }
-                    }
 
-                    PlasmaComponents3.Button {
-                        Layout.alignment: Qt.AlignBottom
-                        icon.name: Plasmoid.state === "thinking" ? "process-stop-symbolic" : "document-send-symbolic"
-                        enabled: Plasmoid.state === "thinking" || promptField.text.trim().length > 0
-                        onClicked: {
-                            if (Plasmoid.state === "thinking") {
-                                Plasmoid.stopGeneration();
-                            } else if (promptField.text.trim().length > 0) {
-                                Plasmoid.sendMessage(promptField.text, false);
-                                promptField.text = "";
+                        QQC2.Button {
+                            id: expSendBtn
+                            Layout.alignment: Qt.AlignBottom
+                            Layout.preferredWidth: Kirigami.Units.gridUnit * 2.2
+                            Layout.preferredHeight: Kirigami.Units.gridUnit * 2.2
+                            hoverEnabled: true
+                            enabled: Plasmoid.state === "thinking" || promptField.text.trim().length > 0
+
+                            contentItem: Kirigami.Icon {
+                                anchors.centerIn: parent
+                                source: Plasmoid.state === "thinking" ? "process-stop-symbolic" : "document-send-symbolic"
+                                color: expSendBtn.enabled
+                                    ? (Plasmoid.state === "thinking" ? Kirigami.Theme.negativeTextColor : (expSendBtn.hovered ? palette.highlight : palette.buttonText))
+                                    : palette.placeholderText
                             }
+
+                            background: Rectangle {
+                                radius: 8
+                                color: expSendBtn.down
+                                    ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
+                                    : (expSendBtn.hovered
+                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
+                                        : (expSendBtn.enabled ? palette.button : "transparent"))
+                                border.width: 1
+                                border.color: expSendBtn.enabled
+                                    ? (expSendBtn.hovered ? palette.highlight : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15))
+                                    : "transparent"
+                            }
+
+                            onClicked: {
+                                if (Plasmoid.state === "thinking") {
+                                    Plasmoid.stopGeneration();
+                                } else if (promptField.text.trim().length > 0) {
+                                    Plasmoid.sendMessage(promptField.text, false);
+                                    promptField.text = "";
+                                }
+                            }
+                            QQC2.ToolTip.visible: hovered
+                            QQC2.ToolTip.text: Plasmoid.state === "thinking" ? i18n("Detener generación") : i18n("Enviar mensaje")
                         }
-                        QQC2.ToolTip.visible: hovered
-                        QQC2.ToolTip.text: Plasmoid.state === "thinking" ? i18n("Detener generación") : i18n("Enviar mensaje")
                     }
                 }
             }

@@ -2,6 +2,9 @@
     <qresource prefix="/qml/app">
         <file>qml/MainWindow.qml</file>
         <file>qml/SiriOrbAnimation.qml</file>
+        <file>qml/cards/WeatherCard.qml</file>
+        <file>qml/cards/MediaCard.qml</file>
+        <file>qml/cards/EventCard.qml</file>
         <file>shaders/window_glow.frag.qsb</file>
     </qresource>
 </RCC>

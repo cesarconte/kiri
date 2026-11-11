@@ -26,9 +26,9 @@ KityRunner::KityRunner(QObject *parent, const KPluginMetaData &metaData)
 
 void KityRunner::init()
 {
-    setMinLetterCount(3);
-    addSyntax(QStringList{QStringLiteral("kity :q:"), QStringLiteral("ia :q:")},
-              i18n("Pregunta a Kity, ejecuta acciones del sistema o busca en tu base de conocimiento local (RAG)"));
+    setMinLetterCount(2);
+    addSyntax(QStringList{QStringLiteral("? :q:"), QStringLiteral("kity :q:"), QStringLiteral("ia :q:")},
+              i18n("Pregunta directamente a Kity, ejecuta acciones del sistema o busca en tu base de conocimiento local (RAG)"));
     addSyntax(QStringLiteral("escribe :q:"),
               i18n("Aplica las Herramientas de Escritura de Kity sobre el portapapeles o texto indicado"));
     addSyntax(QStringList{QStringLiteral("traduce :q:"), QStringLiteral("translate :q:")},
@@ -172,19 +172,21 @@ void KityRunner::match(KRunner::RunnerContext &context)
         return;
     }
 
-    // 3. Direct Kity AI / System Intent query ("kity ...", "ia ...", or natural question ending with "?")
-    static const QRegularExpression prefixRx(QStringLiteral("^(?:kity|ia)\\s+(.+)$"), QRegularExpression::CaseInsensitiveOption);
+    // 3. Direct Kity AI / System Intent query ("? ...", "kity ...", "ia ...", or natural question ending with "?")
+    static const QRegularExpression prefixRx(
+        QStringLiteral("^(?:kity\\s+|ia\\s+|\\?\\s*|¿\\s*)(.+)$"),
+        QRegularExpression::CaseInsensitiveOption);
     const auto pm = prefixRx.match(rawQuery);
     const bool hasExplicitPrefix = pm.hasMatch();
     const QString cleanPrompt = hasExplicitPrefix ? pm.captured(1).trimmed() : rawQuery;
 
-    if (hasExplicitPrefix || rawQuery.endsWith(QLatin1Char('?')) || rawQuery.startsWith(QChar(u'¿'))) {
+    if (hasExplicitPrefix || rawQuery.endsWith(QLatin1Char('?')) || rawQuery.startsWith(QChar(u'¿')) || rawQuery.startsWith(QLatin1Char('?'))) {
         KRunner::QueryMatch m(this);
         m.setId(QStringLiteral("kity_ask_") + cleanPrompt);
         m.setCategoryRelevance(hasExplicitPrefix
                                ? KRunner::QueryMatch::CategoryRelevance::Highest
                                : KRunner::QueryMatch::CategoryRelevance::Moderate);
-        m.setRelevance(hasExplicitPrefix ? 0.96 : 0.72);
+        m.setRelevance(hasExplicitPrefix ? 0.98 : 0.72);
         m.setIconName(QStringLiteral("org.cesar.kity"));
         m.setText(i18n("Preguntar a Kity: «%1»", cleanPrompt));
         m.setSubtext(i18n("Procesar con Kity AI (Ollama local / Acciones del sistema Plasma 6)"));
@@ -242,6 +244,7 @@ void KityRunner::run(const KRunner::RunnerContext &context, const KRunner::Query
                                payload.value(QStringLiteral("action")).toString(),
                                payload.value(QStringLiteral("text")).toString());
     } else if (type == QStringLiteral("ask")) {
+        genericIface.asyncCall(QStringLiteral("openUI"));
         genericIface.asyncCall(QStringLiteral("sendMessage"),
                                payload.value(QStringLiteral("prompt")).toString(),
                                false);

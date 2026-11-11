@@ -7,7 +7,6 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
-import org.kde.plasma.components as PlasmaComponents3
 
 Rectangle {
     id: root
@@ -155,7 +154,7 @@ Rectangle {
             spacing: Kirigami.Units.largeSpacing
 
             // Previous
-            PlasmaComponents3.Button {
+            QQC2.Button {
                 icon.name: "media-skip-backward"
                 onClicked: root.mediaActionTriggered("previous")
                 QQC2.ToolTip.visible: hovered
@@ -163,7 +162,7 @@ Rectangle {
             }
 
             // Play / Pause
-            PlasmaComponents3.Button {
+            QQC2.Button {
                 icon.name: (root.cardData.status === "Playing" || root.cardData.status === "reproduciendo")
                     ? "media-playback-pause"
                     : "media-playback-start"
@@ -176,7 +175,7 @@ Rectangle {
             }
 
             // Next
-            PlasmaComponents3.Button {
+            QQC2.Button {
                 icon.name: "media-skip-forward"
                 onClicked: root.mediaActionTriggered("next")
                 QQC2.ToolTip.visible: hovered

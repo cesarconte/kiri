@@ -198,6 +198,7 @@ private:
 
     // Speech & Audio
     void runWhisperTranscription();
+    void transcribeAndExecuteAudio(const QString &wavPath);
     void checkWakeWordTranscription(const QString &wavPath);
     void enqueueSentenceForSpeech(const QString &sentence);
     void playNextTtsQueueItem();

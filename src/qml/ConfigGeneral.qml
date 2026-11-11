@@ -147,12 +147,16 @@ KCMUtils.SimpleKCM {
 
     readonly property var calendarClientModel: [
         {
-            "value": "proton",
-            "text": i18n("Proton Calendar (Aplicación / Web)")
+            "value": "korganizer",
+            "text": i18n("KOrganizer (Google Calendar)")
         },
         {
             "value": "google",
             "text": i18n("Google Calendar (Navegador web)")
+        },
+        {
+            "value": "proton",
+            "text": i18n("Proton Calendar (Aplicación / Web)")
         }
     ]
 

@@ -15,14 +15,15 @@ import CachyOS.UI
 
 import "cards" as Cards
 
-Window {
+CachyWindow {
     id: root
 
     title: i18n("Kity")
     width: CachyTheme.windowWidthUtility
     height: 760
     color: "transparent"
-    flags: Qt.Window | Qt.FramelessWindowHint
+    showTrafficLights: !root.compactMode
+    cornerRadius: root.compactMode ? Math.round(height / 2) : CachyTheme.radiusWindow
 
     property bool isPinned: false
     property bool compactMode: false
@@ -33,6 +34,9 @@ Window {
     property var mathResults: []
     property string visualCaptureScope: "region"
 
+    readonly property bool isVoiceActive: kityClient.state === "listening" || kityClient.state === "thinking" || kityClient.state === "speaking"
+    readonly property bool isDark: CachyTheme.isDark
+
     minimumWidth: compactMode ? 360 : 440
     minimumHeight: compactMode ? 64 : 580
 
@@ -42,7 +46,7 @@ Window {
         to: 1000.0
         duration: 1000000
         loops: Animation.Infinite
-        running: glassContainer.isVoiceActive
+        running: root.isVoiceActive
     }
 
     onIsPinnedChanged: updateWindowFlags()
@@ -107,39 +111,79 @@ Window {
     }
 
     // =========================================================================
-    // Liquid Glass Container with Apple Intelligence Halo
+    // Header Center: Glowing Iridescent Siri Pill
     // =========================================================================
-    Rectangle {
-        id: glassContainer
-        anchors.fill: parent
-        radius: root.compactMode ? Math.round(height / 2) : CachyTheme.radiusWindow
-        Behavior on radius {
-            NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+    headerCenter: [
+        Rectangle {
+            height: 26
+            width: siriPillRow.implicitWidth + 20
+            radius: 13
+            color: CachyTheme.cardBackground
+            border.width: 1
+            border.color: CachyTheme.specularBorder
+
+            RowLayout {
+                id: siriPillRow
+                anchors.centerIn: parent
+                spacing: 6
+
+                SiriOrbAnimation {
+                    Layout.preferredWidth: 16
+                    Layout.preferredHeight: 16
+                    assistantState: kityClient.state
+                    audioLevel: kityClient.audioLevel
+                }
+
+                QQC2.Label {
+                    text: i18n("Kity")
+                    font.bold: true
+                    font.pixelSize: 13
+                    color: CachyTheme.textPrimary
+                }
+            }
         }
+    ]
 
-        readonly property bool isVoiceActive: kityClient.state === "listening" || kityClient.state === "thinking" || kityClient.state === "speaking"
-        readonly property bool isDark: CachyTheme.isDark
+    // =========================================================================
+    // Header Actions: Pin & Preferences (Aligned right at 18px margin)
+    // Order: Preferences on the far right, preceded by Pin
+    // =========================================================================
+    headerActions: [
+        Row {
+            spacing: 4
+            anchors.verticalCenter: parent.verticalCenter
 
-        // Translucent Liquid Glass Background adhering to system theme (macOS Golden Gate)
-        color: isDark
-            ? Qt.rgba(0.11, 0.11, 0.13, 0.88)
-            : Qt.rgba(0.96, 0.96, 0.98, 0.90)
+            // Pin Window On Top (Antecediendo a Preferencias)
+            QQC2.ToolButton {
+                icon.name: root.isPinned ? "window-pin" : "window-unpin"
+                checkable: true
+                checked: root.isPinned
+                QQC2.ToolTip.text: root.isPinned ? i18n("Desanclar de primer plano") : i18n("Mantener siempre encima")
+                QQC2.ToolTip.visible: hovered
+                onClicked: root.isPinned = !root.isPinned
+            }
 
-        // Specular border when idle
-        border.width: 1
-        border.color: CachyTheme.specularBorder
+            // Preferences Button (A la derecha del todo)
+            QQC2.ToolButton {
+                icon.name: "configure"
+                QQC2.ToolTip.text: i18n("Preferencias de Kity")
+                QQC2.ToolTip.visible: hovered
+                onClicked: root.showPreferences = !root.showPreferences
+            }
+        }
+    ]
 
-        // =====================================================================
-        // Apple Intelligence Siri Iridescent Halo (GPU Shader from ksiriglow)
-        // Adapted to window boundary with smooth rounded corners (radius 22)
-        // =====================================================================
+    // =========================================================================
+    // Overlay Layer: Siri Iridescent Halo Shader
+    // =========================================================================
+    overlay: [
         ShaderEffect {
             id: siriHaloShader
             anchors.fill: parent
             z: 10
             enabled: false
             visible: opacity > 0.001
-            opacity: glassContainer.isVoiceActive ? 1.0 : 0.0
+            opacity: root.isVoiceActive ? 1.0 : 0.0
             Behavior on opacity {
                 NumberAnimation { duration: 250; easing.type: Easing.InOutQuad }
             }
@@ -148,10 +192,16 @@ Window {
             property real audioAmp: kityClient.audioLevel
             property size resolution: Qt.size(width, height)
             property real isSpeaking: kityClient.state === "speaking" ? 1.0 : 0.0
-            property real cornerRadius: glassContainer.radius
+            property real cornerRadius: root.cornerRadius
 
             fragmentShader: "qrc:/qml/app/shaders/window_glow.frag.qsb"
         }
+    ]
+
+    // =========================================================================
+    // Client Content Area
+    // =========================================================================
+    contentData: [
 
         // =====================================================================
         // Siri Floating Dynamic Island Layout (Compact Mode)
@@ -302,7 +352,7 @@ Window {
                     onClicked: root.close()
                 }
             }
-        }
+        },
 
         // =====================================================================
         // Window Content Layout
@@ -316,88 +366,6 @@ Window {
             anchors.bottomMargin: CachyTheme.marginWindow
             spacing: CachyTheme.spacingMedium
             visible: !root.showPreferences && !root.compactMode
-
-            // -----------------------------------------------------------------
-            // Top Window Bar: Traffic Lights, Siri Status Pill, Preferences & Pin
-            // -----------------------------------------------------------------
-            Item {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                implicitHeight: CachyTheme.titleBarHeight
-
-                // Window Drag Handler
-                DragHandler {
-                    target: null
-                    onActiveChanged: {
-                        if (active) root.startSystemMove();
-                    }
-                }
-
-                // Left: Official macOS Golden Gate Traffic Lights
-                CachyTrafficLights {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 0
-                    anchors.verticalCenter: parent.verticalCenter
-                    window: root
-                }
-
-                // Center: Glowing Iridescent Siri Pill
-                Rectangle {
-                    anchors.centerIn: parent
-                    height: 26
-                    width: siriPillRow.implicitWidth + 20
-                    radius: 13
-                    color: CachyTheme.cardBackground
-                    border.width: 1
-                    border.color: CachyTheme.specularBorder
-
-                    RowLayout {
-                        id: siriPillRow
-                        anchors.centerIn: parent
-                        spacing: 6
-
-                        SiriOrbAnimation {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
-                            assistantState: kityClient.state
-                            audioLevel: kityClient.audioLevel
-                        }
-
-                        QQC2.Label {
-                            text: i18n("Kity")
-                            font.bold: true
-                            font.pixelSize: 13
-                            color: CachyTheme.textPrimary
-                        }
-                    }
-                }
-
-                // Right: Pin & Preferences Window Buttons (Alineados al borde del contenido; Pin antecede a Preferencias en el extremo derecho)
-                Row {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 0
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 4
-
-                    // Pin Window On Top (Antecediendo a Preferencias)
-                    QQC2.ToolButton {
-                        icon.name: root.isPinned ? "window-pin" : "window-unpin"
-                        checkable: true
-                        checked: root.isPinned
-                        QQC2.ToolTip.text: root.isPinned ? i18n("Desanclar de primer plano") : i18n("Mantener siempre encima")
-                        QQC2.ToolTip.visible: hovered
-                        onClicked: root.isPinned = !root.isPinned
-                    }
-
-                    // Preferences Button (A la derecha del todo)
-                    QQC2.ToolButton {
-                        icon.name: "configure"
-                        QQC2.ToolTip.text: i18n("Preferencias de Kity (Preferencias del Sistema)")
-                        QQC2.ToolTip.visible: hovered
-                        onClicked: kityClient.openSettings()
-                    }
-                }
-            }
 
             // -----------------------------------------------------------------
             // Sub-header Toolbar: Status LED & Quick Action Toggles (From Plasmoid)
@@ -936,13 +904,9 @@ Window {
             // -----------------------------------------------------------------
             // Central Chat & Welcome Area (From Plasmoid)
             // -----------------------------------------------------------------
-            Rectangle {
+            Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                radius: Kirigami.Units.smallSpacing
-                color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.alternateBackgroundColor, 0.4)
-                border.width: 1
-                border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
 
                 // Welcome Screen when conversation is empty
                 ColumnLayout {
@@ -965,7 +929,7 @@ Window {
                         wrapMode: Text.WordWrap
                         text: i18n("Pulsa la esfera inferior o di «¡Hola Kity!» para hablar, o elige una acción rápida:")
                         font: Kirigami.Theme.defaultFont
-                        color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.72)
+                        color: CachyTheme.textSecondary
                     }
 
                     GridLayout {
@@ -1008,16 +972,14 @@ Window {
                                 }
 
                                 background: Rectangle {
-                                    radius: 10
+                                    radius: CachyTheme.radiusSmall
                                     color: actionBtn.down
-                                        ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
+                                        ? CachyTheme.cardBackgroundHover
                                         : (actionBtn.hovered
-                                            ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
-                                            : palette.button)
+                                            ? CachyTheme.cardBackgroundHover
+                                            : CachyTheme.cardBackground)
                                     border.width: 1
-                                    border.color: actionBtn.hovered
-                                        ? palette.highlight
-                                        : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15)
+                                    border.color: CachyTheme.specularBorder
 
                                     Behavior on color { ColorAnimation { duration: 150 } }
                                     Behavior on border.color { ColorAnimation { duration: 150 } }
@@ -1269,12 +1231,12 @@ Window {
                 implicitHeight: dockCol.implicitHeight + Kirigami.Units.mediumSpacing * 2
                 radius: Kirigami.Units.smallSpacing * 1.5
                 color: (kityClient.state === "listening")
-                    ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.14)
-                    : Kirigami.Theme.backgroundColor
+                    ? Qt.rgba(CachyTheme.accentColor.r, CachyTheme.accentColor.g, CachyTheme.accentColor.b, 0.14)
+                    : CachyTheme.cardBackground
                 border.width: 1
                 border.color: (kityClient.state === "listening")
-                    ? Kirigami.Theme.highlightColor
-                    : Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
+                    ? CachyTheme.accentColor
+                    : CachyTheme.specularBorder
 
                 ColumnLayout {
                     id: dockCol
@@ -1409,7 +1371,7 @@ Window {
                     }
                 }
             }
-        }
+        },
 
         // =====================================================================
         // Redesigned Preferences Modal (Kirigami Liquid Glass Sheet)
@@ -1418,11 +1380,11 @@ Window {
             id: preferencesModal
             anchors.fill: parent
             anchors.margins: 4
-            radius: 20
+            radius: CachyTheme.radiusMedium
             visible: root.showPreferences
-            color: glassContainer.isDark ? Qt.rgba(0.11, 0.13, 0.18, 1.0) : Qt.rgba(0.97, 0.98, 1.0, 1.0)
+            color: root.isDark ? Qt.rgba(0.12, 0.12, 0.15, 0.95) : Qt.rgba(0.96, 0.97, 1.0, 0.95)
             border.width: 1
-            border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.20)
+            border.color: CachyTheme.specularBorder
 
             ColumnLayout {
                 anchors.fill: parent
@@ -1999,22 +1961,5 @@ Window {
                 }
             }
         }
-    }
-
-    // Window Resizer Corner Handler
-    Item {
-        anchors.bottom: parent.bottom
-        anchors.right: parent.right
-        width: 18
-        height: 18
-
-        DragHandler {
-            target: null
-            onActiveChanged: {
-                if (active) {
-                    root.startSystemResize(Qt.BottomEdge | Qt.RightEdge);
-                }
-            }
-        }
-    }
+    ]
 }

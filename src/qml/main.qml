@@ -19,7 +19,7 @@ PlasmoidItem {
     preferredRepresentation: fullRepresentation
 
     Plasmoid.icon: {
-        const isColor = Plasmoid.configuration.panelIconStyle === "color";
+        const isColor = Plasmoid.panelIconStyle === "color";
         if (Plasmoid.state === "listening") {
             return isColor ? "kity-listening" : "kity-listening-symbolic";
         }
@@ -108,7 +108,8 @@ PlasmoidItem {
             anchors.fill: parent
             anchors.margins: Math.round(Kirigami.Units.smallSpacing / 2)
             source: Plasmoid.icon
-            fallback: "qrc:/qt/qml/plasma/applet/org/cesar/kity/res/" + Plasmoid.icon + ".svg"
+            fallback: "qrc:/qt/qml/plasma/applet/org/cesar/kity/" + Plasmoid.icon + ".svg"
+            isMask: Plasmoid.panelIconStyle !== "color"
             active: compactMouse.containsMouse
         }
     }

@@ -22,8 +22,10 @@ Item {
         }
     }
 
-    implicitWidth: Kirigami.Units.gridUnit * 3.8
-    implicitHeight: Kirigami.Units.gridUnit * 3.8
+    implicitWidth: Kirigami.Units.gridUnit * 4.0
+    implicitHeight: Kirigami.Units.gridUnit * 4.0
+    width: implicitWidth
+    height: implicitHeight
 
     readonly property color primaryColor: {
         if (assistantState === "listening") {
@@ -55,7 +57,7 @@ Item {
     Rectangle {
         id: outerAura
         anchors.centerIn: parent
-        width: parent.width * 0.94
+        width: parent.width * 0.82
         height: width
         radius: width / 2
         color: orbRoot.secondaryColor
@@ -69,14 +71,14 @@ Item {
             running: orbRoot.activeAnimation
             loops: Animation.Infinite
             NumberAnimation {
-                from: 0.94
-                to: 1.15
+                from: 0.92
+                to: 1.12
                 duration: orbRoot.assistantState === "listening" ? 500 : 1100
                 easing.type: Easing.InOutSine
             }
             NumberAnimation {
-                from: 1.15
-                to: 0.94
+                from: 1.12
+                to: 0.92
                 duration: orbRoot.assistantState === "listening" ? 500 : 1100
                 easing.type: Easing.InOutSine
             }
@@ -87,7 +89,7 @@ Item {
     Rectangle {
         id: midRing
         anchors.centerIn: parent
-        width: parent.width * 0.76
+        width: parent.width * 0.70
         height: width
         radius: width / 2
         border.width: 2
@@ -104,12 +106,12 @@ Item {
             loops: Animation.Infinite
             NumberAnimation {
                 from: 0.88
-                to: 1.08
+                to: 1.06
                 duration: 750
                 easing.type: Easing.InOutQuad
             }
             NumberAnimation {
-                from: 1.08
+                from: 1.06
                 to: 0.88
                 duration: 750
                 easing.type: Easing.InOutQuad
@@ -121,7 +123,7 @@ Item {
     Rectangle {
         id: coreOrb
         anchors.centerIn: parent
-        width: parent.width * 0.62
+        width: parent.width * 0.58
         height: width
         radius: width / 2
         scale: (mouseArea.pressed ? 0.92 : (mouseArea.containsMouse ? 1.06 : 1.0))

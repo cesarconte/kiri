@@ -30,7 +30,7 @@ sed -i 's/^Inherits=.*/Inherits=breeze,breeze-dark,hicolor/' "${ICONS_DIR}/White
 sed -i 's/^Inherits=.*/Inherits=breeze-dark,breeze,hicolor/' "${ICONS_DIR}/WhiteSur-dark/index.theme"
 
 echo "==> [4/5] Enlazando aplicaciones del ecosistema CachyOS y Launchpad..."
-for theme in WhiteSur WhiteSur-light WhiteSur-dark; do
+for theme in WhiteSur WhiteSur-light WhiteSur-dark macOS-GoldenGate macOS-GoldenGate-light macOS-GoldenGate-dark; do
     APPS_DIR="${ICONS_DIR}/${theme}/apps/scalable"
     if [ -d "${APPS_DIR}" ]; then
         if [ -f "${ICONS_DIR}/launchpad.svg" ]; then
@@ -42,6 +42,31 @@ for theme in WhiteSur WhiteSur-light WhiteSur-dark; do
         ln -sf system-software-update.svg "${APPS_DIR}/LimineSnapperSync.svg" 2>/dev/null || true
         ln -sf system-software-update.svg "${APPS_DIR}/cachy-update-blue.svg" 2>/dev/null || true
         ln -sf system-software-update.svg "${APPS_DIR}/cachy-update_updates-available-blue.svg" 2>/dev/null || true
+
+        # Integrar iconos de Kity (tanto a color como simbólicos para panel de Plasma)
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        RES_DIR="${SCRIPT_DIR}/../src/res"
+        if [ -d "${RES_DIR}" ]; then
+            mkdir -p "${ICONS_DIR}/${theme}/apps/symbolic" "${ICONS_DIR}/${theme}/status/symbolic"
+            cp -f "${RES_DIR}/kity-symbolic.svg" "${ICONS_DIR}/${theme}/apps/symbolic/kity-symbolic.svg" 2>/dev/null || true
+            cp -f "${RES_DIR}/kity-symbolic.svg" "${ICONS_DIR}/${theme}/status/symbolic/kity-symbolic.svg" 2>/dev/null || true
+            cp -f "${RES_DIR}/kity-listening-symbolic.svg" "${ICONS_DIR}/${theme}/apps/symbolic/kity-listening-symbolic.svg" 2>/dev/null || true
+            cp -f "${RES_DIR}/kity-listening-symbolic.svg" "${ICONS_DIR}/${theme}/status/symbolic/kity-listening-symbolic.svg" 2>/dev/null || true
+            cp -f "${RES_DIR}/kity.svg" "${APPS_DIR}/kity.svg" 2>/dev/null || true
+            cp -f "${RES_DIR}/kity-listening.svg" "${APPS_DIR}/kity-listening.svg" 2>/dev/null || true
+            cp -f "${RES_DIR}/org.cesar.kity.svg" "${APPS_DIR}/org.cesar.kity.svg" 2>/dev/null || true
+        fi
+
+        # Normalizar compatibilidad con temas oscuros para iconos simbólicos clave de Kity
+        for sym_dir in "${ICONS_DIR}/${theme}/actions/symbolic" "${ICONS_DIR}/${theme}/actions@2x/symbolic" \
+                       "${ICONS_DIR}/${theme}/devices/symbolic" "${ICONS_DIR}/${theme}/devices@2x/symbolic"; do
+            if [ -d "${sym_dir}" ]; then
+                # Asegurar ColorScheme-Text dinámico en document-edit, camera-photo y document-send
+                sed -i 's/fill="#363636"/class="ColorScheme-Text" fill="currentColor"/g' "${sym_dir}/document-edit-symbolic.svg" 2>/dev/null || true
+                sed -i 's/fill="#363636"/class="ColorScheme-Text" fill="currentColor"/g' "${sym_dir}/camera-photo-symbolic.svg" 2>/dev/null || true
+                sed -i 's/fill="#363636"/class="ColorScheme-Text" fill="currentColor"/g' "${sym_dir}/document-send-symbolic.svg" 2>/dev/null || true
+            fi
+        done
     fi
     gtk-update-icon-cache -f -t "${ICONS_DIR}/${theme}" >/dev/null 2>&1 || true
 done

@@ -87,8 +87,8 @@
       <default>proton</default>
     </entry>
     <entry name="defaultCalendarClient" type="String">
-      <label>Default calendar service: proton or google</label>
-      <default>proton</default>
+      <label>Default calendar service: korganizer, google or proton</label>
+      <default>korganizer</default>
     </entry>
     <entry name="pin" type="Bool">
       <label>Keep the popup window open when focus moves to another window</label>
