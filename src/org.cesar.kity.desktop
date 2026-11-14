@@ -42,7 +42,7 @@ Icon=audio-input-microphone
 Name=Captura de pantalla inteligente (Live Text)
 Name[es]=Captura de pantalla inteligente (Live Text)
 Exec=kity --ocr
-Icon=rectangular-snip-symbolic
+Icon=select-rectangular
 
 [Desktop Action AskScreen]
 Name=Preguntar sobre esta pantalla

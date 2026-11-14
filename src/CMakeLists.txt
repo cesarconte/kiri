@@ -77,6 +77,37 @@ install(FILES res/kity-symbolic.svg
         DESTINATION ${KDE_INSTALL_ICONDIR}/hicolor/scalable/status
 )
 
+# Install symbolic and app icons into Breeze and Breeze-Dark to prevent fallback to colored background
+install(FILES res/org.cesar.kity.svg
+              res/kity.svg
+              res/kity-symbolic.svg
+              res/kity-listening-symbolic.svg
+        DESTINATION ${KDE_INSTALL_ICONDIR}/breeze/apps/48
+)
+install(FILES res/kity-symbolic.svg
+              res/kity-listening-symbolic.svg
+        DESTINATION ${KDE_INSTALL_ICONDIR}/breeze/status/22
+)
+install(FILES res/kity-symbolic.svg
+              res/kity-listening-symbolic.svg
+        DESTINATION ${KDE_INSTALL_ICONDIR}/breeze/status/16
+)
+
+install(FILES res/org.cesar.kity.svg
+              res/kity.svg
+              res/kity-symbolic.svg
+              res/kity-listening-symbolic.svg
+        DESTINATION ${KDE_INSTALL_ICONDIR}/breeze-dark/apps/48
+)
+install(FILES res/kity-symbolic.svg
+              res/kity-listening-symbolic.svg
+        DESTINATION ${KDE_INSTALL_ICONDIR}/breeze-dark/status/22
+)
+install(FILES res/kity-symbolic.svg
+              res/kity-listening-symbolic.svg
+        DESTINATION ${KDE_INSTALL_ICONDIR}/breeze-dark/status/16
+)
+
 # Also ensure macOS-GoldenGate theme variants receive the symbolic and full-color icons
 install(CODE "
     set(THEME_NAMES macOS-GoldenGate macOS-GoldenGate-dark macOS-GoldenGate-light)

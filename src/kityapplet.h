@@ -208,6 +208,7 @@ private:
     void startVad();
     void stopVad();
     bool isPipeWireEchoCancelAvailable() const;
+    QString resolvePreferredCaptureSource(bool *isBluetoothOut = nullptr) const;
     QString resolveAudioRecordingPath() const;
     QByteArray createWavHeader(int dataSize, int sampleRate, int channels, int bitsPerSample) const;
 

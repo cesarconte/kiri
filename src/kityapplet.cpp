@@ -370,10 +370,13 @@ QString KityApplet::resolveWhisperModelPath() const
     if (!path.isEmpty() && QFile::exists(path)) {
         return path;
     }
-    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity/models");
-    const QString defaultPath = dataDir + QStringLiteral("/ggml-base.bin");
-    if (QFile::exists(defaultPath)) {
-        return defaultPath;
+    const QString located = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kity/models/ggml-base.bin"));
+    if (!located.isEmpty()) {
+        return located;
+    }
+    const QString sysPath = QStringLiteral("/usr/share/kity/models/ggml-base.bin");
+    if (QFile::exists(sysPath)) {
+        return sysPath;
     }
     return QString();
 }
@@ -393,10 +396,13 @@ QString KityApplet::resolvePiperVoicePath() const
     if (!path.isEmpty() && QFile::exists(path)) {
         return path;
     }
-    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity/voices");
-    const QString defaultVoice = dataDir + QStringLiteral("/es_ES-sharvard-medium.onnx");
-    if (QFile::exists(defaultVoice)) {
-        return defaultVoice;
+    const QString located = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kity/voices/es_ES-sharvard-medium.onnx"));
+    if (!located.isEmpty()) {
+        return located;
+    }
+    const QString sysVoice = QStringLiteral("/usr/share/kity/voices/es_ES-sharvard-medium.onnx");
+    if (QFile::exists(sysVoice)) {
+        return sysVoice;
     }
     return QString();
 }
@@ -2075,6 +2081,99 @@ bool KityApplet::isPipeWireEchoCancelAvailable() const
     return available;
 }
 
+QString KityApplet::resolvePreferredCaptureSource(bool *isBluetoothOut) const
+{
+    if (isBluetoothOut) {
+        *isBluetoothOut = false;
+    }
+    if (isPipeWireEchoCancelAvailable()) {
+        return QStringLiteral("kity_echo_cancelled_source");
+    }
+
+    const QString pactl = QStandardPaths::findExecutable(QStringLiteral("pactl"));
+    if (pactl.isEmpty()) {
+        return QString();
+    }
+
+    QProcess proc;
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("LC_ALL"), QStringLiteral("C"));
+    proc.setProcessEnvironment(env);
+    proc.start(pactl, QStringList() << QStringLiteral("list") << QStringLiteral("sources"));
+    if (!proc.waitForFinished(1500)) {
+        return QString();
+    }
+
+    const QString out = QString::fromUtf8(proc.readAllStandardOutput());
+    QString alsaSource;
+    QString fallbackSource;
+    bool sawBluetooth = false;
+
+    QString currentName;
+    QString activePort;
+    QHash<QString, bool> unavailablePorts;
+    bool inPortsSection = false;
+
+    auto processBlock = [&]() {
+        if (currentName.isEmpty() || currentName.endsWith(QLatin1String(".monitor"))) {
+            return;
+        }
+        if (currentName.startsWith(QLatin1String("bluez_"))) {
+            sawBluetooth = true;
+            return;
+        }
+        const bool activePortUnavailable = !activePort.isEmpty() && unavailablePorts.value(activePort, false);
+        if (currentName.startsWith(QLatin1String("alsa_input."))) {
+            if (!activePortUnavailable && alsaSource.isEmpty()) {
+                alsaSource = currentName;
+            }
+            return;
+        }
+        if (!activePortUnavailable && fallbackSource.isEmpty()) {
+            fallbackSource = currentName;
+        }
+    };
+
+    const QStringList lines = out.split(QLatin1Char('\n'));
+    for (const QString &rawLine : lines) {
+        const QString trimmed = rawLine.trimmed();
+        if (rawLine.startsWith(QLatin1String("Source #"))) {
+            processBlock();
+            currentName.clear();
+            activePort.clear();
+            unavailablePorts.clear();
+            inPortsSection = false;
+            continue;
+        }
+        if (trimmed.startsWith(QLatin1String("Name:"))) {
+            currentName = trimmed.mid(5).trimmed();
+            inPortsSection = false;
+        } else if (trimmed == QLatin1String("Ports:")) {
+            inPortsSection = true;
+        } else if (trimmed.startsWith(QLatin1String("Active Port:"))) {
+            activePort = trimmed.mid(12).trimmed();
+            inPortsSection = false;
+        } else if (inPortsSection) {
+            if (!rawLine.startsWith(QLatin1String("\t\t"))) {
+                inPortsSection = false;
+            } else {
+                const int colonIdx = trimmed.indexOf(QLatin1Char(':'));
+                if (colonIdx > 0) {
+                    const QString portName = trimmed.left(colonIdx).trimmed();
+                    const bool isUnavailable = trimmed.contains(QLatin1String("not available)"));
+                    unavailablePorts.insert(portName, isUnavailable);
+                }
+            }
+        }
+    }
+    processBlock();
+
+    if (isBluetoothOut) {
+        *isBluetoothOut = sawBluetooth;
+    }
+    return !alsaSource.isEmpty() ? alsaSource : fallbackSource;
+}
+
 QString KityApplet::resolveAudioRecordingPath() const
 {
     QString baseDir = QStringLiteral("/dev/shm");
@@ -2108,11 +2207,11 @@ void KityApplet::startRecording()
          << QStringLiteral("--rate=16000")
          << QStringLiteral("--channels=1")
          << QStringLiteral("--latency=20ms")
-         << QStringLiteral("--media-category=Capture")
-         << QStringLiteral("--media-role=Communication");
+         << QStringLiteral("--media-category=Capture");
 
-    if (isPipeWireEchoCancelAvailable()) {
-        args << QStringLiteral("--target=kity_echo_cancelled_source");
+    const QString targetSource = resolvePreferredCaptureSource();
+    if (!targetSource.isEmpty()) {
+        args << QStringLiteral("--target=%1").arg(targetSource);
     }
     args << m_currentRecordingPath;
 
@@ -2780,6 +2879,14 @@ void KityApplet::startWakeWordListener()
         return;
     }
 
+    bool isBtOnly = false;
+    const QString targetSource = resolvePreferredCaptureSource(&isBtOnly);
+    if (targetSource.isEmpty()) {
+        qInfo() << "Kity: Skipping background wake word listener because no active non-Bluetooth capture source is available (bluetoothPresent="
+                << isBtOnly << ")";
+        return;
+    }
+
     m_wakeWordPcmBuffer.clear();
     m_wakeWordEvaluating = false;
     m_bargeInVoiceFrames = 0;
@@ -2795,11 +2902,10 @@ void KityApplet::startWakeWordListener()
          << QStringLiteral("--channels=1")
          << QStringLiteral("--container=raw")
          << QStringLiteral("--latency=20ms")
-         << QStringLiteral("--media-category=Capture")
-         << QStringLiteral("--media-role=Communication");
+         << QStringLiteral("--media-category=Capture");
 
-    if (isPipeWireEchoCancelAvailable()) {
-        args << QStringLiteral("--target=kity_echo_cancelled_source");
+    if (!targetSource.isEmpty()) {
+        args << QStringLiteral("--target=%1").arg(targetSource);
     }
     args << QStringLiteral("-");
 

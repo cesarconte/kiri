@@ -39,6 +39,15 @@ if [ ! -f "${VOICES_DIR}/${PIPER_VOICE}.onnx" ]; then
     echo "[2/3] Descargando voz neuronal Piper (${PIPER_VOICE})..."
     curl -L --progress-bar -o "${VOICES_DIR}/${PIPER_VOICE}.onnx" "${PIPER_ONNX_URL}"
     curl -L --progress-bar -o "${VOICES_DIR}/${PIPER_VOICE}.onnx.json" "${PIPER_JSON_URL}"
+    python3 -c "
+import json
+p = '${VOICES_DIR}/${PIPER_VOICE}.onnx.json'
+with open(p, 'r', encoding='utf-8') as f:
+    d = json.load(f)
+d['phoneme_id_map'] = {k: v for k, v in d['phoneme_id_map'].items() if len(k) == 1}
+with open(p, 'w', encoding='utf-8') as f:
+    json.dump(d, f, ensure_ascii=False, indent=2)
+"
 else
     echo "[2/3] Voz Piper ya disponible: ${VOICES_DIR}/${PIPER_VOICE}.onnx"
 fi

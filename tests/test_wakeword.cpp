@@ -98,13 +98,25 @@ private Q_SLOTS:
 
     void testWhisperWakeWordInference()
     {
-        const QString piperCli = QDir::homePath() + QStringLiteral("/.local/bin/piper");
-        const QString whisperCli = QDir::homePath() + QStringLiteral("/.local/bin/whisper-cli");
-        const QString voicePath = QDir::homePath() + QStringLiteral("/.local/share/kity/voices/es_ES-sharvard-medium.onnx");
-        const QString modelPath = QDir::homePath() + QStringLiteral("/.local/share/kity/models/ggml-base.bin");
+        QString piperCli = QStandardPaths::findExecutable(QStringLiteral("piper"));
+        if (piperCli.isEmpty()) {
+            piperCli = QDir::homePath() + QStringLiteral("/.local/bin/piper");
+        }
+        QString whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper-cli"));
+        if (whisperCli.isEmpty()) {
+            whisperCli = QDir::homePath() + QStringLiteral("/.local/bin/whisper-cli");
+        }
+        QString voicePath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kity/voices/es_ES-sharvard-medium.onnx"));
+        if (voicePath.isEmpty()) {
+            voicePath = QStringLiteral("/usr/share/kity/voices/es_ES-sharvard-medium.onnx");
+        }
+        QString modelPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kity/models/ggml-base.bin"));
+        if (modelPath.isEmpty()) {
+            modelPath = QStringLiteral("/usr/share/kity/models/ggml-base.bin");
+        }
 
         if (!QFile::exists(piperCli) || !QFile::exists(whisperCli) || !QFile::exists(voicePath) || !QFile::exists(modelPath)) {
-            QSKIP("Audio binaries or models not found in ~/.local, skipping live neural audio inference test.");
+            QSKIP("Audio binaries or models not found in system or ~/.local, skipping live neural audio inference test.");
         }
 
         // 1. Synthesize audio "Hola Kity"
