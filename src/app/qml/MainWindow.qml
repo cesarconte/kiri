@@ -705,6 +705,7 @@ CachyWindow {
                     Layout.preferredHeight: 16
                     assistantState: kityClient.state
                     audioLevel: kityClient.audioLevel
+                    customVoiceIndex: kityClient.voiceIndex
                 }
 
                 QQC2.Label {
@@ -1929,6 +1930,7 @@ CachyWindow {
                         Layout.preferredHeight: 64
                         assistantState: kityClient.state
                         audioLevel: kityClient.audioLevel
+                        customVoiceIndex: kityClient.voiceIndex
                     }
 
                     Text {

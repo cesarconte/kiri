@@ -37,7 +37,8 @@ void main() {
     // Apple Intelligence Glow Geometry
     // Beam width at perimeter + luminous diffusion inward
     float baseWidth = 9.0;
-    float glowWidth = baseWidth + 14.0 * clamp(audioAmp, 0.0, 1.0);
+    float clampedAmp = clamp(audioAmp, 0.0, 1.0);
+    float glowWidth = baseWidth + 18.0 * clampedAmp;
     
     // Deeper inside than glowWidth -> transparent (so the window interior remains clean)
     if (dist > glowWidth) {
@@ -47,18 +48,22 @@ void main() {
     
     float norm = dist / glowWidth;
     
+    // Spectrum calculation (Apple Intelligence Signature Colors)
+    vec2 uv = qt_TexCoord0;
+    vec2 center = vec2(0.5, 0.5);
+    float angle = atan(uv.y - center.y, uv.x - center.x) + time * 0.85;
+    
+    // Harmonic wave undulation along perimeter based on voice amplitude
+    float wave = sin(angle * 4.0 - time * 2.5) * cos(angle * 2.0 + time * 1.8);
+    float pulse = 1.0 + 0.45 * clampedAmp * (0.6 + 0.4 * wave);
+    
     // Core beam right at the perimeter edge (0 to 3.5px)
     float edgeCore = smoothstep(3.5, 0.0, dist) * 0.95;
     
     // Soft atmospheric aura diffusing inward
     float aura = pow(1.0 - norm, 2.0) * 0.85;
     
-    float alpha = clamp(edgeCore + aura, 0.0, 1.0) * qt_Opacity;
-    
-    // Spectrum calculation (Apple Intelligence Signature Colors)
-    vec2 uv = qt_TexCoord0;
-    vec2 center = vec2(0.5, 0.5);
-    float angle = atan(uv.y - center.y, uv.x - center.x) + time * 0.85;
+    float alpha = clamp((edgeCore + aura) * pulse, 0.0, 1.0) * qt_Opacity;
     
     // Vibrant Neon Palette (macOS Golden Gate / Apple Intelligence)
     vec3 cCyan    = vec3(0.00, 0.96, 1.00); // #00F5FF Electric Cyan
@@ -80,6 +85,9 @@ void main() {
     
     vec3 speakColor = mix(cTurquoise, cDeepBlue, clamp(s1 * 0.5 + 0.5, 0.0, 1.0));
     vec3 finalColor = mix(siriColor, speakColor, clamp(isSpeaking, 0.0, 1.0));
+    
+    // Luminous specular intensity boost on voice peaks
+    finalColor += vec3(0.18) * pow(clampedAmp, 2.0);
     
     fragColor = vec4(finalColor * alpha, alpha);
 }

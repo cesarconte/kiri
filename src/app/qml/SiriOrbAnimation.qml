@@ -14,7 +14,10 @@ Item {
 
     property string assistantState: "idle"
     property real audioLevel: 0.0
+    property int customVoiceIndex: -1
     signal clicked()
+
+    readonly property bool isVoiceActive: assistantState === "listening" || assistantState === "speaking"
 
     onAssistantStateChanged: {
         if (assistantState !== "thinking" && assistantState !== "transcribing") {
@@ -27,6 +30,26 @@ Item {
     width: implicitWidth
     height: implicitHeight
 
+    readonly property var voicePalettePrimary: [
+        "#00e5ff", // 0 Cyan
+        "#5c6bc0", // 1 Indigo
+        "#ab47bc", // 2 Violet
+        "#ff2d55", // 3 Red/Pink (Apple Siri Signature)
+        "#ff9500", // 4 Amber/Orange
+        "#34c759", // 5 Emerald/Green
+        "#00f5ff"  // 6 Apple Intelligence Multichromatic
+    ]
+
+    readonly property var voicePaletteSecondary: [
+        "#007aff", // 0 Blue
+        "#7e57c2", // 1 Deep Purple
+        "#ec407a", // 2 Magenta
+        "#ff6482", // 3 Coral Pink
+        "#ffcc00", // 4 Warm Gold
+        "#30d158", // 5 Mint
+        "#ff2d55"  // 6 Hot Magenta
+    ]
+
     readonly property color primaryColor: {
         if (assistantState === "listening") {
             return "#00e5ff";
@@ -36,6 +59,10 @@ Item {
             return "#00e676";
         } else if (assistantState === "error") {
             return Kirigami.Theme.negativeTextColor;
+        }
+        let vIdx = customVoiceIndex >= 0 ? customVoiceIndex : 3;
+        if (vIdx >= 0 && vIdx < voicePalettePrimary.length) {
+            return voicePalettePrimary[vIdx];
         }
         return Kirigami.Theme.highlightColor;
     }
@@ -47,6 +74,10 @@ Item {
             return "#448aff";
         } else if (assistantState === "speaking") {
             return "#18ffff";
+        }
+        let vIdx = customVoiceIndex >= 0 ? customVoiceIndex : 3;
+        if (vIdx >= 0 && vIdx < voicePaletteSecondary.length) {
+            return voicePaletteSecondary[vIdx];
         }
         return Qt.lighter(Kirigami.Theme.highlightColor, 1.4);
     }
@@ -61,25 +92,27 @@ Item {
         height: width
         radius: width / 2
         color: orbRoot.secondaryColor
-        opacity: orbRoot.activeAnimation ? 0.35 : 0.12
+        opacity: orbRoot.activeAnimation
+            ? (0.35 + (orbRoot.isVoiceActive ? Math.min(0.45, orbRoot.audioLevel * 0.5) : 0.0))
+            : 0.12
 
         Behavior on opacity {
-            NumberAnimation { duration: 250 }
+            NumberAnimation { duration: 180 }
         }
 
         SequentialAnimation on scale {
             running: orbRoot.activeAnimation
             loops: Animation.Infinite
             NumberAnimation {
-                from: 0.92
-                to: 1.12
-                duration: orbRoot.assistantState === "listening" ? 500 : 1100
+                from: 0.90
+                to: 1.15
+                duration: orbRoot.isVoiceActive ? 420 : 1000
                 easing.type: Easing.InOutSine
             }
             NumberAnimation {
-                from: 1.12
-                to: 0.92
-                duration: orbRoot.assistantState === "listening" ? 500 : 1100
+                from: 1.15
+                to: 0.90
+                duration: orbRoot.isVoiceActive ? 420 : 1000
                 easing.type: Easing.InOutSine
             }
         }
@@ -92,13 +125,15 @@ Item {
         width: parent.width * 0.70
         height: width
         radius: width / 2
-        border.width: 2
+        border.width: 1.5 + (orbRoot.isVoiceActive ? orbRoot.audioLevel * 2.5 : 0.0)
         border.color: orbRoot.primaryColor
         color: "transparent"
-        opacity: orbRoot.activeAnimation ? 0.75 : 0.25
+        opacity: orbRoot.activeAnimation
+            ? (0.65 + (orbRoot.isVoiceActive ? Math.min(0.35, orbRoot.audioLevel * 0.4) : 0.0))
+            : 0.25
 
         Behavior on opacity {
-            NumberAnimation { duration: 250 }
+            NumberAnimation { duration: 180 }
         }
 
         SequentialAnimation on scale {
@@ -106,14 +141,14 @@ Item {
             loops: Animation.Infinite
             NumberAnimation {
                 from: 0.88
-                to: 1.06
-                duration: 750
+                to: 1.08
+                duration: orbRoot.isVoiceActive ? 520 : 800
                 easing.type: Easing.InOutQuad
             }
             NumberAnimation {
-                from: 1.06
+                from: 1.08
                 to: 0.88
-                duration: 750
+                duration: orbRoot.isVoiceActive ? 520 : 800
                 easing.type: Easing.InOutQuad
             }
         }
@@ -127,10 +162,10 @@ Item {
         height: width
         radius: width / 2
         scale: (mouseArea.pressed ? 0.92 : (mouseArea.containsMouse ? 1.06 : 1.0))
-            + (orbRoot.assistantState === "listening" ? orbRoot.audioLevel * 0.18 : 0.0)
+            + (orbRoot.isVoiceActive ? Math.min(0.38, orbRoot.audioLevel * 0.35) : 0.0)
 
         Behavior on scale {
-            NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+            NumberAnimation { duration: 120; easing.type: Easing.OutQuad }
         }
 
         gradient: Gradient {
