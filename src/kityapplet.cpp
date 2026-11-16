@@ -964,7 +964,9 @@ void KityApplet::handleOllamaStreamChunk()
         if (!chunk.isEmpty()) {
             m_streamingText.append(chunk);
             Q_EMIT streamingTextChanged();
-            processStreamingTtsChunk(chunk);
+            if (!m_streamingText.trimmed().startsWith(QLatin1Char('{'))) {
+                processStreamingTtsChunk(chunk);
+            }
         }
     }
 }
@@ -1048,13 +1050,55 @@ void KityApplet::handleOllamaFinished()
     finalResponse.remove(thinkRegex);
     finalResponse = finalResponse.trimmed();
 
-    // If the model wrapped its response in a pseudo JSON tool call (e.g. {"name":"...","parameters":{"text":"..."}})
-    if (finalResponse.startsWith(QLatin1Char('{')) && finalResponse.contains(QStringLiteral("\"parameters\""))) {
+    // Fallback: If the model generated a JSON tool call as text content instead of API tool_calls
+    if (finalResponse.startsWith(QLatin1Char('{')) && (finalResponse.contains(QStringLiteral("\"name\"")) || finalResponse.contains(QStringLiteral("\"parameters\"")))) {
         QJsonParseError parseErr;
         const QJsonDocument doc = QJsonDocument::fromJson(finalResponse.toUtf8(), &parseErr);
         if (parseErr.error == QJsonParseError::NoError && doc.isObject()) {
             const QJsonObject obj = doc.object();
+            const QString toolName = obj.value(QStringLiteral("name")).toString();
+            QJsonObject toolArgs;
             if (obj.contains(QStringLiteral("parameters")) && obj.value(QStringLiteral("parameters")).isObject()) {
+                toolArgs = obj.value(QStringLiteral("parameters")).toObject();
+            } else if (obj.contains(QStringLiteral("arguments")) && obj.value(QStringLiteral("arguments")).isObject()) {
+                toolArgs = obj.value(QStringLiteral("arguments")).toObject();
+            }
+
+            if (toolName == QLatin1String("mpvctl") || toolName == QLatin1String("media_control")
+                || toolName.contains(QStringLiteral("player")) || toolName.contains(QStringLiteral("media"))
+                || toolName.contains(QStringLiteral("mpv"))) {
+                QString cmd = toolArgs.value(QStringLiteral("command")).toString().toLower();
+                if (cmd.isEmpty()) {
+                    cmd = toolArgs.value(QStringLiteral("action")).toString().toLower();
+                }
+                if (cmd == QLatin1String("pause") || cmd == QLatin1String("stop")) {
+                    QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("pause"));
+                    finalResponse = i18n("He detenido la reproducción multimedia.");
+                } else if (cmd == QLatin1String("play") || cmd == QLatin1String("resume")) {
+                    QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("play"));
+                    finalResponse = i18n("He reanudado la reproducción multimedia.");
+                } else if (cmd == QLatin1String("next")) {
+                    QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("next"));
+                    finalResponse = i18n("He pasado a la siguiente pista.");
+                } else if (cmd == QLatin1String("previous") || cmd == QLatin1String("prev")) {
+                    QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("previous"));
+                    finalResponse = i18n("He vuelto a la pista anterior.");
+                } else {
+                    executeToolCall(QStringLiteral("media_control"), toolArgs);
+                    finalResponse = i18n("He actualizado el estado de la reproducción multimedia.");
+                }
+            } else if (!toolName.isEmpty()) {
+                const QJsonObject res = executeToolCall(toolName, toolArgs);
+                if (toolName == QLatin1String("get_weather")) {
+                    finalResponse = res.value(QStringLiteral("weather_report")).toString();
+                } else if (toolName == QLatin1String("launch_application")) {
+                    finalResponse = i18n("He abierto %1.", res.value(QStringLiteral("launched_app")).toString());
+                } else if (toolName == QLatin1String("set_timer")) {
+                    finalResponse = i18n("He configurado un temporizador de %1 segundos para '%2'.", res.value(QStringLiteral("seconds")).toInt(), res.value(QStringLiteral("label")).toString());
+                } else {
+                    finalResponse = i18n("Acción realizada con éxito.");
+                }
+            } else if (obj.contains(QStringLiteral("parameters")) && obj.value(QStringLiteral("parameters")).isObject()) {
                 const QJsonObject params = obj.value(QStringLiteral("parameters")).toObject();
                 if (params.contains(QStringLiteral("text"))) {
                     finalResponse = params.value(QStringLiteral("text")).toString().trimmed();
@@ -1116,6 +1160,8 @@ void KityApplet::handleOllamaFinished()
                 enqueueSentenceForSpeech(clean);
             }
             m_ttsSpeechBuffer.clear();
+        } else if (!finalResponse.isEmpty() && !finalResponse.startsWith(QLatin1Char('{'))) {
+            enqueueSentenceForSpeech(stripMarkdownForSpeech(finalResponse));
         }
     }
 
@@ -1527,7 +1573,7 @@ QJsonArray KityApplet::buildAvailableTools(const QString &userPrompt) const
 
     // Tool 2: media_control
     static const QRegularExpression mediaSignal(
-        QStringLiteral("(m[uú]sica|canci[oó]n|reproduce|reproducir|pausa|pausar|player|spotify|cancion|tema|pista|volumen|sonido)"),
+        QStringLiteral("(m[uú]sica|canci[oó]n|cancion|tema|pista|reproduce|reproducir|reproducci[oó]n|reproduciendo|pausa|pausar|det[eé]n|detener|para|parar|stop|mute|silencia|silenciar|volumen|sonido|audio|player|spotify|mpv|vlc|elisa|cantante|album|[aá]lbum|video|v[ií]deo)"),
         QRegularExpression::CaseInsensitiveOption);
     if (!isLlama32 || q.isEmpty() || q.contains(mediaSignal)) {
         QJsonObject props;
@@ -1536,12 +1582,13 @@ QJsonArray KityApplet::buildAvailableTools(const QString &userPrompt) const
         QJsonArray actEnum;
         actEnum.append(QStringLiteral("play"));
         actEnum.append(QStringLiteral("pause"));
+        actEnum.append(QStringLiteral("stop"));
         actEnum.append(QStringLiteral("play_pause"));
         actEnum.append(QStringLiteral("next"));
         actEnum.append(QStringLiteral("previous"));
         actEnum.append(QStringLiteral("status"));
         actProp[QStringLiteral("enum")] = actEnum;
-        actProp[QStringLiteral("description")] = QStringLiteral("Acción multimedia a ejecutar.");
+        actProp[QStringLiteral("description")] = QStringLiteral("Acción multimedia a ejecutar (play, pause, stop, play_pause, next, previous, status).");
         props[QStringLiteral("action")] = actProp;
 
         QJsonObject params;
@@ -1553,7 +1600,7 @@ QJsonArray KityApplet::buildAvailableTools(const QString &userPrompt) const
 
         tools.append(createTool(
             QStringLiteral("media_control"),
-            QStringLiteral("Controla la reproducción multimedia activa en el sistema (reproducir, pausar, siguiente pista, pista anterior o consultar qué suena)."),
+            QStringLiteral("Controla la reproducción multimedia activa en el sistema (reproducir, pausar, detener, siguiente pista, pista anterior o consultar qué suena en reproductores como mpv, Spotify, VLC, Elisa, navegadores, etc.)."),
             params
         ));
     }
@@ -1835,9 +1882,9 @@ QJsonObject KityApplet::executeToolCall(const QString &toolName, const QJsonObje
         if (action == QLatin1String("play")) {
             QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("play"));
             result[QStringLiteral("status")] = QStringLiteral("Reproducción reanudada.");
-        } else if (action == QLatin1String("pause")) {
+        } else if (action == QLatin1String("pause") || action == QLatin1String("stop")) {
             QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("pause"));
-            result[QStringLiteral("status")] = QStringLiteral("Reproducción pausada.");
+            result[QStringLiteral("status")] = QStringLiteral("Reproducción detenida.");
         } else if (action == QLatin1String("play_pause")) {
             QProcess::execute(QStringLiteral("playerctl"), QStringList() << QStringLiteral("play-pause"));
             result[QStringLiteral("status")] = QStringLiteral("Alternado estado de reproducción.");
