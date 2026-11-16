@@ -356,7 +356,8 @@ QString KityApplet::resolveSystemPrompt() const
 {
     QString basePrompt = readConfigString(QStringLiteral("systemPrompt"),
         QStringLiteral("Eres Kity, un asistente de voz e inteligencia artificial nativo para KDE Plasma en CachyOS Linux. "
-                       "Responde SIEMPRE en español de España (castellano), de forma concisa, clara, directa y natural, optimizada para síntesis de voz (TTS)."));
+                       "Responde SIEMPRE en español de España (castellano), de forma concisa, clara, directa y natural, optimizada para síntesis de voz (TTS). "
+                       "Al referirte a cantidades, temperaturas o unidades métricas, exprésalas con palabras naturales y completas para locución hablada (por ejemplo '15 grados' o '150 mililitros')."));
     const QString siriMode = readConfigString(QStringLiteral("siriMode"), QStringLiteral("ai")).toLower();
     if (siriMode == QLatin1String("classic")) {
         basePrompt += QStringLiteral("\n\n[MODO KITY CLASSIC]: Responde SIEMPRE en una o dos frases muy breves y directas (máximo 30 palabras), sin encabezados ni listas largas, al estilo del asistente clásico de voz.");
@@ -3053,6 +3054,57 @@ QString KityApplet::stripMarkdownForSpeech(const QString &markdown) const
     // Remove leading bullet list dashes/asterisks (e.g. "- item" or "* item" -> "item")
     static const QRegularExpression listRegex(QStringLiteral("^[\\s]*[-*•]\\s+"), QRegularExpression::MultilineOption);
     res.remove(listRegex);
+
+    // Phonetic normalization for natural speech verbalization (Siri style):
+    // 1. Temperatures: 15ºC, 15°C, 15º, 15° -> "15 grados centígrados" / "15 grados"
+    static const QRegularExpression tempCRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*(?:º|°)\\s*C\\b"), QRegularExpression::CaseInsensitiveOption);
+    res.replace(tempCRegex, QStringLiteral("\\1 grados centígrados"));
+
+    static const QRegularExpression tempFRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*(?:º|°)\\s*F\\b"), QRegularExpression::CaseInsensitiveOption);
+    res.replace(tempFRegex, QStringLiteral("\\1 grados Fahrenheit"));
+
+    static const QRegularExpression degRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*(?:º|°)(?!\\w)"));
+    res.replace(degRegex, QStringLiteral("\\1 grados"));
+
+    // 2. Volume & Capacity: ml, cl, l
+    static const QRegularExpression mlRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*ml\\b"), QRegularExpression::CaseInsensitiveOption);
+    res.replace(mlRegex, QStringLiteral("\\1 mililitros"));
+
+    static const QRegularExpression clRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*cl\\b"), QRegularExpression::CaseInsensitiveOption);
+    res.replace(clRegex, QStringLiteral("\\1 centilitros"));
+
+    // 3. Weight & Mass: kg, g, gr, mg
+    static const QRegularExpression kgRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*kg\\b"), QRegularExpression::CaseInsensitiveOption);
+    res.replace(kgRegex, QStringLiteral("\\1 kilos"));
+
+    static const QRegularExpression grRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*(?:gr\\.?|g)\\b"), QRegularExpression::CaseInsensitiveOption);
+    res.replace(grRegex, QStringLiteral("\\1 gramos"));
+
+    static const QRegularExpression mgRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*mg\\b"), QRegularExpression::CaseInsensitiveOption);
+    res.replace(mgRegex, QStringLiteral("\\1 miligramos"));
+
+    // 4. Speed & Distance: km/h, km, m/s, m, cm, mm
+    static const QRegularExpression kmhRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*km/h\\b"), QRegularExpression::CaseInsensitiveOption);
+    res.replace(kmhRegex, QStringLiteral("\\1 kilómetros por hora"));
+
+    static const QRegularExpression kmRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*km\\b"), QRegularExpression::CaseInsensitiveOption);
+    res.replace(kmRegex, QStringLiteral("\\1 kilómetros"));
+
+    static const QRegularExpression cmRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*cm\\b"), QRegularExpression::CaseInsensitiveOption);
+    res.replace(cmRegex, QStringLiteral("\\1 centímetros"));
+
+    static const QRegularExpression mmRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*mm\\b"), QRegularExpression::CaseInsensitiveOption);
+    res.replace(mmRegex, QStringLiteral("\\1 milímetros"));
+
+    // 5. Percentages & Currencies: %, €, $
+    static const QRegularExpression pctRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*%"));
+    res.replace(pctRegex, QStringLiteral("\\1 por ciento"));
+
+    static const QRegularExpression eurPostRegex(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*€"));
+    res.replace(eurPostRegex, QStringLiteral("\\1 euros"));
+
+    static const QRegularExpression eurPreRegex(QStringLiteral("€\\s*(\\d+(?:[.,]\\d+)?)"));
+    res.replace(eurPreRegex, QStringLiteral("\\1 euros"));
 
     // Remove markdown formatting symbols (*, #, _, >, ~, $, \)
     static const QRegularExpression symRegex(QStringLiteral("[*#_>~$\\\\]"));
