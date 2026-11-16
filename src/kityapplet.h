@@ -147,6 +147,7 @@ public:
     // Visual Intelligence & Live Text (Phase 3 - KDE Spectacle Wayland + Tesseract OCR)
     Q_INVOKABLE void runVisualIntelligence(const QString &captureMode, const QString &action = QStringLiteral("ocr"), const QString &customQuestion = QString());
     Q_INVOKABLE static QVariantMap parseLiveTextEntities(const QString &ocrText);
+    Q_INVOKABLE QString collectKWinWindowsInfo() const;
 
     // Generative UI & Interactive Cards (Phase 5)
     Q_INVOKABLE void controlMedia(const QString &action);
@@ -248,7 +249,6 @@ private:
     QString fetchKnowledgeBaseContext(const QString &query) const;
     QString collectSystemVitals() const;
     QString collectRecentNotificationsContext() const;
-    QString collectKWinWindowsInfo() const;
     QString extractScreenOcrText(const QString &imagePath) const;
     QString detectAvailableVisionModel() const;
     QString captureScreenToPng(const QString &destPath, const QString &captureMode = QStringLiteral("fullscreen")) const;

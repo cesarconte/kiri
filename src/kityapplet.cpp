@@ -692,19 +692,19 @@ void KityApplet::sendMessage(const QString &text, bool fromVoice)
         }
     }
 
-    // 2b. Check clipboard context (Wayland clipboard inspection when user mentions copied text)
+    // 2b. Check selection & clipboard context (Wayland primary selection & clipboard inspection)
     static const QRegularExpression clipRegex(
-        QStringLiteral("(portapapeles|clipboard|copiado|he copiado|acabo de copiar|texto copiado)"),
+        QStringLiteral("(portapapeles|clipboard|copiado|he copiado|acabo de copiar|texto copiado|selecci[oó]n|seleccionado|he seleccionado|lo que seleccion[eé])"),
         QRegularExpression::CaseInsensitiveOption);
-    if (trimmed.contains(clipRegex)) {
+    if (trimmed.contains(clipRegex) && !trimmed.contains(QStringLiteral("contenido del portapapeles")) && !trimmed.contains(QStringLiteral("en el portapapeles"))) {
         const QString clipText = readWaylandSelectionOrClipboard();
         if (!clipText.isEmpty()) {
             effectivePrompt = QStringLiteral(
-                "Contenido actual de mi portapapeles del sistema:\n\"\"\"\n%1\n\"\"\"\n\n"
-                "Con base en ese texto copiado en mi portapapeles, responde en español de España a mi petición: %2")
+                "Contenido capturado de la selección activa o portapapeles del sistema:\n\"\"\"\n%1\n\"\"\"\n\n"
+                "Con base en ese texto seleccionado o copiado, responde en español de España a mi petición: %2")
                 .arg(clipText.left(6000), trimmed);
         } else {
-            appendAssistantMessage(i18n("Tu portapapeles está vacío en este momento. Copia algún texto primero y vuelve a intentarlo."));
+            appendAssistantMessage(i18n("No hay texto seleccionado ni copiado en el portapapeles en este momento. Selecciona o copia un fragmento de texto primero y vuelve a intentarlo."));
             return;
         }
     }
@@ -3996,6 +3996,47 @@ bool KityApplet::detectAndExecuteSystemAction(const QString &input)
         QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(sysStatusRegex)) {
         appendAssistantMessage(getSystemResourceSummary(QStringLiteral("all")));
+        return true;
+    }
+
+    // 23. Active Window & Open Windows Query (KWin Wayland)
+    static const QRegularExpression activeWinRegex(
+        QStringLiteral("^[¿¡]*(?:qu[eé]\\s+ventana\\s+(?:tengo|est[aá])\\s+activa|qu[eé]\\s+aplicaci[oó]n\\s+(?:tengo|est[aá])\\s+(?:activa|en\\s+primer\\s+plano)|cu[aá]l\\s+es\\s+la\\s+ventana\\s+activa|dime\\s+la\\s+ventana\\s+activa)[.!?¿¡]*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(activeWinRegex)) {
+        const QString winInfo = collectKWinWindowsInfo();
+        if (!winInfo.isEmpty()) {
+            appendAssistantMessage(winInfo);
+        } else {
+            appendAssistantMessage(i18n("No se pudo consultar la información de ventanas activas de KWin."));
+        }
+        return true;
+    }
+
+    static const QRegularExpression allWinsRegex(
+        QStringLiteral("^[¿¡]*(?:qu[eé]\\s+ventanas\\s+tengo\\s+abiertas|qu[eé]\\s+programas\\s+(?:tengo|hay)\\s+abiertos|qu[eé]\\s+aplicaciones\\s+(?:tengo|hay)\\s+abiertas|lista(?:r)?\\s+(?:las\\s+)?ventanas)[.!?¿¡]*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(allWinsRegex)) {
+        const QString winInfo = collectKWinWindowsInfo();
+        if (!winInfo.isEmpty()) {
+            appendAssistantMessage(winInfo);
+        } else {
+            appendAssistantMessage(i18n("No se detectaron ventanas abiertas en este momento."));
+        }
+        return true;
+    }
+
+    // 24. Instant Clipboard Query
+    static const QRegularExpression clipQueryRegex(
+        QStringLiteral("^[¿¡]*(?:qu[eé]\\s+(?:tengo|hay)\\s+en\\s+el\\s+portapapeles|qu[eé]\\s+he\\s+copiado|dime\\s+el\\s+portapapeles|muestra\\s+el\\s+portapapeles|contenido\\s+del\\s+portapapeles)[.!?¿¡]*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(clipQueryRegex)) {
+        const QString clip = readWaylandSelectionOrClipboard();
+        if (!clip.isEmpty()) {
+            appendAssistantMessage(i18n("📋 **Contenido del portapapeles:**\n\n```\n%1\n```", clip));
+        } else {
+            appendAssistantMessage(i18n("El portapapeles del sistema está vacío en este momento."));
+        }
         return true;
     }
 
