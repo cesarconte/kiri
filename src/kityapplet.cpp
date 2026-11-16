@@ -364,19 +364,33 @@ QString KityApplet::resolveSystemPrompt() const
     return basePrompt;
 }
 
+QString KityApplet::resolveSttEngine() const
+{
+    return readConfigString(QStringLiteral("sttEngine"), QStringLiteral("gemini")).toLower().trimmed();
+}
+
 QString KityApplet::resolveWhisperModelPath() const
 {
     QString path = readConfigString(QStringLiteral("whisperModelPath"));
     if (!path.isEmpty() && QFile::exists(path)) {
         return path;
     }
-    const QString located = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kity/models/ggml-base.bin"));
-    if (!located.isEmpty()) {
-        return located;
+    // Prefer ggml-small.bin for superior Spanish accuracy, fall back to base
+    const QString smallLocated = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kity/models/ggml-small.bin"));
+    if (!smallLocated.isEmpty()) {
+        return smallLocated;
     }
-    const QString sysPath = QStringLiteral("/usr/share/kity/models/ggml-base.bin");
-    if (QFile::exists(sysPath)) {
-        return sysPath;
+    const QString baseLocated = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kity/models/ggml-base.bin"));
+    if (!baseLocated.isEmpty()) {
+        return baseLocated;
+    }
+    const QString sysSmallPath = QStringLiteral("/usr/share/kity/models/ggml-small.bin");
+    if (QFile::exists(sysSmallPath)) {
+        return sysSmallPath;
+    }
+    const QString sysBasePath = QStringLiteral("/usr/share/kity/models/ggml-base.bin");
+    if (QFile::exists(sysBasePath)) {
+        return sysBasePath;
     }
     return QString();
 }
@@ -854,6 +868,7 @@ void KityApplet::sendToOllama(const QString &userPrompt, const QString &injected
     m_currentChatMessages = chatMsgs;
     m_pendingToolCalls = QJsonArray();
     m_isToolFollowUpRound = false;
+    m_insideThinkingBlock = false;
 
     QJsonObject reqPayload;
     reqPayload[QStringLiteral("model")] = modelToUse;
@@ -1063,7 +1078,10 @@ void KityApplet::handleOllamaFinished()
 
         // Flush any remaining text to TTS
         if (!m_ttsSpeechBuffer.isEmpty()) {
-            enqueueSentenceForSpeech(m_ttsSpeechBuffer.trimmed());
+            const QString clean = stripMarkdownForSpeech(m_ttsSpeechBuffer);
+            if (!clean.isEmpty()) {
+                enqueueSentenceForSpeech(clean);
+            }
             m_ttsSpeechBuffer.clear();
         }
     }
@@ -1135,6 +1153,7 @@ void KityApplet::sendToGemini(const QString &userPrompt, const QString &injected
     setState(QStringLiteral("thinking"), i18n("Consultando con Google Gemini…"));
     m_streamingText.clear();
     m_ttsSpeechBuffer.clear();
+    m_insideThinkingBlock = false;
     m_geminiSources.clear();
     Q_EMIT streamingTextChanged();
 
@@ -1369,7 +1388,10 @@ void KityApplet::handleGeminiFinished()
         saveConversationHistory();
 
         if (!m_ttsSpeechBuffer.isEmpty()) {
-            enqueueSentenceForSpeech(m_ttsSpeechBuffer.trimmed());
+            const QString clean = stripMarkdownForSpeech(m_ttsSpeechBuffer);
+            if (!clean.isEmpty()) {
+                enqueueSentenceForSpeech(clean);
+            }
             m_ttsSpeechBuffer.clear();
         }
     }
@@ -2107,7 +2129,7 @@ QString KityApplet::resolvePreferredCaptureSource(bool *isBluetoothOut) const
     const QString out = QString::fromUtf8(proc.readAllStandardOutput());
     QString alsaSource;
     QString fallbackSource;
-    bool sawBluetooth = false;
+    const bool sawBluetooth = out.contains(QLatin1String("bluez_"));
 
     QString currentName;
     QString activePort;
@@ -2115,11 +2137,13 @@ QString KityApplet::resolvePreferredCaptureSource(bool *isBluetoothOut) const
     bool inPortsSection = false;
 
     auto processBlock = [&]() {
-        if (currentName.isEmpty() || currentName.endsWith(QLatin1String(".monitor"))) {
+        if (currentName.isEmpty()) {
+            return;
+        }
+        if (currentName.endsWith(QLatin1String(".monitor"))) {
             return;
         }
         if (currentName.startsWith(QLatin1String("bluez_"))) {
-            sawBluetooth = true;
             return;
         }
         const bool activePortUnavailable = !activePort.isEmpty() && unavailablePorts.value(activePort, false);
@@ -2129,7 +2153,7 @@ QString KityApplet::resolvePreferredCaptureSource(bool *isBluetoothOut) const
             }
             return;
         }
-        if (!activePortUnavailable && fallbackSource.isEmpty()) {
+        if (!activePortUnavailable && fallbackSource.isEmpty() && !currentName.contains(QLatin1String("easyeffects"))) {
             fallbackSource = currentName;
         }
     };
@@ -2170,9 +2194,9 @@ QString KityApplet::resolvePreferredCaptureSource(bool *isBluetoothOut) const
 
     if (isBluetoothOut) {
         *isBluetoothOut = sawBluetooth;
-        // Never hijack or lock Bluetooth devices with a continuous background wake word listener
-        // when no dedicated non-Bluetooth hardware microphone is connected!
-        if (sawBluetooth && alsaSource.isEmpty()) {
+        // Never hijack or lock Bluetooth devices with a continuous background wake word listener,
+        // and never run background wake word listener if no physical hardware microphone is connected!
+        if (sawBluetooth || alsaSource.isEmpty()) {
             return QString();
         }
     }
@@ -2250,7 +2274,7 @@ void KityApplet::stopRecording()
     if (m_state == QLatin1String("listening")) {
         playSiriEarcon(false);
         setState(QStringLiteral("transcribing"), i18n("Transcribiendo voz…"));
-        runWhisperTranscription();
+        runSpeechTranscription();
     }
 }
 
@@ -2339,6 +2363,122 @@ void KityApplet::checkVoiceActivity()
     }
 }
 
+void KityApplet::runSpeechTranscription()
+{
+    const QString engine = resolveSttEngine();
+    const QString apiKey = resolveGeminiApiKey();
+
+    if (engine == QLatin1String("gemini") && !apiKey.isEmpty()) {
+        runGeminiAudioTranscription(m_currentRecordingPath);
+    } else {
+        runWhisperTranscription();
+    }
+}
+
+void KityApplet::runGeminiAudioTranscription(const QString &wavPath)
+{
+    QFile file(wavPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        runWhisperTranscription();
+        return;
+    }
+    const QByteArray audioData = file.readAll();
+    file.close();
+
+    if (audioData.size() < 1024) {
+        setState(QStringLiteral("idle"), i18n("No se detectó audio de voz."));
+        QFile::remove(wavPath);
+        return;
+    }
+
+    const QString apiKey = resolveGeminiApiKey();
+    if (apiKey.isEmpty()) {
+        runWhisperTranscription();
+        return;
+    }
+
+    setState(QStringLiteral("transcribing"), i18n("Transcribiendo con Google Gemini…"));
+
+    const QString base64Audio = QString::fromLatin1(audioData.toBase64());
+    const QString geminiModel = resolveGeminiModel();
+    const QString modelToUse = (geminiModel.isEmpty() ? QStringLiteral("gemini-2.0-flash") : geminiModel);
+
+    const QUrl geminiUrl(QStringLiteral("https://generativelanguage.googleapis.com/v1beta/models/%1:generateContent?key=%2")
+        .arg(modelToUse, apiKey));
+
+    QJsonObject audioPart;
+    QJsonObject inlineData;
+    inlineData[QStringLiteral("mime_type")] = QStringLiteral("audio/wav");
+    inlineData[QStringLiteral("data")] = base64Audio;
+    audioPart[QStringLiteral("inline_data")] = inlineData;
+
+    QJsonObject promptPart;
+    promptPart[QStringLiteral("text")] = QStringLiteral("Transcribe exactamente este audio de voz a texto en español. Responde exclusivamente con las palabras transcritas, sin explicaciones, sin preámbulos y sin comillas.");
+
+    QJsonArray parts;
+    parts.append(audioPart);
+    parts.append(promptPart);
+
+    QJsonObject contentObj;
+    contentObj[QStringLiteral("parts")] = parts;
+
+    QJsonArray contentsArr;
+    contentsArr.append(contentObj);
+
+    QJsonObject genConfig;
+    genConfig[QStringLiteral("temperature")] = 0.0;
+
+    QJsonObject payload;
+    payload[QStringLiteral("contents")] = contentsArr;
+    payload[QStringLiteral("generationConfig")] = genConfig;
+
+    QNetworkRequest req(geminiUrl);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    req.setTransferTimeout(8000);
+
+    QNetworkReply *reply = m_nam->post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    connect(reply, &QNetworkReply::finished, this, [this, reply, wavPath]() {
+        reply->deleteLater();
+        QFile::remove(wavPath);
+
+        if (reply->error() != QNetworkReply::NoError) {
+            qWarning() << "Kity: Gemini audio transcription error:" << reply->errorString();
+            setState(QStringLiteral("error"), i18n("Error en transcripción con Gemini (%1)").arg(reply->errorString()));
+            return;
+        }
+
+        const QByteArray responseData = reply->readAll();
+        const QJsonDocument doc = QJsonDocument::fromJson(responseData);
+        const QJsonObject root = doc.object();
+        const QJsonArray candidates = root.value(QStringLiteral("candidates")).toArray();
+        if (candidates.isEmpty()) {
+            setState(QStringLiteral("idle"), i18n("No se reconoció ninguna frase."));
+            return;
+        }
+
+        const QJsonObject firstCand = candidates.first().toObject();
+        const QJsonObject content = firstCand.value(QStringLiteral("content")).toObject();
+        const QJsonArray candParts = content.value(QStringLiteral("parts")).toArray();
+        QString text;
+        for (const QJsonValue &pv : candParts) {
+            text += pv.toObject().value(QStringLiteral("text")).toString();
+        }
+        text = text.trimmed();
+
+        static const QRegularExpression bracketRegex(QStringLiteral("\\[.*?\\]|\\(.*?\\)"));
+        text.remove(bracketRegex);
+        text = text.trimmed();
+
+        if (text.isEmpty()) {
+            setState(QStringLiteral("idle"), i18n("No se reconoció ninguna frase."));
+            return;
+        }
+
+        Q_EMIT transcriptionReady(text);
+        sendMessage(text, true);
+    });
+}
+
 void KityApplet::runWhisperTranscription()
 {
     QFileInfo fi(m_currentRecordingPath);
@@ -2399,6 +2539,12 @@ void KityApplet::runWhisperTranscription()
 
 void KityApplet::transcribeAndExecuteAudio(const QString &wavPath)
 {
+    const QString engine = resolveSttEngine();
+    const QString apiKey = resolveGeminiApiKey();
+    if (engine == QLatin1String("gemini") && !apiKey.isEmpty()) {
+        runGeminiAudioTranscription(wavPath);
+        return;
+    }
     QString whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper-cli"));
     if (whisperCli.isEmpty()) {
         whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper"));
@@ -2464,7 +2610,14 @@ void KityApplet::stopSpeaking()
 {
     m_ttsQueue.clear();
     m_ttsSpeechBuffer.clear();
+    m_insideThinkingBlock = false;
     m_bargeInVoiceFrames = 0;
+
+    if (m_currentTtsReply) {
+        m_currentTtsReply->abort();
+        m_currentTtsReply->deleteLater();
+        m_currentTtsReply = nullptr;
+    }
 
     if (m_pwPlayProcess) {
         if (m_pwPlayProcess->state() == QProcess::Running) {
@@ -2498,12 +2651,34 @@ void KityApplet::processStreamingTtsChunk(const QString &newChunk)
         return;
     }
 
+    // Filter <think> blocks in reasoning models
+    if (newChunk.contains(QLatin1String("<think>"))) {
+        m_insideThinkingBlock = true;
+    }
     m_ttsSpeechBuffer.append(newChunk);
+    if (m_insideThinkingBlock) {
+        const int closeIdx = m_ttsSpeechBuffer.indexOf(QLatin1String("</think>"));
+        if (closeIdx != -1) {
+            m_ttsSpeechBuffer.remove(0, closeIdx + 8);
+            m_insideThinkingBlock = false;
+        } else {
+            // Buffer is still inside think tag, don't synthesize
+            return;
+        }
+    }
 
-    // Regex 1: Full sentence terminators (. ? ! \n)
-    static const QRegularExpression sentenceTerminator(QStringLiteral("([.?!\\n]+)"));
+    // Regex 1: Full sentence terminators (. ? ! or newline)
+    // Avoid decimal points (e.g. 3.14) or common Spanish abbreviations (ej., etc., p.ej., Dr., Sr.)
+    static const QRegularExpression sentenceTerminator(
+        QStringLiteral("(?:[?!\\n]+|(?<!\\b(?:ej|etc|p\\.ej|sr|sra|dr|dra|vs))(?<!\\d)[.](?!\\d)(?:\\s+|$))"),
+        QRegularExpression::CaseInsensitiveOption
+    );
+
     // Regex 2: Clause pause boundaries (, ; : —) for sub-sentence low latency streaming
-    static const QRegularExpression clauseTerminator(QStringLiteral("([,;:—]+)"));
+    // Avoid decimals (1,5) or clock format (14:30)
+    static const QRegularExpression clauseTerminator(
+        QStringLiteral("(?<!\\d)[,;:—]+(?!\\d)(?:\\s+|$)")
+    );
 
     bool extracted = true;
     while (extracted) {
@@ -2525,7 +2700,7 @@ void KityApplet::processStreamingTtsChunk(const QString &newChunk)
         }
 
         // If no full sentence yet, check if we have an early clause boundary with sufficient length
-        // This achieves ultra-low Time-To-First-Speech (< 350ms) like Gemini Live!
+        // This achieves ultra-low Time-To-First-Speech (< 350ms) like Gemini Live / Siri!
         if (m_ttsSpeechBuffer.length() >= 35) {
             QRegularExpressionMatch clauseMatch = clauseTerminator.match(m_ttsSpeechBuffer);
             if (clauseMatch.hasMatch()) {
@@ -2707,9 +2882,19 @@ void KityApplet::speakSentence(const QString &sentence)
         QNetworkRequest req(gUrl);
         req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
 
-        QNetworkReply *gReply = m_nam->post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
-        connect(gReply, &QNetworkReply::finished, this, [this, gReply, pwPlay]() {
+        m_currentTtsReply = m_nam->post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+        connect(m_currentTtsReply.data(), &QNetworkReply::finished, this, [this, pwPlay]() {
+            if (!m_currentTtsReply) {
+                return;
+            }
+            QNetworkReply *gReply = m_currentTtsReply;
+            m_currentTtsReply = nullptr;
             gReply->deleteLater();
+
+            if (!m_isSpeakingSentence) {
+                return;
+            }
+
             if (gReply->error() != QNetworkReply::NoError) {
                 qWarning() << "Kity: Google Cloud TTS error:" << gReply->errorString();
                 setState(QStringLiteral("error"), i18n("Error en la síntesis de voz (Google Cloud TTS): %1", gReply->errorString()));
@@ -2848,15 +3033,42 @@ void KityApplet::speakSentence(const QString &sentence)
 QString KityApplet::stripMarkdownForSpeech(const QString &markdown) const
 {
     QString res = markdown;
-    // Remove code blocks
+
+    // Remove thinking tags if any leaked
+    static const QRegularExpression thinkRegex(QStringLiteral("<think>[\\s\\S]*?</think>|<think>[\\s\\S]*$"));
+    res.remove(thinkRegex);
+
+    // Remove code blocks and inline backticks
     static const QRegularExpression codeRegex(QStringLiteral("```[\\s\\S]*?```|`.*?`"));
     res.remove(codeRegex);
+
     // Remove links [text](url) -> text
     static const QRegularExpression linkRegex(QStringLiteral("\\[([^\\]]+)\\]\\([^\\)]+\\)"));
     res.replace(linkRegex, QStringLiteral("\\1"));
-    // Remove markdown formatting symbols
-    static const QRegularExpression symRegex(QStringLiteral("[*#_>~]"));
+
+    // Remove HTML tags
+    static const QRegularExpression htmlRegex(QStringLiteral("<[^>]+>"));
+    res.remove(htmlRegex);
+
+    // Remove leading bullet list dashes/asterisks (e.g. "- item" or "* item" -> "item")
+    static const QRegularExpression listRegex(QStringLiteral("^[\\s]*[-*•]\\s+"), QRegularExpression::MultilineOption);
+    res.remove(listRegex);
+
+    // Remove markdown formatting symbols (*, #, _, >, ~, $, \)
+    static const QRegularExpression symRegex(QStringLiteral("[*#_>~$\\\\]"));
     res.remove(symRegex);
+
+    // Remove emojis to prevent TTS pronouncing technical Unicode names
+    static const QRegularExpression emojiRegex(
+        QStringLiteral("[\\x{1F300}-\\x{1FAD6}\\x{1F900}-\\x{1F9FF}\\x{2600}-\\x{26FF}\\x{2700}-\\x{27BF}]"),
+        QRegularExpression::UseUnicodePropertiesOption
+    );
+    res.remove(emojiRegex);
+
+    // Collapse multiple spaces/newlines into a single clean space
+    static const QRegularExpression multiSpaceRegex(QStringLiteral("\\s+"));
+    res = res.replace(multiSpaceRegex, QStringLiteral(" "));
+
     return res.trimmed();
 }
 
@@ -4318,32 +4530,52 @@ void KityApplet::playSiriEarcon(bool activating) const
         return;
     }
 
-    const QString earconPath = QDir::tempPath() + (activating ? QStringLiteral("/kity_earcon_on.wav") : QStringLiteral("/kity_earcon_off.wav"));
+    const QString fileName = activating ? QStringLiteral("kity_on.wav") : QStringLiteral("kity_off.wav");
+    QString earconPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kity/sounds/") + fileName);
+    if (earconPath.isEmpty()) {
+        earconPath = QDir::homePath() + QStringLiteral("/.local/share/kity/sounds/") + fileName;
+    }
+
     if (!QFileInfo::exists(earconPath)) {
-        // Synthesize a crystalline dual-tone harmonic Siri earcon (110ms, 16kHz mono PCM)
-        const int sampleRate = 16000;
-        const int durationSamples = static_cast<int>(sampleRate * 0.11);
-        QByteArray pcm(durationSamples * static_cast<int>(sizeof(qint16)), 0);
-        qint16 *samples = reinterpret_cast<qint16 *>(pcm.data());
+        earconPath = QDir::tempPath() + (activating ? QStringLiteral("/kity_earcon_on.wav") : QStringLiteral("/kity_earcon_off.wav"));
+        if (!QFileInfo::exists(earconPath)) {
+            // Synthesize high-fidelity 44.1kHz crystalline dual-tone harmonic Siri earcon
+            const int sampleRate = 44100;
+            const double durationSec = 0.16;
+            const int totalSamples = static_cast<int>(sampleRate * durationSec);
+            QByteArray pcm(totalSamples * static_cast<int>(sizeof(qint16)), 0);
+            qint16 *samples = reinterpret_cast<qint16 *>(pcm.data());
 
-        const double freq1 = activating ? 528.0 : 792.0;
-        const double freq2 = activating ? 792.0 : 528.0;
-        const double twoPi = 6.283185307179586;
+            const double f1 = activating ? 987.77 : 1318.51; // B5 -> E6 ascending, or E6 -> B5 descending
+            const double f2 = activating ? 1318.51 : 987.77;
+            const double tSwitch = 0.055;
+            const double twoPi = 6.283185307179586;
 
-        for (int i = 0; i < durationSamples; ++i) {
-            const double progress = static_cast<double>(i) / durationSamples;
-            const double freq = (progress < 0.45) ? freq1 : freq2;
-            // Smooth Hann window envelope to prevent clicks
-            const double envelope = std::sin(3.141592653589793 * progress);
-            const double val = std::sin(twoPi * freq * i / sampleRate) * envelope * 0.14;
-            samples[i] = static_cast<qint16>(val * 32767.0);
-        }
+            for (int i = 0; i < totalSamples; ++i) {
+                const double t = static_cast<double>(i) / sampleRate;
+                const double env1 = (t < 0.09) ? std::exp(-t / 0.035) : 0.0;
+                double env2 = 0.0;
+                if (t >= tSwitch) {
+                    const double t2 = t - tSwitch;
+                    const double attack = qMin(1.0, t2 / 0.005);
+                    env2 = attack * std::exp(-t2 / 0.055);
+                }
 
-        QFile f(earconPath);
-        if (f.open(QIODevice::WriteOnly)) {
-            f.write(createWavHeader(pcm.size(), sampleRate, 1, 16));
-            f.write(pcm);
-            f.close();
+                const double tone1 = std::sin(twoPi * f1 * t) + 0.25 * std::sin(4.0 * M_PI * f1 * t);
+                const double t2 = qMax(0.0, t - tSwitch);
+                const double tone2 = std::sin(twoPi * f2 * t2) + 0.20 * std::sin(4.0 * M_PI * f2 * t2);
+
+                double val = (tone1 * env1 * 0.18) + (tone2 * env2 * 0.22);
+                val = qBound(-1.0, val, 1.0);
+                samples[i] = static_cast<qint16>(val * 32767.0);
+            }
+
+            QFile f(earconPath);
+            if (f.open(QIODevice::WriteOnly)) {
+                f.write(createWavHeader(pcm.size(), sampleRate, 1, 16));
+                f.write(pcm);
+                f.close();
+            }
         }
     }
 

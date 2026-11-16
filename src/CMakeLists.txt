@@ -170,6 +170,11 @@ target_link_libraries(kity PRIVATE
 
 install(TARGETS kity ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
 
+install(FILES res/sounds/kity_on.wav
+              res/sounds/kity_off.wav
+        DESTINATION ${KDE_INSTALL_DATADIR}/kity/sounds
+)
+
 install(FILES org.cesar.kity.desktop
         DESTINATION ${KDE_INSTALL_APPDIR}
 )

@@ -197,6 +197,9 @@ private:
     void sendOllamaToolFollowUp(const QJsonArray &messages);
 
     // Speech & Audio
+    QString resolveSttEngine() const;
+    void runSpeechTranscription();
+    void runGeminiAudioTranscription(const QString &wavPath);
     void runWhisperTranscription();
     void transcribeAndExecuteAudio(const QString &wavPath);
     void checkWakeWordTranscription(const QString &wavPath);
@@ -344,6 +347,8 @@ private:
     QQueue<QString> m_ttsQueue;
     bool m_isSpeakingSentence = false;
     bool m_lastQueryWasVoice = false;
+    bool m_insideThinkingBlock = false;
+    QPointer<QNetworkReply> m_currentTtsReply;
 
     QList<ContactEntry> m_contacts;
     QList<ScheduledReminder> m_scheduledReminders;
