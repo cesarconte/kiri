@@ -2775,40 +2775,47 @@ void KityApplet::speakSentence(const QString &sentence)
     const double voicePace = qBound(0.0, readConfigDouble(QStringLiteral("voicePace"), 0.55), 1.0);
     const double voiceExpressivity = qBound(0.0, readConfigDouble(QStringLiteral("voiceExpressivity"), 0.65), 1.0);
 
-    auto resolveEdgeVoiceForOrb = [](const QString &accent, int idx) -> QString {
+    auto resolveEdgeVoiceForOrb = [](const QString &accent, int idx, int &orbPitchShift) -> QString {
+        orbPitchShift = 0;
         if (accent.contains(QLatin1String("Latin"), Qt::CaseInsensitive)) {
             static const QStringList voices = {
                 QStringLiteral("es-MX-DaliaNeural"), QStringLiteral("es-MX-JorgeNeural"),
-                QStringLiteral("es-CO-SalomeNeural"), QStringLiteral("es-MX-BeatrizNeural"),
-                QStringLiteral("es-AR-ElenaNeural"), QStringLiteral("es-CL-CatalinaNeural"),
-                QStringLiteral("es-US-PalomaNeural")
+                QStringLiteral("es-CO-SalomeNeural"), QStringLiteral("es-AR-ElenaNeural"),
+                QStringLiteral("es-CL-CatalinaNeural"), QStringLiteral("es-US-PalomaNeural"),
+                QStringLiteral("es-PE-CamilaNeural")
             };
-            return voices.value(idx, voices.at(3));
+            return voices.value(idx, voices.at(0));
         }
         if (accent.contains(QLatin1String("American"), Qt::CaseInsensitive)) {
             static const QStringList voices = {
-                QStringLiteral("en-US-AvaNeural"), QStringLiteral("en-US-AndrewNeural"),
-                QStringLiteral("en-US-EmmaNeural"), QStringLiteral("en-US-AriaNeural"),
-                QStringLiteral("en-US-BrianNeural"), QStringLiteral("en-US-JennyNeural"),
-                QStringLiteral("en-US-GuyNeural")
+                QStringLiteral("en-US-AndrewNeural"), QStringLiteral("en-US-BrianNeural"),
+                QStringLiteral("en-US-GuyNeural"), QStringLiteral("en-US-AvaNeural"),
+                QStringLiteral("en-US-EmmaNeural"), QStringLiteral("en-US-JennyNeural"),
+                QStringLiteral("en-US-AriaNeural")
             };
             return voices.value(idx, voices.at(3));
         }
         if (accent.contains(QLatin1String("British"), Qt::CaseInsensitive)) {
             static const QStringList voices = {
-                QStringLiteral("en-GB-SoniaNeural"), QStringLiteral("en-GB-RyanNeural"),
-                QStringLiteral("en-GB-LibbyNeural"), QStringLiteral("en-GB-MaisieNeural"),
-                QStringLiteral("en-GB-ThomasNeural"), QStringLiteral("en-GB-AbbiNeural"),
-                QStringLiteral("en-GB-OllieNeural")
+                QStringLiteral("en-GB-RyanNeural"), QStringLiteral("en-GB-ThomasNeural"),
+                QStringLiteral("en-GB-RyanNeural"), QStringLiteral("en-GB-SoniaNeural"),
+                QStringLiteral("en-GB-MaisieNeural"), QStringLiteral("en-GB-LibbyNeural"),
+                QStringLiteral("en-GB-LibbyNeural")
             };
+            static const int shifts[] = { -3, 0, +4, 0, 0, 0, +4 };
+            orbPitchShift = shifts[qBound(0, idx, 6)];
             return voices.value(idx, voices.at(3));
         }
+        // Spanish (Spain): Edge has 3 native actors (Alvaro, Elvira, Ximena).
+        // Modulated into 7 distinct acoustic personas via harmonic pitch offsets.
         static const QStringList esVoices = {
-            QStringLiteral("es-ES-AlvaroNeural"), QStringLiteral("es-ES-AbrilNeural"),
-            QStringLiteral("es-ES-ArnauNeural"), QStringLiteral("es-ES-ElviraNeural"),
-            QStringLiteral("es-ES-EstrellaNeural"), QStringLiteral("es-ES-DarioNeural"),
+            QStringLiteral("es-ES-AlvaroNeural"), QStringLiteral("es-ES-AlvaroNeural"),
+            QStringLiteral("es-ES-AlvaroNeural"), QStringLiteral("es-ES-ElviraNeural"),
+            QStringLiteral("es-ES-ElviraNeural"), QStringLiteral("es-ES-XimenaNeural"),
             QStringLiteral("es-ES-XimenaNeural")
         };
+        static const int esShifts[] = { -6, 0, +5, 0, +4, -2, +4 };
+        orbPitchShift = esShifts[qBound(0, idx, 6)];
         return esVoices.value(idx, esVoices.at(3));
     };
 
@@ -2939,11 +2946,13 @@ void KityApplet::speakSentence(const QString &sentence)
             startWakeWordListener();
         }
 
-        const QString edgeVoice = resolveEdgeVoiceForOrb(voiceAccent, voiceIndex);
+        int orbPitchShift = 0;
+        const QString edgeVoice = resolveEdgeVoiceForOrb(voiceAccent, voiceIndex, orbPitchShift);
         const int ratePct = qRound((voicePace - 0.5) * 80.0);
         const int pitchHz = qRound((voiceExpressivity - 0.5) * 28.0);
+        const int totalPitchHz = pitchHz + orbPitchShift;
         const QString rateArg = QStringLiteral("--rate=%1%2%").arg(ratePct >= 0 ? QStringLiteral("+") : QString()).arg(ratePct);
-        const QString pitchArg = QStringLiteral("--pitch=%1%2Hz").arg(pitchHz >= 0 ? QStringLiteral("+") : QString()).arg(pitchHz);
+        const QString pitchArg = QStringLiteral("--pitch=%1%2Hz").arg(totalPitchHz >= 0 ? QStringLiteral("+") : QString()).arg(totalPitchHz);
 
         m_ttsProcess = new QProcess(this);
         m_pwPlayProcess = new QProcess(this);
