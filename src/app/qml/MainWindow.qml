@@ -64,8 +64,8 @@ CachyWindow {
         repeat: false
         onTriggered: {
             let q = spotlightSearchInput.text.trim();
-            // Strict math expression pattern: arithmetic, conversions or standard math functions only
-            const mathPattern = /^(?:(?:\s*[\d\.,]+\s*[\+\-\*\/\^%]\s*[\d\.,\s\+\-\*\/\^%()=]+)|(?:\s*(?:sqrt|cbrt|sin|cos|tan|log|ln|abs)\s*\(\s*[\d\.,]+\s*\)\s*=?\s*)|(?:\s*[\d\.,]+\s*(?:km|m|cm|mm|mi|in|ft|kg|g|lb|oz|l|ml|c|f|celsius|fahrenheit|usd|eur|gbp|jpy|btc|eth|horas?|mins?|minutos?|segs?|segundos?)\s+(?:to|in|a|en)\s+(?:km|m|cm|mm|mi|in|ft|kg|g|lb|oz|l|ml|c|f|celsius|fahrenheit|usd|eur|gbp|jpy|btc|eth|horas?|mins?|minutos?|segs?|segundos?)\s*)|(?:\s*[\d\.,]+\s*%\s*(?:of|de)\s+[\d\.,]+))$/i;
+            // Strict math expression pattern: arithmetic, conversions, roots or standard math functions only
+            const mathPattern = /^(?:(?:\s*[\d\.,]+\s*[\+\-\*\/\^%]\s*[\d\.,\s\+\-\*\/\^%()=]+)|(?:\s*(?:sqrt|cbrt|sin|cos|tan|log|ln|abs|√|∛)\s*\(?[\d\.,]+\)?\s*=?\s*)|(?:\s*ra[ií]z(?:\s+(?:cuadrada|c[uú]bica))?\s+(?:de\s+)?[\d\.,]+\s*=?\s*)|(?:\s*[\d\.,]+\s*(?:km|m|cm|mm|mi|in|ft|kg|g|lb|oz|l|ml|c|f|celsius|fahrenheit|usd|eur|gbp|jpy|btc|eth|horas?|mins?|minutos?|segs?|segundos?)\s+(?:to|in|a|en)\s+(?:km|m|cm|mm|mi|in|ft|kg|g|lb|oz|l|ml|c|f|celsius|fahrenheit|usd|eur|gbp|jpy|btc|eth|horas?|mins?|minutos?|segs?|segundos?)\s*)|(?:\s*[\d\.,]+\s*%\s*(?:of|de)\s+[\d\.,]+))$/i;
 
             if (q.length >= 3 && mathPattern.test(q)) {
                 let res = kityClient.evaluateMathNotes(q);

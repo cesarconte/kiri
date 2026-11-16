@@ -67,6 +67,13 @@ QString MathNotes::normalizeExpression(const QString &line)
     static const QRegularExpression rxFahrenheit(QStringLiteral("\\bfahrenheit\\b"), QRegularExpression::CaseInsensitiveOption);
     t.replace(rxFahrenheit, QStringLiteral("fahrenheit"));
 
+    // Spanish roots: "raiz cubica de 8" -> "cbrt(8)", "raiz cuadrada de 9" / "raiz de 9" -> "sqrt(9)"
+    static const QRegularExpression rxCbrt(QStringLiteral("\\bra[ií]z\\s+c[uú]bica\\s+(?:de\\s+)?([\\d\\.,]+)"), QRegularExpression::CaseInsensitiveOption);
+    t.replace(rxCbrt, QStringLiteral("cbrt(\\1)"));
+
+    static const QRegularExpression rxSqrt(QStringLiteral("\\bra[ií]z(?:\\s+cuadrada)?\\s+(?:de\\s+)?([\\d\\.,]+)"), QRegularExpression::CaseInsensitiveOption);
+    t.replace(rxSqrt, QStringLiteral("sqrt(\\1)"));
+
     // Replace " a " / " en " before a target unit with " to "
     // e.g. "5 km a mi" -> "5 km to mi"
     static const QRegularExpression rxTo(QStringLiteral("\\s+(?:a|en|in|to)\\s+([a-zA-Z°]+)"), QRegularExpression::CaseInsensitiveOption);
