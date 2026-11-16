@@ -869,6 +869,20 @@ Item {
 
                                     Item { Layout.fillWidth: true }
 
+                                    // Replace Original Text (Writing Tools Apple Intelligence action)
+                                    QQC2.Button {
+                                        visible: !msgDelegate.isUser && msgDelegate.modelData.isWritingTool === true
+                                        icon.name: "edit-paste-symbolic"
+                                        text: i18n("Reemplazar original")
+                                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                                        onClicked: {
+                                            Plasmoid.replaceText(msgDelegate.modelData.content);
+                                            Plasmoid.expanded = false;
+                                        }
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: i18n("Copia el texto al portapapeles y cierra Kity para pegar (Ctrl+V) en tu aplicación")
+                                    }
+
                                     // Speak / Stop button on Assistant responses
                                     QQC2.ToolButton {
                                         visible: !msgDelegate.isUser && msgDelegate.modelData.content.length > 0

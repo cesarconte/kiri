@@ -27,6 +27,8 @@
 #include <QUuid>
 #include <KSharedConfig>
 #include <KConfigGroup>
+#include <KNotification>
+#include <KLocalizedString>
 
 // =========================================================================
 // KityConfigHelper implementation
@@ -584,6 +586,44 @@ void KityClient::copyToClipboard(const QString &text) const
         cb->setText(text, QClipboard::Clipboard);
         cb->setText(text, QClipboard::Selection);
     }
+    // Also use wl-copy to ensure persistent Wayland selection ownership
+    QProcess::startDetached(QStringLiteral("wl-copy"), {text});
+    QProcess::startDetached(QStringLiteral("wl-copy"), {QStringLiteral("-p"), text});
+}
+
+void KityClient::replaceText(const QString &text) const
+{
+    copyToClipboard(text);
+    KNotification::event(QStringLiteral("notification"),
+                         i18n("Herramientas de Escritura"),
+                         i18n("Texto copiado al portapapeles. Listo para pegar (Ctrl+V) en tu aplicación."),
+                         QStringLiteral("org.cesar.kity"));
+}
+
+QString KityClient::readWaylandSelection() const
+{
+    QProcess process;
+    process.start(QStringLiteral("wl-paste"), {QStringLiteral("-p"), QStringLiteral("--no-newline")});
+    if (process.waitForFinished(800)) {
+        const QString text = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        if (!text.isEmpty()) {
+            return text;
+        }
+    }
+    process.start(QStringLiteral("wl-paste"), {QStringLiteral("--no-newline")});
+    if (process.waitForFinished(800)) {
+        const QString text = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        if (!text.isEmpty()) {
+            return text;
+        }
+    }
+    QClipboard *cb = QGuiApplication::clipboard();
+    if (cb) {
+        QString text = cb->text(QClipboard::Selection).trimmed();
+        if (text.isEmpty()) text = cb->text(QClipboard::Clipboard).trimmed();
+        return text;
+    }
+    return QString();
 }
 
 void KityClient::executeCommandInKonsole(const QString &command)

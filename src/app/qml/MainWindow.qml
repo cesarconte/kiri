@@ -237,9 +237,9 @@ CachyWindow {
                 Layout.fillWidth: true
                 implicitHeight: delBannerCol.implicitHeight + 16
                 radius: 12
-                color: CachyTheme.withAlpha(CachyTheme.dangerColor, 0.16)
+                color: Qt.rgba(0.9, 0.25, 0.25, 0.16)
                 border.width: 1
-                border.color: CachyTheme.withAlpha(CachyTheme.dangerColor, 0.45)
+                border.color: Qt.rgba(0.9, 0.25, 0.25, 0.45)
 
                 ColumnLayout {
                     id: delBannerCol
@@ -524,6 +524,9 @@ CachyWindow {
                     if (root.showWritingTools) {
                         root.showVisualIntelligence = false;
                         root.showMathNotes = false;
+                        if (promptField.text.trim().length === 0) {
+                            promptField.text = kityClient.readWaylandSelection();
+                        }
                     }
                 }
             }
@@ -997,7 +1000,7 @@ CachyWindow {
                     Layout.fillHeight: true
                     contentWidth: width
                     contentHeight: spotAnswerText.implicitHeight + 8
-                    flickableDirection: Flickable.VerticalOnly
+                    flickableDirection: Flickable.VerticalFlick
                     boundsBehavior: Flickable.StopAtBounds
                     clip: true
 
@@ -1151,16 +1154,16 @@ CachyWindow {
 
                         Repeater {
                             model: [
-                                { label: i18n("Proofread"), action: "proofread" },
-                                { label: i18n("Rewrite"), action: "rewrite" },
-                                { label: i18n("Friendly"), action: "friendly" },
-                                { label: i18n("Professional"), action: "professional" },
-                                { label: i18n("Concise"), action: "concise" },
-                                { label: i18n("Summary"), action: "summary" },
-                                { label: i18n("Key Points"), action: "keypoints" },
-                                { label: i18n("Table"), action: "table" },
-                                { label: i18n("Español"), action: "translate:es" },
-                                { label: i18n("English"), action: "translate:en" }
+                                { label: i18n("✓ Corregir"), action: "proofread" },
+                                { label: i18n("↻ Reescribir"), action: "rewrite" },
+                                { label: i18n("💼 Profesional"), action: "professional" },
+                                { label: i18n("😊 Amigable"), action: "friendly" },
+                                { label: i18n("⚡ Conciso"), action: "concise" },
+                                { label: i18n("📝 Resumen"), action: "summary" },
+                                { label: i18n("• Puntos clave"), action: "keypoints" },
+                                { label: i18n("📊 Tabla"), action: "table" },
+                                { label: i18n("🌐 A Español"), action: "translate:es" },
+                                { label: i18n("🌐 A Inglés"), action: "translate:en" }
                             ]
 
                             CachyButton {
@@ -1180,52 +1183,123 @@ CachyWindow {
             // -----------------------------------------------------------------
             // Visual Intelligence Drawer
             // -----------------------------------------------------------------
+            // Visual Intelligence & Live Text Drawer (Apple Intelligence)
+            // -----------------------------------------------------------------
             Rectangle {
                 Layout.fillWidth: true
                 visible: root.showVisualIntelligence
-                implicitHeight: viRow.implicitHeight + 16
+                implicitHeight: viCol.implicitHeight + 16
                 radius: CachyTheme.radiusMedium
                 color: CachyTheme.cardBackground
                 border.width: 1
                 border.color: CachyTheme.specularBorder
 
-                RowLayout {
-                    id: viRow
+                ColumnLayout {
+                    id: viCol
                     anchors.fill: parent
-                    anchors.margins: 8
+                    anchors.margins: 10
                     spacing: 8
 
-                    QQC2.Label {
-                        text: i18n("📷 Visual Intelligence:")
-                        font.bold: true
-                        color: CachyTheme.textPrimary
-                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
 
-                    QQC2.ComboBox {
-                        Layout.preferredWidth: 130
-                        model: [
-                            { label: i18n("Region"), scope: "region" },
-                            { label: i18n("Active Window"), scope: "window" },
-                            { label: i18n("Full Screen"), scope: "fullscreen" }
-                        ]
-                        textRole: "label"
-                        onActivated: index => root.visualCaptureScope = model[index].scope
-                    }
+                        Kirigami.Icon {
+                            source: "camera-photo-symbolic"
+                            Layout.preferredWidth: 16
+                            Layout.preferredHeight: 16
+                            color: CachyTheme.accentColor
+                        }
 
-                    CachyButton {
-                        text: i18n("Extract Text (OCR)")
-                        onClicked: {
-                            kityClient.runVisualIntelligence(root.visualCaptureScope, "ocr");
-                            root.showVisualIntelligence = false;
+                        QQC2.Label {
+                            text: i18n("Inteligencia Visual & Live Text:")
+                            font.bold: true
+                            font.pixelSize: 12
+                            color: CachyTheme.textPrimary
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        // Scope selector
+                        Repeater {
+                            model: [
+                                { scope: "region", label: i18n("📐 Región") },
+                                { scope: "activewindow", label: i18n("🪟 Ventana activa") },
+                                { scope: "fullscreen", label: i18n("🖥️ Pantalla") }
+                            ]
+
+                            Rectangle {
+                                required property var modelData
+                                height: 26
+                                implicitWidth: scopeText.implicitWidth + 16
+                                radius: 13
+                                color: root.visualCaptureScope === modelData.scope
+                                    ? CachyTheme.withAlpha(CachyTheme.accentColor, 0.28)
+                                    : (scopeHover.hovered ? CachyTheme.cardBackgroundHover : "transparent")
+                                border.width: 1
+                                border.color: root.visualCaptureScope === modelData.scope
+                                    ? CachyTheme.withAlpha(CachyTheme.accentColor, 0.6)
+                                    : CachyTheme.specularBorder
+
+                                HoverHandler { id: scopeHover; cursorShape: Qt.PointingHandCursor }
+                                TapHandler {
+                                    onTapped: root.visualCaptureScope = modelData.scope
+                                }
+
+                                Text {
+                                    id: scopeText
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    font.pixelSize: 11
+                                    font.weight: root.visualCaptureScope === modelData.scope ? Font.DemiBold : Font.Normal
+                                    color: root.visualCaptureScope === modelData.scope ? CachyTheme.textPrimary : CachyTheme.textSecondary
+                                }
+                            }
                         }
                     }
 
-                    CachyButton {
-                        text: i18n("Describe Screen")
-                        primary: true
-                        onClicked: {
-                            kityClient.runVisualIntelligence(root.visualCaptureScope, "describe");
-                            root.showVisualIntelligence = false;
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        CachyButton {
+                            text: i18n("📋 Extraer texto (Live Text)")
+                            onClicked: {
+                                const customQ = promptField.text.trim();
+                                if (root.visualCaptureScope === "activewindow") {
+                                    root.hide();
+                                }
+                                kityClient.runVisualIntelligence(root.visualCaptureScope, "ocr", customQ);
+                                root.showVisualIntelligence = false;
+                            }
+                        }
+
+                        CachyButton {
+                            text: i18n("🌐 Traducir captura")
+                            onClicked: {
+                                const customQ = promptField.text.trim();
+                                if (root.visualCaptureScope === "activewindow") {
+                                    root.hide();
+                                }
+                                kityClient.runVisualIntelligence(root.visualCaptureScope, "translate", customQ);
+                                root.showVisualIntelligence = false;
+                            }
+                        }
+
+                        CachyButton {
+                            text: i18n("🔍 Explicar / Analizar")
+                            primary: true
+                            onClicked: {
+                                const customQ = promptField.text.trim();
+                                if (root.visualCaptureScope === "activewindow") {
+                                    root.hide();
+                                }
+                                kityClient.runVisualIntelligence(root.visualCaptureScope, "explain", customQ);
+                                root.showVisualIntelligence = false;
+                                if (customQ.length > 0) {
+                                    promptField.text = "";
+                                }
+                            }
                         }
                     }
                 }
@@ -1325,7 +1399,7 @@ CachyWindow {
                     visible: kityClient.messages.length > 0
                     spacing: 16
                     clip: true
-                    flickableDirection: Flickable.VerticalOnly
+                    flickableDirection: Flickable.VerticalFlick
                     boundsBehavior: Flickable.StopAtBounds
                     model: kityClient.messages
 
@@ -1475,23 +1549,197 @@ CachyWindow {
                                 onOpenCalendarRequested: kityClient.openKOrganizer()
                             }
 
-                            // Subtle Copy & Speak Actions
-                            RowLayout {
-                                visible: !msgDelegate.isUser
-                                spacing: 6
+                            // Writing Tools & Response Action Toolbar (Apple Intelligence Golden Gate)
+                            Rectangle {
+                                visible: !msgDelegate.isUser && (msgDelegate.modelData.content || "").length > 0
+                                Layout.fillWidth: true
+                                implicitHeight: 34
+                                radius: 10
+                                color: msgDelegate.modelData.isWritingTool ? Qt.rgba(0.12, 0.14, 0.20, 0.75) : "transparent"
+                                border.width: msgDelegate.modelData.isWritingTool ? 1 : 0
+                                border.color: CachyTheme.specularBorder
 
-                                QQC2.ToolButton {
-                                    icon.name: "edit-copy"
-                                    implicitWidth: 26
-                                    implicitHeight: 26
-                                    onClicked: kityClient.copyToClipboard(msgDelegate.modelData.content)
-                                }
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: msgDelegate.modelData.isWritingTool ? 8 : 0
+                                    anchors.rightMargin: msgDelegate.modelData.isWritingTool ? 8 : 0
+                                    spacing: 8
 
-                                QQC2.ToolButton {
-                                    icon.name: "audio-volume-high"
-                                    implicitWidth: 26
-                                    implicitHeight: 26
-                                    onClicked: kityClient.speakText(msgDelegate.modelData.content)
+                                    // Replace Original Text (Signature Apple Intelligence Action)
+                                    Rectangle {
+                                        visible: msgDelegate.modelData.isWritingTool === true
+                                        height: 26
+                                        implicitWidth: replaceRow.implicitWidth + 16
+                                        radius: 13
+                                        color: replaceHover.hovered ? CachyTheme.withAlpha(CachyTheme.accentColor, 0.35) : CachyTheme.withAlpha(CachyTheme.accentColor, 0.22)
+                                        border.width: 1
+                                        border.color: CachyTheme.withAlpha(CachyTheme.accentColor, 0.55)
+
+                                        HoverHandler { id: replaceHover; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler {
+                                            onTapped: {
+                                                kityClient.replaceText(msgDelegate.modelData.content);
+                                                root.hide();
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            id: replaceRow
+                                            anchors.centerIn: parent
+                                            spacing: 6
+
+                                            Kirigami.Icon {
+                                                source: "edit-paste-symbolic"
+                                                Layout.preferredWidth: 14
+                                                Layout.preferredHeight: 14
+                                                color: CachyTheme.accentColor
+                                            }
+
+                                            Text {
+                                                text: i18n("Reemplazar original")
+                                                font.pixelSize: 11
+                                                font.weight: Font.DemiBold
+                                                color: CachyTheme.textPrimary
+                                            }
+                                        }
+                                    }
+
+                                    // Copy to clipboard
+                                    Rectangle {
+                                        height: 26
+                                        implicitWidth: copyRow.implicitWidth + 14
+                                        radius: 13
+                                        color: copyHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
+                                        border.width: 1
+                                        border.color: CachyTheme.specularBorder
+
+                                        HoverHandler { id: copyHover; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler {
+                                            onTapped: kityClient.copyToClipboard(msgDelegate.modelData.content)
+                                        }
+
+                                        RowLayout {
+                                            id: copyRow
+                                            anchors.centerIn: parent
+                                            spacing: 5
+
+                                            Kirigami.Icon {
+                                                source: "edit-copy-symbolic"
+                                                Layout.preferredWidth: 13
+                                                Layout.preferredHeight: 13
+                                                color: CachyTheme.textSecondary
+                                            }
+
+                                            Text {
+                                                text: i18n("Copiar")
+                                                font.pixelSize: 11
+                                                color: CachyTheme.textPrimary
+                                            }
+                                        }
+                                    }
+
+                                    // Speak Aloud
+                                    Rectangle {
+                                        height: 26
+                                        implicitWidth: speakRow.implicitWidth + 14
+                                        radius: 13
+                                        color: speakHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
+                                        border.width: 1
+                                        border.color: CachyTheme.specularBorder
+
+                                        HoverHandler { id: speakHover; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler {
+                                            onTapped: kityClient.speakText(msgDelegate.modelData.content)
+                                        }
+
+                                        RowLayout {
+                                            id: speakRow
+                                            anchors.centerIn: parent
+                                            spacing: 5
+
+                                            Kirigami.Icon {
+                                                source: "audio-volume-high-symbolic"
+                                                Layout.preferredWidth: 13
+                                                Layout.preferredHeight: 13
+                                                color: CachyTheme.textSecondary
+                                            }
+
+                                            Text {
+                                                text: i18n("Escuchar")
+                                                font.pixelSize: 11
+                                                color: CachyTheme.textPrimary
+                                            }
+                                        }
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    // Quick Tone Switcher (when this was a writing tool)
+                                    Rectangle {
+                                        visible: msgDelegate.modelData.isWritingTool === true
+                                        height: 26
+                                        implicitWidth: toneRow.implicitWidth + 14
+                                        radius: 13
+                                        color: toneHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
+                                        border.width: 1
+                                        border.color: CachyTheme.specularBorder
+
+                                        HoverHandler { id: toneHover; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler {
+                                            onTapped: toneMenu.popup()
+                                        }
+
+                                        RowLayout {
+                                            id: toneRow
+                                            anchors.centerIn: parent
+                                            spacing: 5
+
+                                            Kirigami.Icon {
+                                                source: "document-edit-symbolic"
+                                                Layout.preferredWidth: 13
+                                                Layout.preferredHeight: 13
+                                                color: CachyTheme.textSecondary
+                                            }
+
+                                            Text {
+                                                text: i18n("Cambiar tono…")
+                                                font.pixelSize: 11
+                                                color: CachyTheme.textSecondary
+                                            }
+                                        }
+
+                                        QQC2.Menu {
+                                            id: toneMenu
+                                            QQC2.MenuItem {
+                                                text: i18n("💼 Profesional")
+                                                onTriggered: kityClient.applyWritingTool("professional", msgDelegate.modelData.sourceText || "")
+                                            }
+                                            QQC2.MenuItem {
+                                                text: i18n("😊 Amigable")
+                                                onTriggered: kityClient.applyWritingTool("friendly", msgDelegate.modelData.sourceText || "")
+                                            }
+                                            QQC2.MenuItem {
+                                                text: i18n("⚡ Conciso")
+                                                onTriggered: kityClient.applyWritingTool("concise", msgDelegate.modelData.sourceText || "")
+                                            }
+                                            QQC2.MenuItem {
+                                                text: i18n("↻ Reescribir")
+                                                onTriggered: kityClient.applyWritingTool("rewrite", msgDelegate.modelData.sourceText || "")
+                                            }
+                                            QQC2.MenuItem {
+                                                text: i18n("📝 Resumen")
+                                                onTriggered: kityClient.applyWritingTool("summary", msgDelegate.modelData.sourceText || "")
+                                            }
+                                            QQC2.MenuItem {
+                                                text: i18n("• Puntos clave")
+                                                onTriggered: kityClient.applyWritingTool("keypoints", msgDelegate.modelData.sourceText || "")
+                                            }
+                                            QQC2.MenuItem {
+                                                text: i18n("📊 Tabla")
+                                                onTriggered: kityClient.applyWritingTool("table", msgDelegate.modelData.sourceText || "")
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

@@ -226,8 +226,12 @@ int main(int argc, char *argv[])
             }
         } else if (p.isSet(writingToolsOption) || p.isSet(writingActionOption)) {
             QString action;
+            QString customText;
             if (p.isSet(writingActionOption)) {
                 action = p.value(writingActionOption).trimmed();
+                if (!p.positionalArguments().isEmpty()) {
+                    customText = p.positionalArguments().first().trimmed();
+                }
             } else if (!p.positionalArguments().isEmpty()) {
                 const QString firstArg = p.positionalArguments().first().trimmed();
                 static const QStringList validActions = {
@@ -237,14 +241,21 @@ int main(int argc, char *argv[])
                 };
                 if (validActions.contains(firstArg) || firstArg.startsWith(QStringLiteral("translate:"))) {
                     action = firstArg;
+                    if (p.positionalArguments().size() > 1) {
+                        customText = p.positionalArguments().at(1).trimmed();
+                    }
+                } else {
+                    customText = firstArg;
                 }
             }
 
-            if (!action.isEmpty()) {
-                client.applyWritingTool(action);
-            } else if (window) {
+            if (window) {
                 window->setProperty("compactMode", false);
                 window->setProperty("showWritingTools", true);
+            }
+
+            if (!action.isEmpty()) {
+                client.applyWritingTool(action, customText);
             }
         } else if (!p.positionalArguments().isEmpty()) {
             const QString pos = p.positionalArguments().first();

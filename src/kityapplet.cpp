@@ -193,6 +193,7 @@ void KityApplet::setWakeWordEnabled(bool enabled)
 
 void KityApplet::setState(const QString &newState, const QString &newStatus)
 {
+    qWarning() << "Kity state transition:" << newState << "Status:" << newStatus;
     const bool stateChangedFlag = (m_state != newState);
     const QString oldStatus = m_statusMessage;
 
@@ -789,11 +790,8 @@ void KityApplet::sendMessage(const QString &text, bool fromVoice)
 
 void KityApplet::sendToOllama(const QString &userPrompt, const QString &injectedContext, const QString &base64Image)
 {
-    if (!m_ollamaReachable) {
-        setState(QStringLiteral("error"), i18n("No se puede conectar con el servidor Ollama en %1.", resolveOllamaUrl()));
-        return;
-    }
-
+    fprintf(stderr, "KityApplet::sendToOllama called with prompt: %s\n", qPrintable(userPrompt.left(80)));
+    fflush(stderr);
     setState(QStringLiteral("thinking"), i18n("Generando respuesta…"));
     m_streamingText.clear();
     m_ttsSpeechBuffer.clear();
@@ -955,6 +953,9 @@ void KityApplet::handleOllamaFinished()
                         m_currentOllamaReply->error() != QNetworkReply::OperationCanceledError);
 
     const QString httpError = m_currentOllamaReply->errorString();
+    fprintf(stderr, "KityApplet::handleOllamaFinished: error=%d httpError=%s streamLen=%lld\n",
+            error, qPrintable(httpError), (long long)m_streamingText.length());
+    fflush(stderr);
     m_currentOllamaReply->deleteLater();
     m_currentOllamaReply = nullptr;
 
@@ -1044,6 +1045,13 @@ void KityApplet::handleOllamaFinished()
         assistantMsg[QStringLiteral("content")] = finalResponse;
         assistantMsg[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
 
+        if (m_lastWasWritingTool) {
+            assistantMsg[QStringLiteral("isWritingTool")] = true;
+            assistantMsg[QStringLiteral("sourceText")] = m_lastWritingToolSource;
+            assistantMsg[QStringLiteral("writingToolAction")] = m_lastWritingToolAction;
+            m_lastWasWritingTool = false;
+        }
+
         // Extract any Markdown links as structured sources
         static const QRegularExpression mdLinkRx(QStringLiteral("\\[([^\\]]+)\\]\\((https?://[^\\)]+)\\)"));
         auto linkIt = mdLinkRx.globalMatch(finalResponse);
@@ -1099,11 +1107,6 @@ void KityApplet::handleOllamaFinished()
 
 void KityApplet::sendOllamaToolFollowUp(const QJsonArray &messages)
 {
-    if (!m_ollamaReachable) {
-        setState(QStringLiteral("error"), i18n("No se puede conectar con el servidor Ollama en %1.", resolveOllamaUrl()));
-        return;
-    }
-
     setState(QStringLiteral("thinking"), i18n("Generando respuesta…"));
     m_streamingText.clear();
     m_ttsSpeechBuffer.clear();
@@ -1145,6 +1148,7 @@ void KityApplet::sendOllamaToolFollowUp(const QJsonArray &messages)
 
 void KityApplet::sendToGemini(const QString &userPrompt, const QString &injectedContext, const QString &base64Image)
 {
+    m_lastGeminiPrompt = userPrompt;
     const QString apiKey = resolveGeminiApiKey();
     if (apiKey.isEmpty()) {
         setState(QStringLiteral("error"), i18n("No se ha configurado la clave API de Google Gemini. Añádela en las Preferencias de Kity."));
@@ -1212,7 +1216,7 @@ void KityApplet::sendToGemini(const QString &userPrompt, const QString &injected
 
     if (hasVision) {
         QJsonObject inlineData;
-        inlineData[QStringLiteral("mime_type")] = QStringLiteral("image/png");
+        inlineData[QStringLiteral("mime_type")] = QStringLiteral("image/jpeg");
         inlineData[QStringLiteral("data")] = base64Image;
         QJsonObject imgPart;
         imgPart[QStringLiteral("inline_data")] = inlineData;
@@ -1274,6 +1278,16 @@ void KityApplet::handleGeminiStreamChunk()
         if (obj.contains(QStringLiteral("error"))) {
             const QJsonObject errObj = obj.value(QStringLiteral("error")).toObject();
             const QString errMsg = errObj.value(QStringLiteral("message")).toString();
+            qWarning() << "Gemini stream error:" << errMsg;
+            if (m_ollamaReachable || readConfigString(QStringLiteral("aiBackend"), QStringLiteral("hybrid")).toLower() == QLatin1String("hybrid")) {
+                if (m_currentGeminiReply) {
+                    m_currentGeminiReply->abort();
+                    m_currentGeminiReply->deleteLater();
+                    m_currentGeminiReply = nullptr;
+                }
+                sendToOllama(m_lastGeminiPrompt);
+                return;
+            }
             setState(QStringLiteral("error"), i18n("Error de Google Gemini: %1", errMsg));
             return;
         }
@@ -1329,14 +1343,21 @@ void KityApplet::handleGeminiFinished()
 {
     if (!m_currentGeminiReply) return;
 
-    const bool error = (m_currentGeminiReply->error() != QNetworkReply::NoError &&
-                        m_currentGeminiReply->error() != QNetworkReply::OperationCanceledError);
+    const int statusCode = m_currentGeminiReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const bool error = (statusCode >= 400 || (m_currentGeminiReply->error() != QNetworkReply::NoError &&
+                        m_currentGeminiReply->error() != QNetworkReply::OperationCanceledError));
 
     const QString httpError = m_currentGeminiReply->errorString();
+    const QByteArray responseBody = m_currentGeminiReply->readAll();
     m_currentGeminiReply->deleteLater();
     m_currentGeminiReply = nullptr;
 
-    if (error) {
+    if (error || m_streamingText.trimmed().isEmpty()) {
+        qWarning() << "Kity: Gemini failed or empty (status" << statusCode << httpError << responseBody << ") -> Falling back to Ollama local";
+        if (m_ollamaReachable || readConfigString(QStringLiteral("aiBackend"), QStringLiteral("hybrid")).toLower() == QLatin1String("hybrid")) {
+            sendToOllama(m_lastGeminiPrompt);
+            return;
+        }
         setState(QStringLiteral("error"), i18n("Error al comunicarse con Google Gemini: %1", httpError));
         return;
     }
@@ -1364,6 +1385,13 @@ void KityApplet::handleGeminiFinished()
         assistantMsg[QStringLiteral("role")] = QStringLiteral("assistant");
         assistantMsg[QStringLiteral("content")] = finalResponse;
         assistantMsg[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
+
+        if (m_lastWasWritingTool) {
+            assistantMsg[QStringLiteral("isWritingTool")] = true;
+            assistantMsg[QStringLiteral("sourceText")] = m_lastWritingToolSource;
+            assistantMsg[QStringLiteral("writingToolAction")] = m_lastWritingToolAction;
+            m_lastWasWritingTool = false;
+        }
 
         QVariantList srcList;
         for (const auto &pair : m_geminiSources) {
@@ -2893,7 +2921,7 @@ void KityApplet::speakSentence(const QString &sentence)
         req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
 
         m_currentTtsReply = m_nam->post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
-        connect(m_currentTtsReply.data(), &QNetworkReply::finished, this, [this, pwPlay]() {
+        connect(m_currentTtsReply.data(), &QNetworkReply::finished, this, [this, pwPlay, edgeCli, resolveEdgeVoiceForOrb, voiceAccent, voiceIndex, voicePace, voiceExpressivity, sentence]() {
             if (!m_currentTtsReply) {
                 return;
             }
@@ -2906,8 +2934,36 @@ void KityApplet::speakSentence(const QString &sentence)
             }
 
             if (gReply->error() != QNetworkReply::NoError) {
-                qWarning() << "Kity: Google Cloud TTS error:" << gReply->errorString();
-                setState(QStringLiteral("error"), i18n("Error en la síntesis de voz (Google Cloud TTS): %1", gReply->errorString()));
+                qWarning() << "Kity: Google Cloud TTS error:" << gReply->errorString() << "- Falling back to Edge-TTS";
+                if (!edgeCli.isEmpty()) {
+                    int orbPitchShift = 0;
+                    const QString edgeVoice = resolveEdgeVoiceForOrb(voiceAccent, voiceIndex, orbPitchShift);
+                    const int ratePct = qRound((voicePace - 0.5) * 80.0);
+                    const int pitchHz = qRound((voiceExpressivity - 0.5) * 28.0);
+                    const int totalPitchHz = pitchHz + orbPitchShift;
+                    const QString rateArg = QStringLiteral("--rate=%1%2%").arg(ratePct >= 0 ? QStringLiteral("+") : QString()).arg(ratePct);
+                    const QString pitchArg = QStringLiteral("--pitch=%1%2Hz").arg(totalPitchHz >= 0 ? QStringLiteral("+") : QString()).arg(totalPitchHz);
+
+                    m_ttsProcess = new QProcess(this);
+                    m_pwPlayProcess = new QProcess(this);
+                    m_ttsProcess->setStandardOutputProcess(m_pwPlayProcess.data());
+
+                    connect(m_pwPlayProcess.data(), &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
+                        if (m_pwPlayProcess) {
+                            m_pwPlayProcess->deleteLater();
+                            m_pwPlayProcess = nullptr;
+                        }
+                        if (m_ttsProcess) {
+                            m_ttsProcess->deleteLater();
+                            m_ttsProcess = nullptr;
+                        }
+                        playNextTtsQueueItem();
+                    });
+
+                    m_ttsProcess->start(edgeCli, {QStringLiteral("--voice"), edgeVoice, rateArg, pitchArg, QStringLiteral("--text"), sentence, QStringLiteral("--write-media"), QStringLiteral("-")});
+                    m_pwPlayProcess->start(pwPlay, {QStringLiteral("-")});
+                    return;
+                }
                 playNextTtsQueueItem();
                 return;
             }
@@ -4070,8 +4126,21 @@ void KityApplet::executeCommandInKonsole(const QString &command)
 void KityApplet::copyToClipboard(const QString &text) const
 {
     if (auto clip = QGuiApplication::clipboard()) {
-        clip->setText(text);
+        clip->setText(text, QClipboard::Clipboard);
+        clip->setText(text, QClipboard::Selection);
     }
+    // Also use wl-copy to ensure Wayland clipboard and primary selection ownership
+    QProcess::startDetached(QStringLiteral("wl-copy"), {text});
+    QProcess::startDetached(QStringLiteral("wl-copy"), {QStringLiteral("-p"), text});
+}
+
+void KityApplet::replaceText(const QString &text) const
+{
+    copyToClipboard(text);
+    KNotification::event(QStringLiteral("notification"),
+                         i18n("Herramientas de Escritura"),
+                         i18n("Texto copiado al portapapeles. Listo para pegar (Ctrl+V) en tu aplicación."),
+                         QStringLiteral("org.cesar.kity"));
 }
 
 QString KityApplet::renderMarkdown(const QString &markdown) const
@@ -4275,11 +4344,18 @@ void KityApplet::applyWritingTool(const QString &action, const QString &customSo
     else if (action == QStringLiteral("table")) actionLabel = i18n("✍️ Convertir en tabla");
     else if (action.startsWith(QStringLiteral("translate:"))) actionLabel = i18n("🌐 Traducir a %1", languageDisplayName(action.mid(10)));
 
+    m_lastWasWritingTool = true;
+    m_lastWritingToolSource = source;
+    m_lastWritingToolAction = action;
+
     const QString preview = source.length() > 120 ? source.left(120) + QStringLiteral("…") : source;
     QVariantMap userMsg;
     userMsg[QStringLiteral("role")] = QStringLiteral("user");
     userMsg[QStringLiteral("content")] = QStringLiteral("%1: «%2»").arg(actionLabel, preview);
     userMsg[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    userMsg[QStringLiteral("isWritingTool")] = true;
+    userMsg[QStringLiteral("sourceText")] = source;
+    userMsg[QStringLiteral("writingToolAction")] = action;
     m_messages.append(userMsg);
     Q_EMIT messagesChanged();
     saveConversationHistory();
@@ -4290,6 +4366,10 @@ void KityApplet::applyWritingTool(const QString &action, const QString &customSo
     const QString aiBackend = readConfigString(QStringLiteral("aiBackend"), QStringLiteral("hybrid")).toLower();
     const QString geminiApiKey = resolveGeminiApiKey();
     const bool useGemini = (aiBackend == QLatin1String("gemini") || (aiBackend == QLatin1String("hybrid") && !geminiApiKey.isEmpty()));
+
+    fprintf(stderr, "KityApplet::applyWritingTool: action=%s aiBackend=%s useGemini=%d\n",
+            qPrintable(action), qPrintable(aiBackend), useGemini);
+    fflush(stderr);
 
     if (useGemini) {
         sendToGemini(fullPrompt);
@@ -4332,10 +4412,13 @@ QVariantMap KityApplet::parseLiveTextEntities(const QString &ocrText)
     QStringList emails;
     QStringList phones;
 
-    static const QRegularExpression urlRx(QStringLiteral("https?://[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+"), QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression urlRx(QStringLiteral("(?:https?://|www\\.)[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+"), QRegularExpression::CaseInsensitiveOption);
     auto urlIt = urlRx.globalMatch(ocrText);
     while (urlIt.hasNext()) {
-        const QString u = urlIt.next().captured(0);
+        QString u = urlIt.next().captured(0);
+        if (u.startsWith(QLatin1String("www."), Qt::CaseInsensitive)) {
+            u.prepend(QStringLiteral("https://"));
+        }
         if (!urls.contains(u)) urls.append(u);
     }
 
@@ -4346,11 +4429,11 @@ QVariantMap KityApplet::parseLiveTextEntities(const QString &ocrText)
         if (!emails.contains(e)) emails.append(e);
     }
 
-    static const QRegularExpression phoneRx(QStringLiteral("(?:\\+\\d{1,3}[\\s\\-]?)?(?:\\d[\\s\\-]?){8,11}\\d"));
+    static const QRegularExpression phoneRx(QStringLiteral("(?:\\+\\d{1,3}[\\s\\-]?)?(?:(?:\\(?\\d{2,4}\\)?[\\s\\-]?)?\\d{3}[\\s\\-]?\\d{2,4}[\\s\\-]?\\d{2,4})"));
     auto phoneIt = phoneRx.globalMatch(ocrText);
     while (phoneIt.hasNext()) {
         const QString p = phoneIt.next().captured(0).trimmed();
-        if (!phones.contains(p)) phones.append(p);
+        if (p.length() >= 9 && !phones.contains(p)) phones.append(p);
     }
 
     res[QStringLiteral("urls")] = urls;
@@ -4383,6 +4466,7 @@ void KityApplet::runVisualIntelligence(const QString &captureMode, const QString
 
     const QString ocrText = extractScreenOcrText(savedPath);
     const QString kwinInfo = collectKWinWindowsInfo();
+    const QString base64Image = encodeImageToBase64(savedPath);
     QFile::remove(savedPath);
 
     QString modeLabel = (mode == QStringLiteral("region")) ? i18n("Región seleccionada")
@@ -4394,10 +4478,16 @@ void KityApplet::runVisualIntelligence(const QString &captureMode, const QString
         if (ocrText.isEmpty()) {
             appendAssistantMessage(i18n("👁️ **Live Text (%1):** No se detectó texto legible en la zona capturada.", modeLabel));
             setState(QStringLiteral("idle"), QString());
+            openUI();
             return;
         }
 
         copyToClipboard(ocrText);
+        KNotification::event(QStringLiteral("notification"),
+                             i18n("Live Text (OCR)"),
+                             i18n("Texto copiado al portapapeles con éxito."),
+                             QStringLiteral("org.cesar.kity"));
+
         const QVariantMap entities = parseLiveTextEntities(ocrText);
         const QStringList urls = entities.value(QStringLiteral("urls")).toStringList();
         const QStringList emails = entities.value(QStringLiteral("emails")).toStringList();
@@ -4413,12 +4503,14 @@ void KityApplet::runVisualIntelligence(const QString &captureMode, const QString
 
         appendAssistantMessage(msg, false);
         setState(QStringLiteral("idle"), QString());
+        openUI();
         return;
     }
 
-    if (ocrText.isEmpty() && kwinInfo.isEmpty()) {
+    if (ocrText.isEmpty() && kwinInfo.isEmpty() && base64Image.isEmpty()) {
         appendAssistantMessage(i18n("No se pudo extraer texto ni información de la captura (%1).", modeLabel));
         setState(QStringLiteral("idle"), QString());
+        openUI();
         return;
     }
 
@@ -4427,7 +4519,7 @@ void KityApplet::runVisualIntelligence(const QString &captureMode, const QString
     if (action == QStringLiteral("translate")) {
         userLabel = i18n("👁️ Traducir captura (%1)", modeLabel);
         aiInstruction = QStringLiteral(
-            "Traduce al español de España (o al inglés si el texto original ya está íntegramente en español) todo el texto extraído de la captura de pantalla. "
+            "Traduce al español de España (o al inglés si el texto original ya está íntegramente en español) todo el texto visible o extraído de la captura de pantalla. "
             "Muestra la traducción clara y bien estructurada.");
     } else if (action == QStringLiteral("explain")) {
         userLabel = i18n("👁️ Explicar / Analizar captura (%1)", modeLabel);
@@ -4456,7 +4548,16 @@ void KityApplet::runVisualIntelligence(const QString &captureMode, const QString
         "Texto extraído mediante OCR (Live Text) de la captura (%3):\n\"\"\"\n%4\n\"\"\"")
         .arg(aiInstruction, kwinInfo, modeLabel, ocrText);
 
-    sendToOllama(fullPrompt);
+    const QString aiBackend = readConfigString(QStringLiteral("aiBackend"), QStringLiteral("hybrid")).toLower();
+    const QString geminiApiKey = resolveGeminiApiKey();
+    const bool useGemini = (aiBackend == QLatin1String("gemini") || (aiBackend == QLatin1String("hybrid") && !geminiApiKey.isEmpty()));
+
+    openUI();
+    if (useGemini) {
+        sendToGemini(fullPrompt, QString(), base64Image);
+    } else {
+        sendToOllama(fullPrompt, QString(), base64Image);
+    }
 }
 
 // =========================================================================
@@ -5301,8 +5402,8 @@ QString KityApplet::extractScreenOcrText(const QString &imagePath) const
     connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
     connect(&proc, &QProcess::finished, &loop, &QEventLoop::quit);
 
-    proc.start(tesseract, {imagePath, QStringLiteral("stdout"), QStringLiteral("--psm"), QStringLiteral("3")});
-    timeoutTimer.start(3500);
+    proc.start(tesseract, {imagePath, QStringLiteral("stdout"), QStringLiteral("-l"), QStringLiteral("spa+eng"), QStringLiteral("--psm"), QStringLiteral("3")});
+    timeoutTimer.start(6000);
     loop.exec();
 
     if (proc.state() != QProcess::NotRunning) {
@@ -5315,13 +5416,12 @@ QString KityApplet::extractScreenOcrText(const QString &imagePath) const
     const QStringList lines = rawOcr.split(QLatin1Char('\n'));
     for (const QString &line : lines) {
         const QString t = line.trimmed();
-        // Keep lines with meaningful text (at least 4 characters and contains letters)
-        if (t.length() >= 4 && t.contains(QRegularExpression(QStringLiteral("[a-zA-ZáéíóúÁÉÍÓÚñÑ]{3,}")))) {
+        if (!t.isEmpty()) {
             cleanLines << t;
         }
     }
 
-    return cleanLines.join(QLatin1Char('\n')).left(2400).trimmed();
+    return cleanLines.join(QLatin1Char('\n')).left(4000).trimmed();
 }
 
 // =========================================================================

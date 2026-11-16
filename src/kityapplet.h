@@ -127,6 +127,7 @@ public:
     Q_INVOKABLE QStringList extractTerminalCommands(const QString &markdown) const;
     Q_INVOKABLE void executeCommandInKonsole(const QString &command);
     Q_INVOKABLE void copyToClipboard(const QString &text) const;
+    Q_INVOKABLE void replaceText(const QString &text) const;
     Q_INVOKABLE QString renderMarkdown(const QString &markdown) const;
     Q_INVOKABLE void openKnowledgeFolder() const;
     Q_INVOKABLE int knowledgeDocumentCount() const;
@@ -356,6 +357,12 @@ private:
     // Generative UI pending cards
     QString m_pendingCardType;
     QVariantMap m_pendingCardData;
+
+    // Writing Tools & Fallback Context
+    QString m_lastGeminiPrompt;
+    bool m_lastWasWritingTool = false;
+    QString m_lastWritingToolSource;
+    QString m_lastWritingToolAction;
 
     // Mobile Remote Web/WebSocket Server
     KityMobileServer *m_mobileServer = nullptr;

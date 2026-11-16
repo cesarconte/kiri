@@ -141,6 +141,8 @@ public:
     Q_INVOKABLE void checkReadiness();
     Q_INVOKABLE void refreshModels();
     Q_INVOKABLE void copyToClipboard(const QString &text) const;
+    Q_INVOKABLE void replaceText(const QString &text) const;
+    Q_INVOKABLE QString readWaylandSelection() const;
     Q_INVOKABLE void executeCommandInKonsole(const QString &command);
     Q_INVOKABLE void openKnowledgeFolder() const;
     Q_INVOKABLE void openSettings() const;
