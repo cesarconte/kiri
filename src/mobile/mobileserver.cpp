@@ -310,9 +310,11 @@ void KityMobileServer::processHttpRequest(QTcpSocket *socket)
         QByteArray content = file.readAll();
         file.close();
 
-        // Dynamically inject the WebSocket port into app.js so it connects to wsPort (m_port + 1)
+        // Dynamically inject the WebSocket port and current token into app.js
         if (path == QStringLiteral("/app.js")) {
-            const QString wsPortInject = QStringLiteral("window.KITY_WS_PORT = %1;\n").arg(m_port + 1);
+            const QString wsPortInject = QStringLiteral("window.KITY_WS_PORT = %1;\nwindow.KITY_AUTH_TOKEN = \"%2\";\n")
+                                             .arg(m_port + 1)
+                                             .arg(m_authToken);
             content.prepend(wsPortInject.toUtf8());
         }
 

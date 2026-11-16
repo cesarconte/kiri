@@ -2505,7 +2505,7 @@ void KityApplet::runSpeechTranscription()
     if (engine == QLatin1String("gemini") && !apiKey.isEmpty()) {
         runGeminiAudioTranscription(m_currentRecordingPath);
     } else {
-        runWhisperTranscription();
+        runWhisperTranscription(m_currentRecordingPath);
     }
 }
 
@@ -2513,7 +2513,7 @@ void KityApplet::runGeminiAudioTranscription(const QString &wavPath)
 {
     QFile file(wavPath);
     if (!file.open(QIODevice::ReadOnly)) {
-        runWhisperTranscription();
+        runWhisperTranscription(wavPath);
         return;
     }
     const QByteArray audioData = file.readAll();
@@ -2527,7 +2527,7 @@ void KityApplet::runGeminiAudioTranscription(const QString &wavPath)
 
     const QString apiKey = resolveGeminiApiKey();
     if (apiKey.isEmpty()) {
-        runWhisperTranscription();
+        runWhisperTranscription(wavPath);
         return;
     }
 
@@ -2573,11 +2573,11 @@ void KityApplet::runGeminiAudioTranscription(const QString &wavPath)
     QNetworkReply *reply = m_nam->post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     connect(reply, &QNetworkReply::finished, this, [this, reply, wavPath]() {
         reply->deleteLater();
-        QFile::remove(wavPath);
 
         if (reply->error() != QNetworkReply::NoError) {
-            qWarning() << "Kity: Gemini audio transcription error:" << reply->errorString();
-            setState(QStringLiteral("error"), i18n("Error en transcripción con Gemini (%1)").arg(reply->errorString()));
+            qWarning() << "Kity: Gemini audio transcription error:" << reply->errorString()
+                       << "- Falling back to local Whisper.cpp";
+            runWhisperTranscription(wavPath);
             return;
         }
 
@@ -2586,7 +2586,8 @@ void KityApplet::runGeminiAudioTranscription(const QString &wavPath)
         const QJsonObject root = doc.object();
         const QJsonArray candidates = root.value(QStringLiteral("candidates")).toArray();
         if (candidates.isEmpty()) {
-            setState(QStringLiteral("idle"), i18n("No se reconoció ninguna frase."));
+            qWarning() << "Kity: Gemini returned no candidates - Falling back to local Whisper.cpp";
+            runWhisperTranscription(wavPath);
             return;
         }
 
@@ -2604,21 +2605,24 @@ void KityApplet::runGeminiAudioTranscription(const QString &wavPath)
         text = text.trimmed();
 
         if (text.isEmpty()) {
-            setState(QStringLiteral("idle"), i18n("No se reconoció ninguna frase."));
+            qWarning() << "Kity: Gemini transcription text was empty - Falling back to local Whisper.cpp";
+            runWhisperTranscription(wavPath);
             return;
         }
 
+        QFile::remove(wavPath);
         Q_EMIT transcriptionReady(text);
         sendMessage(text, true);
     });
 }
 
-void KityApplet::runWhisperTranscription()
+void KityApplet::runWhisperTranscription(const QString &targetWavPath)
 {
-    QFileInfo fi(m_currentRecordingPath);
+    const QString wavPath = targetWavPath.isEmpty() ? m_currentRecordingPath : targetWavPath;
+    QFileInfo fi(wavPath);
     if (!fi.exists() || fi.size() < 1024) {
         setState(QStringLiteral("idle"), i18n("No se detectó audio de voz."));
-        QFile::remove(m_currentRecordingPath);
+        QFile::remove(wavPath);
         return;
     }
 
@@ -2629,27 +2633,27 @@ void KityApplet::runWhisperTranscription()
     const QString modelPath = resolveWhisperModelPath();
 
     if (whisperCli.isEmpty() || modelPath.isEmpty()) {
-        setState(QStringLiteral("error"), i18n("Whisper.cpp o su modelo no están instalados. Ejecuta scripts/setup-models.sh."));
-        QFile::remove(m_currentRecordingPath);
+        setState(QStringLiteral("error"), i18n("Whisper.cpp o su modelo no están instalados."));
+        QFile::remove(wavPath);
         return;
     }
+
+    setState(QStringLiteral("transcribing"), i18n("Transcribiendo voz con Whisper…"));
 
     QProcess *whisperProc = new QProcess(this);
     QStringList args;
     args << QStringLiteral("-m") << modelPath
-         << QStringLiteral("-f") << m_currentRecordingPath
+         << QStringLiteral("-f") << wavPath
          << QStringLiteral("-t") << QStringLiteral("6")
          << QStringLiteral("--no-timestamps")
          << QStringLiteral("-l") << resolveWhisperLanguage();
 
-    const QString wavToClean = m_currentRecordingPath;
-
-    connect(whisperProc, &QProcess::finished, this, [this, whisperProc, wavToClean](int exitCode, QProcess::ExitStatus) {
+    connect(whisperProc, &QProcess::finished, this, [this, whisperProc, wavPath](int exitCode, QProcess::ExitStatus) {
         whisperProc->deleteLater();
-        QFile::remove(wavToClean);
+        QFile::remove(wavPath);
 
         if (exitCode != 0) {
-            setState(QStringLiteral("error"), i18n("Error al transcribir el audio."));
+            setState(QStringLiteral("error"), i18n("Error al transcribir el audio con Whisper."));
             return;
         }
 
@@ -2679,52 +2683,7 @@ void KityApplet::transcribeAndExecuteAudio(const QString &wavPath)
         runGeminiAudioTranscription(wavPath);
         return;
     }
-    QString whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper-cli"));
-    if (whisperCli.isEmpty()) {
-        whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper"));
-    }
-    const QString modelPath = resolveWhisperModelPath();
-
-    if (whisperCli.isEmpty() || modelPath.isEmpty()) {
-        setState(QStringLiteral("error"), i18n("Whisper.cpp no disponible."));
-        QFile::remove(wavPath);
-        return;
-    }
-
-    setState(QStringLiteral("transcribing"), i18n("Transcribiendo audio del móvil…"));
-
-    QProcess *whisperProc = new QProcess(this);
-    QStringList args;
-    args << QStringLiteral("-m") << modelPath
-         << QStringLiteral("-f") << wavPath
-         << QStringLiteral("-t") << QStringLiteral("6")
-         << QStringLiteral("--no-timestamps")
-         << QStringLiteral("-l") << resolveWhisperLanguage();
-
-    connect(whisperProc, &QProcess::finished, this, [this, whisperProc, wavPath](int exitCode, QProcess::ExitStatus) {
-        whisperProc->deleteLater();
-        QFile::remove(wavPath);
-
-        if (exitCode != 0) {
-            setState(QStringLiteral("error"), i18n("Error al transcribir el audio del móvil."));
-            return;
-        }
-
-        QString text = QString::fromUtf8(whisperProc->readAllStandardOutput()).trimmed();
-        static const QRegularExpression bracketRegex(QStringLiteral("\\[.*?\\]|\\(.*?\\)"));
-        text.remove(bracketRegex);
-        text = text.trimmed();
-
-        if (text.isEmpty()) {
-            setState(QStringLiteral("idle"), i18n("No se reconoció ninguna frase."));
-            return;
-        }
-
-        Q_EMIT transcriptionReady(text);
-        sendMessage(text, true);
-    });
-
-    whisperProc->start(whisperCli, args);
+    runWhisperTranscription(wavPath);
 }
 
 // =========================================================================

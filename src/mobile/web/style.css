@@ -322,7 +322,8 @@ html, body {
 }
 
 .form-group input[type="password"],
-.form-group input[type="text"] {
+.form-group input[type="text"],
+.form-group select {
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
@@ -333,7 +334,13 @@ html, body {
   transition: border-color 0.2s ease;
 }
 
-.form-group input:focus {
+.form-group select option {
+  background: #0d0f18;
+  color: #f1f5f9;
+}
+
+.form-group input:focus,
+.form-group select:focus {
   border-color: var(--accent-cyan);
 }
 

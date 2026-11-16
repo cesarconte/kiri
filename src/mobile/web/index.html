@@ -99,6 +99,13 @@
           <label for="tokenInput">Token de Seguridad:</label>
           <input type="password" id="tokenInput" placeholder="Token de 64 caracteres">
         </div>
+        <div class="form-group">
+          <label for="sttEngineSelect">Motor de Reconocimiento:</label>
+          <select id="sttEngineSelect">
+            <option value="pc">Audio directo al PC (Whisper / Gemini — Recomendado)</option>
+            <option value="webspeech">Reconocedor del navegador móvil (Web Speech)</option>
+          </select>
+        </div>
         <div class="form-group toggle-group">
           <label for="hapticToggle">Vibración háptica:</label>
           <input type="checkbox" id="hapticToggle" checked>

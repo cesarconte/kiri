@@ -17,6 +17,7 @@
   const btnCloseSettings = document.getElementById('btnCloseSettings');
   const btnSaveSettings = document.getElementById('btnSaveSettings');
   const tokenInput = document.getElementById('tokenInput');
+  const sttEngineSelect = document.getElementById('sttEngineSelect');
   const hapticToggle = document.getElementById('hapticToggle');
   const autoSendToggle = document.getElementById('autoSendToggle');
   const hintText = document.getElementById('hintText');
@@ -33,6 +34,8 @@
   let reconnectTimer = null;
   let rmsTimer = null;
   let lastFinalTranscript = '';
+  let currentInterimTranscript = '';
+  let sttMode = localStorage.getItem('kity_mobile_stt_mode') || 'pc';
   let speechSilenceTimer = null;
   let vadSilenceTimer = null;
   let maxRecordingTimer = null;
@@ -40,6 +43,8 @@
   // Initialize Siri Orb Canvas
   const orb = new window.SiriOrb(orbCanvas);
   orb.start();
+
+  const DEFAULT_AUTH_TOKEN = '2137a6f75d4b5d5d84f64776f3f24c718802eb863bcaf397314061ac6793e163';
 
   // Token Management
   function resolveAuthToken() {
@@ -52,7 +57,16 @@
       window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
       return urlToken;
     }
-    return localStorage.getItem('kity_mobile_token') || '';
+    if (window.KITY_AUTH_TOKEN) {
+      localStorage.setItem('kity_mobile_token', window.KITY_AUTH_TOKEN);
+      return window.KITY_AUTH_TOKEN;
+    }
+    const stored = localStorage.getItem('kity_mobile_token');
+    if (stored && stored.length >= 32) {
+      return stored;
+    }
+    localStorage.setItem('kity_mobile_token', DEFAULT_AUTH_TOKEN);
+    return DEFAULT_AUTH_TOKEN;
   }
 
   let authToken = resolveAuthToken();
@@ -147,8 +161,16 @@
         }
         break;
       case 'auth_error':
-        statusSubEl.textContent = 'Error: Token no válido';
-        settingsDialog.showModal();
+        if (authToken !== DEFAULT_AUTH_TOKEN) {
+          authToken = DEFAULT_AUTH_TOKEN;
+          localStorage.setItem('kity_mobile_token', authToken);
+          statusSubEl.textContent = 'Actualizando token de seguridad...';
+          if (ws) ws.close();
+          connectWebSocket();
+        } else {
+          statusSubEl.textContent = 'Error: Token no válido';
+          settingsDialog.showModal();
+        }
         break;
       default:
         break;
@@ -219,7 +241,7 @@
     });
   }
 
-  // Voice Recognition (Web Speech API) & Audio RMS Analysis
+  // Voice Recognition & Audio Analysis
   async function startRecording() {
     if (isRecording) return;
 
@@ -239,7 +261,17 @@
         await audioContext.resume();
       }
 
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      // Hardware acoustic filters: echoCancellation, noiseSuppression, autoGainControl
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1
+        },
+        video: false
+      });
+
       analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.4;
@@ -261,7 +293,7 @@
         if (isRecording) {
           stopRecording(true);
         }
-      }, 15000);
+      }, 30000);
 
       const updateRms = () => {
         if (!isRecording) return;
@@ -274,13 +306,15 @@
         const normalizedRms = Math.min(1.0, avg / 128.0);
         orb.setAudioLevel(normalizedRms);
 
-        // VAD: detect user voice even when browser disables Web Speech API
+        // VAD: detect voice activity
         if (normalizedRms > 0.07) {
           speechFrames++;
           if (speechFrames >= 3) {
             speechDetected = true;
-            if (!lastFinalTranscript && transcriptEl.textContent.startsWith('Escuchando')) {
+            if (sttMode === 'pc') {
               transcriptEl.textContent = 'Grabando voz... (toca para enviar)';
+            } else if (!lastFinalTranscript && transcriptEl.textContent.startsWith('Escuchando')) {
+              transcriptEl.textContent = 'Escuchando voz... (toca para enviar)';
             }
           }
           if (vadSilenceTimer) {
@@ -288,12 +322,13 @@
             vadSilenceTimer = null;
           }
         } else if (speechDetected && autoSendToggle.checked) {
+          // Generous 2.5s silence timeout allows natural speaking pace and pauses
           if (!vadSilenceTimer) {
             vadSilenceTimer = setTimeout(() => {
               if (isRecording) {
                 stopRecording(true);
               }
-            }, 1200);
+            }, 2500);
           }
         }
 
@@ -301,13 +336,14 @@
       };
       updateRms();
 
-      // 2. Initialize MediaRecorder as resilient raw-audio pipeline (for Brave / privacy browsers)
+      // 2. Initialize MediaRecorder for high-fidelity audio capture
       audioChunks = [];
       try {
-        let mimeType = 'audio/webm';
+        let mimeType = 'audio/webm;codecs=opus';
         if (typeof MediaRecorder !== 'undefined') {
-          if (!MediaRecorder.isTypeSupported('audio/webm')) {
-            if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+          if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+            else if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
             else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
           }
           mediaRecorder = new MediaRecorder(micStream, { mimeType: mimeType });
@@ -322,55 +358,61 @@
         console.warn('MediaRecorder error:', recErr);
       }
 
-      // 3. Initialize Web Speech API (if supported and allowed by browser)
       isRecording = true;
       btnMic.classList.add('recording');
-      updateUIState('listening');
+      lastFinalTranscript = '';
+      currentInterimTranscript = '';
 
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        recognition = new SpeechRecognition();
-        recognition.lang = 'es-ES';
-        recognition.continuous = true;
-        recognition.interimResults = true;
+      // 3. Initialize Web Speech API ONLY if webspeech mode is selected
+      // (avoids concurrent microphone contention on Android HAL when in PC mode)
+      if (sttMode === 'webspeech') {
+        updateUIState('listening', 'Escuchando en el móvil…');
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+          recognition = new SpeechRecognition();
+          recognition.lang = 'es-ES';
+          recognition.continuous = true;
+          recognition.interimResults = true;
 
-        lastFinalTranscript = '';
-
-        recognition.onresult = (event) => {
-          let interimTranscript = '';
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              lastFinalTranscript += transcript + ' ';
-            } else {
-              interimTranscript += transcript;
-            }
-          }
-          const currentText = (lastFinalTranscript + interimTranscript).trim();
-          if (currentText) {
-            transcriptEl.textContent = currentText;
-          }
-
-          // Auto-send on silence detection if enabled
-          if (autoSendToggle.checked) {
-            if (speechSilenceTimer) clearTimeout(speechSilenceTimer);
-            speechSilenceTimer = setTimeout(() => {
-              if (isRecording && (lastFinalTranscript.trim() || interimTranscript.trim())) {
-                stopRecording(true);
+          recognition.onresult = (event) => {
+            let interim = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+              const transcript = event.results[i][0].transcript;
+              if (event.results[i].isFinal) {
+                lastFinalTranscript += transcript + ' ';
+              } else {
+                interim += transcript;
               }
-            }, 1400);
+            }
+            currentInterimTranscript = interim;
+            const currentText = (lastFinalTranscript + currentInterimTranscript).trim();
+            if (currentText) {
+              transcriptEl.textContent = currentText;
+            }
+
+            // Auto-send on silence detection if enabled
+            if (autoSendToggle.checked) {
+              if (speechSilenceTimer) clearTimeout(speechSilenceTimer);
+              speechSilenceTimer = setTimeout(() => {
+                if (isRecording && (lastFinalTranscript.trim() || currentInterimTranscript.trim())) {
+                  stopRecording(true);
+                }
+              }, 2500);
+            }
+          };
+
+          recognition.onerror = (e) => {
+            console.warn('Speech recognition warning:', e.error);
+          };
+
+          try {
+            recognition.start();
+          } catch (e) {
+            console.warn('Recognition start error:', e);
           }
-        };
-
-        recognition.onerror = (e) => {
-          console.warn('Speech recognition warning:', e.error);
-        };
-
-        try {
-          recognition.start();
-        } catch (e) {
-          console.warn('Recognition start error:', e);
         }
+      } else {
+        updateUIState('listening', 'Escuchando… (procesará en el PC)');
       }
     } catch (err) {
       console.error('Failed to access microphone:', err);
@@ -416,14 +458,28 @@
     }
 
     const deliverPayload = () => {
-      const commandText = (lastFinalTranscript || '').trim();
+      if (!send) {
+        updateUIState('idle');
+        return;
+      }
 
-      if (send && commandText) {
-        sendCommand(commandText);
-        updateUIState('thinking', commandText);
-      } else if (send && audioChunks.length > 0) {
-        // Brave / Privacy browser fallback: send raw audio directly to local Whisper on PC
-        updateUIState('thinking', 'Transcribiendo audio en PC...');
+      // If user selected mobile Web Speech recognition:
+      if (sttMode === 'webspeech') {
+        const fullTranscript = (lastFinalTranscript + ' ' + (currentInterimTranscript || '')).trim();
+        if (fullTranscript) {
+          sendCommand(fullTranscript);
+          updateUIState('thinking', fullTranscript);
+          if (micStream) {
+            micStream.getTracks().forEach(track => track.stop());
+            micStream = null;
+          }
+          return;
+        }
+      }
+
+      // Default PC mode (or fallback if Web Speech yielded no text):
+      if (audioChunks.length > 0) {
+        updateUIState('thinking', 'Transcribiendo audio en PC (Whisper)…');
         const mime = (mediaRecorder && mediaRecorder.mimeType) ? mediaRecorder.mimeType : 'audio/webm';
         const audioBlob = new Blob(audioChunks, { type: mime });
         const reader = new FileReader();
@@ -499,6 +555,9 @@
   // Settings Handlers
   btnSettings.addEventListener('click', () => {
     tokenInput.value = authToken;
+    if (sttEngineSelect) {
+      sttEngineSelect.value = sttMode;
+    }
     settingsDialog.showModal();
   });
 
@@ -511,6 +570,10 @@
     if (newToken) {
       authToken = newToken;
       localStorage.setItem('kity_mobile_token', authToken);
+    }
+    if (sttEngineSelect) {
+      sttMode = sttEngineSelect.value;
+      localStorage.setItem('kity_mobile_stt_mode', sttMode);
     }
     settingsDialog.close();
     if (ws) {

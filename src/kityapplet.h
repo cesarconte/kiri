@@ -202,7 +202,7 @@ private:
     QString resolveSttEngine() const;
     void runSpeechTranscription();
     void runGeminiAudioTranscription(const QString &wavPath);
-    void runWhisperTranscription();
+    void runWhisperTranscription(const QString &wavPath = QString());
     void transcribeAndExecuteAudio(const QString &wavPath);
     void checkWakeWordTranscription(const QString &wavPath);
     void enqueueSentenceForSpeech(const QString &sentence);
