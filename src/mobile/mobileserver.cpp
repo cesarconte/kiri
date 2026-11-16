@@ -273,9 +273,12 @@ void KityMobileServer::processHttpRequest(QTcpSocket *socket)
 
     // 2. Fallback to filesystem if not yet loaded in resource cache
     if (!file.exists()) {
-        const QString devPath = QStringLiteral("/home/cesar/Proyectos/kiri/src/mobile/web") + path;
+        const QString devPath = QStringLiteral("/home/cesar/Proyectos/kity/src/mobile/web") + path;
+        const QString legacyDevPath = QStringLiteral("/home/cesar/Proyectos/kiri/src/mobile/web") + path;
         if (QFile::exists(devPath)) {
             file.setFileName(devPath);
+        } else if (QFile::exists(legacyDevPath)) {
+            file.setFileName(legacyDevPath);
         } else {
             const QString installedPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation,
                                                                  QStringLiteral("kity/mobile/web") + path);

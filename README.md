@@ -55,8 +55,8 @@ chmod +x scripts/setup-models.sh
 ### Compilación e Instalación
 
 ```bash
-git clone --recurse-submodules https://github.com/cesarconte/kiri.git
-cd kiri
+git clone --recurse-submodules https://github.com/cesarconte/kity.git
+cd kity
 cmake -B build -S . -DCMAKE_INSTALL_PREFIX=$HOME/.local
 cmake --build build -j$(nproc)
 cmake --install build
