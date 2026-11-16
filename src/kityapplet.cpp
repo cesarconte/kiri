@@ -2170,6 +2170,11 @@ QString KityApplet::resolvePreferredCaptureSource(bool *isBluetoothOut) const
 
     if (isBluetoothOut) {
         *isBluetoothOut = sawBluetooth;
+        // Never hijack or lock Bluetooth devices with a continuous background wake word listener
+        // when no dedicated non-Bluetooth hardware microphone is connected!
+        if (sawBluetooth && alsaSource.isEmpty()) {
+            return QString();
+        }
     }
     return !alsaSource.isEmpty() ? alsaSource : fallbackSource;
 }
