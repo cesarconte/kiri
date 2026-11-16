@@ -4544,7 +4544,13 @@ QVariantMap KityApplet::parseLiveTextEntities(const QString &ocrText)
 void KityApplet::runVisualIntelligence(const QString &captureMode, const QString &action, const QString &customQuestion)
 {
     const QString mode = captureMode.isEmpty() ? QStringLiteral("region") : captureMode;
-    if (mode == QStringLiteral("region")) {
+    const bool isDirectFile = mode.startsWith(QStringLiteral("file:"));
+    QString savedPath;
+
+    if (isDirectFile) {
+        savedPath = mode.mid(5);
+        setState(QStringLiteral("thinking"), i18n("Analizando archivo de imagen «%1»…", QFileInfo(savedPath).fileName()));
+    } else if (mode == QStringLiteral("region")) {
         setState(QStringLiteral("thinking"), i18n("Selecciona una región en pantalla con el ratón (Spectacle Wayland)…"));
     } else if (mode == QStringLiteral("activewindow")) {
         setState(QStringLiteral("thinking"), i18n("Capturando la ventana activa (Spectacle Wayland)…"));
@@ -4553,22 +4559,30 @@ void KityApplet::runVisualIntelligence(const QString &captureMode, const QString
     }
     QCoreApplication::processEvents();
 
-    const QString tmpShot = QDir::tempPath() + QStringLiteral("/kity_livetext_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
-    const QString savedPath = captureScreenToPng(tmpShot, mode);
-    if (savedPath.isEmpty()) {
-        setState(QStringLiteral("idle"), i18n("Captura de pantalla cancelada o no disponible."));
+    if (!isDirectFile) {
+        const QString tmpShot = QDir::tempPath() + QStringLiteral("/kity_livetext_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
+        savedPath = captureScreenToPng(tmpShot, mode);
+        if (savedPath.isEmpty()) {
+            setState(QStringLiteral("idle"), i18n("Captura de pantalla cancelada o no disponible."));
+            return;
+        }
+    } else if (!QFileInfo::exists(savedPath)) {
+        setState(QStringLiteral("idle"), i18n("El archivo de imagen no existe: %1", savedPath));
         return;
     }
 
-    setState(QStringLiteral("thinking"), i18n("Extrayendo texto e información de la pantalla…"));
+    setState(QStringLiteral("thinking"), i18n("Extrayendo texto e información…"));
     QCoreApplication::processEvents();
 
     const QString ocrText = extractScreenOcrText(savedPath);
-    const QString kwinInfo = collectKWinWindowsInfo();
+    const QString kwinInfo = isDirectFile ? QString() : collectKWinWindowsInfo();
     const QString base64Image = encodeImageToBase64(savedPath);
-    QFile::remove(savedPath);
+    if (!isDirectFile) {
+        QFile::remove(savedPath);
+    }
 
-    QString modeLabel = (mode == QStringLiteral("region")) ? i18n("Región seleccionada")
+    QString modeLabel = isDirectFile ? QFileInfo(savedPath).fileName()
+                      : (mode == QStringLiteral("region")) ? i18n("Región seleccionada")
                       : (mode == QStringLiteral("activewindow")) ? i18n("Ventana activa")
                       : i18n("Pantalla completa");
 
@@ -5303,7 +5317,7 @@ QString KityApplet::fetchKnowledgeBaseContext(const QString &query) const
     }
 
     const int maxSnippets = readConfigInt(QStringLiteral("knowledgeBaseMaxSnippets"), 3);
-    const QStringList files = dir.entryList(QStringList() << QStringLiteral("*.txt") << QStringLiteral("*.md"), QDir::Files);
+    const QStringList files = dir.entryList(QStringList() << QStringLiteral("*.txt") << QStringLiteral("*.md") << QStringLiteral("*.pdf"), QDir::Files);
     if (files.isEmpty()) {
         return QString();
     }
@@ -5347,9 +5361,26 @@ QString KityApplet::fetchKnowledgeBaseContext(const QString &query) const
             continue;
         }
 
-        QFile f(dir.filePath(fname));
-        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            const QString content = QString::fromUtf8(f.readAll());
+        QString content;
+        if (fname.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) {
+            const QString cachedTxtPath = dir.filePath(fname + QStringLiteral(".txt"));
+            if (!QFileInfo::exists(cachedTxtPath)) {
+                QProcess pPdf;
+                pPdf.start(QStringLiteral("pdftotext"), {dir.filePath(fname), cachedTxtPath});
+                pPdf.waitForFinished(3000);
+            }
+            QFile fTxt(cachedTxtPath);
+            if (fTxt.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                content = QString::fromUtf8(fTxt.readAll());
+            }
+        } else {
+            QFile f(dir.filePath(fname));
+            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                content = QString::fromUtf8(f.readAll());
+            }
+        }
+
+        if (!content.isEmpty()) {
             int score = 0;
             for (const QString &kw : keywords) {
                 if (content.contains(kw, Qt::CaseInsensitive)) {

@@ -17,6 +17,7 @@
 #include <QQuickWindow>
 #include <QFileInfo>
 #include <QFile>
+#include <QDesktopServices>
 #include <QDir>
 #include <QStandardPaths>
 #include <QProcess>
@@ -89,6 +90,25 @@ int main(int argc, char *argv[])
                                           i18n("Añadir un archivo a la base de conocimiento local (RAG)"),
                                           QStringLiteral("ruta"));
     parser.addOption(addKnowledgeOption);
+
+    QCommandLineOption openKnowledgeOption(QStringList() << QStringLiteral("open-knowledge"),
+                                           i18n("Abrir la carpeta de la base de conocimiento local (RAG) en Dolphin"));
+    parser.addOption(openKnowledgeOption);
+
+    QCommandLineOption ocrFileOption(QStringList() << QStringLiteral("ocr-file"),
+                                     i18n("Extraer texto de un archivo de imagen con Live Text OCR"),
+                                     QStringLiteral("ruta"));
+    parser.addOption(ocrFileOption);
+
+    QCommandLineOption visionFileOption(QStringList() << QStringLiteral("vision-file"),
+                                        i18n("Analizar o explicar un archivo de imagen con el modelo de visión"),
+                                        QStringLiteral("ruta"));
+    parser.addOption(visionFileOption);
+
+    QCommandLineOption transcribeFileOption(QStringList() << QStringLiteral("transcribe-file"),
+                                            i18n("Transcribir un archivo de audio con Whisper local"),
+                                            QStringLiteral("ruta"));
+    parser.addOption(transcribeFileOption);
 
     QCommandLineOption writingToolsOption(QStringList() << QStringLiteral("w") << QStringLiteral("writing-tools"),
                                           i18n("Abrir el panel de Herramientas de Escritura de Kity (Apple Intelligence)"));
@@ -217,6 +237,96 @@ int main(int argc, char *argv[])
             processFile(p.value(fileOption), false);
         } else if (p.isSet(summarizeOption)) {
             processFile(p.value(summarizeOption), true);
+        } else if (p.isSet(openKnowledgeOption)) {
+            const QString kbDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kity/knowledge");
+            QDir().mkpath(kbDir);
+            QDesktopServices::openUrl(QUrl::fromLocalFile(kbDir));
+        } else if (p.isSet(ocrFileOption)) {
+            const QString path = p.value(ocrFileOption);
+            if (QFileInfo::exists(path)) {
+                client.runVisualIntelligence(QStringLiteral("file:") + path, QStringLiteral("ocr"));
+            }
+        } else if (p.isSet(visionFileOption)) {
+            const QString path = p.value(visionFileOption);
+            if (QFileInfo::exists(path)) {
+                client.runVisualIntelligence(QStringLiteral("file:") + path, QStringLiteral("explain"));
+            }
+        } else if (p.isSet(transcribeFileOption)) {
+            const QString audioPath = p.value(transcribeFileOption);
+            QFileInfo fi(audioPath);
+            if (fi.exists()) {
+                QString wavToProcess = audioPath;
+                bool needCleanup = false;
+                const QString ext = fi.suffix().toLower();
+                if (ext != QLatin1String("wav")) {
+                    const QString tmpWav = QDir::tempPath() + QStringLiteral("/kity_transcribe_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
+                    QProcess pFfmpeg;
+                    pFfmpeg.start(QStringLiteral("ffmpeg"), {QStringLiteral("-y"), QStringLiteral("-i"), audioPath,
+                                                            QStringLiteral("-ar"), QStringLiteral("16000"),
+                                                            QStringLiteral("-ac"), QStringLiteral("1"),
+                                                            QStringLiteral("-c:a"), QStringLiteral("pcm_s16le"),
+                                                            tmpWav});
+                    if (pFfmpeg.waitForFinished(8000) && pFfmpeg.exitCode() == 0) {
+                        wavToProcess = tmpWav;
+                        needCleanup = true;
+                    }
+                }
+
+                const QString whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper-cli"));
+                QString modelPath = QDir::homePath() + QStringLiteral("/.local/share/kity/models/ggml-small.bin");
+                if (!QFileInfo::exists(modelPath)) {
+                    modelPath = QDir::homePath() + QStringLiteral("/.local/share/kity/models/ggml-base.bin");
+                }
+                if (!QFileInfo::exists(modelPath)) {
+                    modelPath = QStringLiteral("/usr/share/kity/models/ggml-base.bin");
+                }
+
+                if (!whisperCli.isEmpty() && QFileInfo::exists(modelPath)) {
+                    QProcess pWhisper;
+                    pWhisper.start(whisperCli, {QStringLiteral("-m"), modelPath,
+                                                QStringLiteral("-f"), wavToProcess,
+                                                QStringLiteral("-l"), QStringLiteral("es"),
+                                                QStringLiteral("-t"), QStringLiteral("4"),
+                                                QStringLiteral("--no-timestamps")});
+                    pWhisper.waitForFinished(30000);
+                    QString transcribed = QString::fromUtf8(pWhisper.readAllStandardOutput()).trimmed();
+                    if (transcribed.isEmpty()) {
+                        transcribed = QString::fromUtf8(pWhisper.readAllStandardError()).trimmed();
+                    }
+
+                    QStringList cleanLines;
+                    for (const QString &line : transcribed.split(QLatin1Char('\n'))) {
+                        const QString l = line.trimmed();
+                        if (!l.startsWith(QLatin1Char('[')) && !l.startsWith(QStringLiteral("whisper_")) && !l.isEmpty()) {
+                            cleanLines.append(l);
+                        }
+                    }
+                    const QString finalTranscription = cleanLines.join(QLatin1Char(' ')).trimmed();
+
+                    if (!finalTranscription.isEmpty()) {
+                        QProcess pCopy;
+                        pCopy.start(QStringLiteral("wl-copy"), QStringList());
+                        pCopy.write(finalTranscription.toUtf8());
+                        pCopy.closeWriteChannel();
+                        pCopy.waitForFinished(1000);
+
+                        KNotification::event(QStringLiteral("notification"),
+                                             i18n("Transcripción Whisper"),
+                                             i18n("Audio de «%1» transcrito y copiado al portapapeles:\n\n%2", fi.fileName(), finalTranscription.left(100)),
+                                             QStringLiteral("org.cesar.kity"));
+
+                        client.sendMessage(i18n("🎙️ **Transcripción de audio («%1»):**\n\n```\n%2\n```\n\n*(Copiado automáticamente al portapapeles)*", fi.fileName(), finalTranscription));
+                    } else {
+                        client.sendMessage(i18n("No se detectó voz comprensible en el archivo de audio «%1».", fi.fileName()));
+                    }
+                } else {
+                    client.sendMessage(i18n("Whisper.cpp no está disponible para transcribir el archivo «%1».", fi.fileName()));
+                }
+
+                if (needCleanup) {
+                    QFile::remove(wavToProcess);
+                }
+            }
         } else if (p.isSet(addKnowledgeOption)) {
             const QString srcPath = p.value(addKnowledgeOption);
             QFileInfo fi(srcPath);
@@ -226,9 +336,17 @@ int main(int argc, char *argv[])
                 const QString destPath = kbDir + QStringLiteral("/") + fi.fileName();
                 QFile::remove(destPath);
                 QFile::copy(srcPath, destPath);
+
+                // If PDF, automatically extract text for instant semantic search
+                if (fi.suffix().compare(QStringLiteral("pdf"), Qt::CaseInsensitive) == 0) {
+                    QProcess pPdf;
+                    pPdf.start(QStringLiteral("pdftotext"), {destPath, destPath + QStringLiteral(".txt")});
+                    pPdf.waitForFinished(4000);
+                }
+
                 KNotification::event(QStringLiteral("notification"),
                                      i18n("Base de Conocimiento de Kity"),
-                                     i18n("Se ha añadido «%1» a tu base de conocimiento local para consultas semánticas.", fi.fileName()),
+                                     i18n("Se ha añadido «%1» a tu base de conocimiento local (RAG).", fi.fileName()),
                                      QStringLiteral("org.cesar.kity"));
             }
         } else if (p.isSet(writingToolsOption) || p.isSet(writingActionOption)) {
@@ -288,7 +406,9 @@ int main(int argc, char *argv[])
             const bool hasExplicitAction = p.isSet(appOption) || p.isSet(compactOption)
                 || p.isSet(newChatOption) || p.isSet(listenOption) || p.isSet(ocrOption)
                 || p.isSet(askScreenOption) || p.isSet(writingToolsOption) || p.isSet(writingActionOption)
-                || p.isSet(fileOption) || p.isSet(summarizeOption) || !p.positionalArguments().isEmpty();
+                || p.isSet(fileOption) || p.isSet(summarizeOption) || p.isSet(addKnowledgeOption)
+                || p.isSet(openKnowledgeOption) || p.isSet(ocrFileOption) || p.isSet(visionFileOption)
+                || p.isSet(transcribeFileOption) || !p.positionalArguments().isEmpty();
 
             // Toggle (Meta + K or kity -t) hides Kity when it is already visible AND focused.
             if (isSecondActivation && (p.isSet(toggleOption) || !hasExplicitAction)
@@ -317,6 +437,10 @@ int main(int argc, char *argv[])
         secondParser.addOption(fileOption);
         secondParser.addOption(summarizeOption);
         secondParser.addOption(addKnowledgeOption);
+        secondParser.addOption(openKnowledgeOption);
+        secondParser.addOption(ocrFileOption);
+        secondParser.addOption(visionFileOption);
+        secondParser.addOption(transcribeFileOption);
         secondParser.addOption(writingToolsOption);
         secondParser.addOption(writingActionOption);
         secondParser.addPositionalArgument(QStringLiteral("input"), i18n("Pregunta de texto o ruta de archivo opcional"));
