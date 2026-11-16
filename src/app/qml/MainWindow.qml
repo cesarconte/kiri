@@ -20,6 +20,8 @@ CachyWindow {
     id: root
 
     title: i18n("Kity")
+    minimumWidth: compactMode ? 280 : 680
+    minimumHeight: compactMode ? 48 : 480
     width: compactMode ? (compactWorking ? 310 : (compactAnswerVisible ? 400 : 420)) : 880
     height: compactMode ? (compactWorking ? 62 : (compactAnswerVisible ? 520 : (compactCategoriesVisible ? 272 : 58))) : 620
     color: "transparent"
@@ -126,8 +128,22 @@ CachyWindow {
     readonly property bool isVoiceActive: kityClient.state === "listening" || kityClient.state === "thinking" || kityClient.state === "speaking"
     readonly property bool isDark: CachyTheme.isDark
 
-    minimumWidth: compactMode ? 300 : 680
-    minimumHeight: compactMode ? 50 : 480
+    Timer {
+        id: autoDismissTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!root.active && root.visible && root.compactMode && !root.isPinned) {
+                root.hide();
+            }
+        }
+    }
+
+    onActiveChanged: {
+        if (!active && root.visible && root.compactMode && !root.isPinned) {
+            autoDismissTimer.restart();
+        }
+    }
 
     property real animTime: 0.0
     NumberAnimation on animTime {
@@ -149,11 +165,13 @@ CachyWindow {
         }
     }
     onVisibleChanged: {
-        if (visible && root.compactMode) {
+        if (root.compactMode) {
             root.compactAnswerVisible = false;
             root.compactCategoriesVisible = false;
             root.selectedCategoryIndex = -1;
-            centerSpotlight();
+            if (visible) {
+                centerSpotlight();
+            }
         }
     }
 
@@ -981,6 +999,18 @@ CachyWindow {
                             color: "#FFFFFF"
                             font.pixelSize: 16
                             background: null
+
+                            Keys.onEscapePressed: {
+                                if (root.compactAnswerVisible) {
+                                    root.compactAnswerVisible = false;
+                                    root.compactCategoriesVisible = false;
+                                } else if (root.compactCategoriesVisible) {
+                                    root.compactCategoriesVisible = false;
+                                    root.selectedCategoryIndex = -1;
+                                } else {
+                                    root.hide();
+                                }
+                            }
 
                             Keys.onDownPressed: {
                                 if (!root.compactCategoriesVisible) {

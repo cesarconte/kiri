@@ -144,11 +144,37 @@ int main(int argc, char *argv[])
     QQuickWindow *window = qobject_cast<QQuickWindow *>(rootObj);
 
     if (window) {
-        auto updateBlurRegion = [window]() {
+        auto updateGeometryAndBlur = [window]() {
             const bool compact = window->property("compactMode").toBool();
             const bool compactWorking = window->property("compactWorking").toBool();
             const bool compactCategories = window->property("compactCategoriesVisible").toBool();
             const bool compactAnswer = window->property("compactAnswerVisible").toBool();
+
+            const int minW = compact ? 280 : 680;
+            const int minH = compact ? 48 : 480;
+            window->setMinimumSize(QSize(minW, minH));
+
+            int targetW = 880;
+            int targetH = 620;
+            if (compact) {
+                if (compactWorking) {
+                    targetW = 310;
+                    targetH = 62;
+                } else if (compactAnswer) {
+                    targetW = 400;
+                    targetH = 520;
+                } else if (compactCategories) {
+                    targetW = 420;
+                    targetH = 272;
+                } else {
+                    targetW = 420;
+                    targetH = 58;
+                }
+            }
+            if (window->width() != targetW || window->height() != targetH) {
+                window->resize(targetW, targetH);
+            }
+
             qreal radius = 20.0;
             if (compact) {
                 if (compactWorking || (!compactCategories && !compactAnswer)) {
@@ -161,9 +187,9 @@ int main(int argc, char *argv[])
             path.addRoundedRect(QRectF(0, 0, window->width(), window->height()), radius, radius);
             KWindowEffects::enableBlurBehind(window, true, QRegion(path.toFillPolygon().toPolygon()));
         };
-        updateBlurRegion();
-        QObject::connect(window, &QWindow::widthChanged, window, updateBlurRegion);
-        QObject::connect(window, &QWindow::heightChanged, window, updateBlurRegion);
+        updateGeometryAndBlur();
+        QObject::connect(window, &QWindow::widthChanged, window, updateGeometryAndBlur);
+        QObject::connect(window, &QWindow::heightChanged, window, updateGeometryAndBlur);
     }
 
     auto handleCommandLine = [&](const QCommandLineParser &p, bool isSecondActivation) {
@@ -410,10 +436,12 @@ int main(int argc, char *argv[])
                 if (window->property("compactMode").toBool()) {
                     window->setProperty("compactAnswerVisible", false);
                     window->setProperty("compactCategoriesVisible", false);
+                    window->setMinimumSize(QSize(280, 48));
+                    window->resize(420, 58);
                     QScreen *screen = window->screen() ? window->screen() : QGuiApplication::primaryScreen();
                     if (screen) {
                         const QRect geom = screen->availableGeometry();
-                        const int targetX = geom.x() + (geom.width() - window->width()) / 2;
+                        const int targetX = geom.x() + (geom.width() - 420) / 2;
                         const int targetY = geom.y() + int(geom.height() * 0.22);
                         window->setPosition(targetX, targetY);
                     }
@@ -434,9 +462,9 @@ int main(int argc, char *argv[])
                 || p.isSet(openKnowledgeOption) || p.isSet(ocrFileOption) || p.isSet(visionFileOption)
                 || p.isSet(transcribeFileOption) || !p.positionalArguments().isEmpty();
 
-            // Toggle (Meta + K or kity -t) hides Kity when it is already visible AND focused.
+            // Toggle (Meta + K or kity -t) hides Kity when it is already visible.
             if (isSecondActivation && (p.isSet(toggleOption) || !hasExplicitAction)
-                && window->isVisible() && window->isActive()
+                && window->isVisible()
                 && window->visibility() != QWindow::Minimized) {
                 window->hide();
             } else {
