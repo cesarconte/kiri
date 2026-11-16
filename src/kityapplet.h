@@ -257,11 +257,15 @@ private:
     // KDE & System Integrations
     void playSiriEarcon(bool activating) const;
     QString getActivePowerProfile() const;
+    QString getActivePowerProfileDescription() const;
     bool setActivePowerProfile(const QString &profile) const;
     QString getLocalBatteryInfo() const;
     bool isDoNotDisturbActive() const;
     bool setDoNotDisturb(bool active) const;
     bool adjustScreenBrightness(int deltaPercent, int exactPercent = -1) const;
+    int getScreenBrightnessPercent() const;
+    QString getAudioVolumeStatus() const;
+    QString getMicrophoneStatus() const;
     QString getNowPlayingMetadata() const;
     QString getSystemResourceSummary(const QString &aspect) const;
     QString extractExecBinaryName(const QString &execLine) const;

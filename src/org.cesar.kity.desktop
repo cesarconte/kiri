@@ -11,6 +11,7 @@ Type=Application
 Categories=Utility;AudioVideo;System;
 StartupWMClass=org.cesar.kity
 StartupNotify=true
+X-KDE-Shortcuts=Meta+K
 MimeType=x-scheme-handler/kity;
 Actions=QuickPill;OpenApp;NewChat;Listen;OCR;AskScreen;WritingTools;
 

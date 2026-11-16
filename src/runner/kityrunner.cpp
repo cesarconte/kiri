@@ -9,10 +9,12 @@
 #include <KPluginFactory>
 
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QDBusInterface>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QUrl>
@@ -86,6 +88,52 @@ QList<KityRunner::KnowledgeHit> KityRunner::searchKnowledgeBase(const QString &q
 void KityRunner::match(KRunner::RunnerContext &context)
 {
     const QString rawQuery = context.query().trimmed();
+    if (rawQuery.length() < 2) {
+        return;
+    }
+
+    // 0. Root Kity activation ("kity" or "ia" alone)
+    if (rawQuery.compare(QStringLiteral("kity"), Qt::CaseInsensitive) == 0
+        || rawQuery.compare(QStringLiteral("ia"), Qt::CaseInsensitive) == 0) {
+        KRunner::QueryMatch m1(this);
+        m1.setId(QStringLiteral("kity_open_pill"));
+        m1.setCategoryRelevance(KRunner::QueryMatch::CategoryRelevance::Highest);
+        m1.setRelevance(1.0);
+        m1.setIconName(QStringLiteral("org.cesar.kity"));
+        m1.setText(i18n("Kity: Abrir Cápsula Rápida (Search or Ask)"));
+        m1.setSubtext(i18n("Asistente de IA estilo macOS Golden Gate para KDE Plasma 6 (Meta + K)"));
+        QVariantMap p1;
+        p1[QStringLiteral("type")] = QStringLiteral("open_pill");
+        m1.setData(p1);
+        context.addMatch(m1);
+
+        KRunner::QueryMatch m2(this);
+        m2.setId(QStringLiteral("kity_open_listen"));
+        m2.setCategoryRelevance(KRunner::QueryMatch::CategoryRelevance::High);
+        m2.setRelevance(0.92);
+        m2.setIconName(QStringLiteral("audio-input-microphone"));
+        m2.setText(i18n("Kity: Hablar por voz"));
+        m2.setSubtext(i18n("Activar el micrófono y dictar una consulta en lenguaje natural"));
+        QVariantMap p2;
+        p2[QStringLiteral("type")] = QStringLiteral("listen");
+        m2.setData(p2);
+        context.addMatch(m2);
+
+        KRunner::QueryMatch m3(this);
+        m3.setId(QStringLiteral("kity_open_wt"));
+        m3.setCategoryRelevance(KRunner::QueryMatch::CategoryRelevance::Moderate);
+        m3.setRelevance(0.85);
+        m3.setIconName(QStringLiteral("document-edit-symbolic"));
+        m3.setText(i18n("Kity: Herramientas de Escritura (Apple Intelligence)"));
+        m3.setSubtext(i18n("Corregir, reescribir o resumir texto de tu selección o portapapeles"));
+        QVariantMap p3;
+        p3[QStringLiteral("type")] = QStringLiteral("writing_tools_panel");
+        m3.setData(p3);
+        context.addMatch(m3);
+
+        return;
+    }
+
     if (rawQuery.length() < 3) {
         return;
     }
@@ -172,7 +220,7 @@ void KityRunner::match(KRunner::RunnerContext &context)
         return;
     }
 
-    // 3. Direct Kity AI / System Intent query ("? ...", "kity ...", "ia ...", or natural question ending with "?")
+    // 3. Direct Kity AI / Hardware & System Intent query ("? ...", "kity ...", "ia ...", or natural question ending with "?")
     static const QRegularExpression prefixRx(
         QStringLiteral("^(?:kity\\s+|ia\\s+|\\?\\s*|¿\\s*)(.+)$"),
         QRegularExpression::CaseInsensitiveOption);
@@ -181,15 +229,34 @@ void KityRunner::match(KRunner::RunnerContext &context)
     const QString cleanPrompt = hasExplicitPrefix ? pm.captured(1).trimmed() : rawQuery;
 
     if (hasExplicitPrefix || rawQuery.endsWith(QLatin1Char('?')) || rawQuery.startsWith(QChar(u'¿')) || rawQuery.startsWith(QLatin1Char('?'))) {
+        // Check if this is a hardware control query for custom subtext and icon
+        QString hwTitle;
+        QString hwSubtext;
+        QString hwIcon = QStringLiteral("org.cesar.kity");
+
+        if (cleanPrompt.contains(QRegularExpression(QStringLiteral("(?:volumen|sonido|audio|silencia)"), QRegularExpression::CaseInsensitiveOption))) {
+            hwTitle = i18n("🔊 Control de Hardware: «%1»", cleanPrompt);
+            hwSubtext = i18n("Ajustar audio mediante PipeWire / WirePlumber sin latencia");
+            hwIcon = QStringLiteral("audio-volume-high");
+        } else if (cleanPrompt.contains(QRegularExpression(QStringLiteral("brillo"), QRegularExpression::CaseInsensitiveOption))) {
+            hwTitle = i18n("☀️ Control de Pantalla: «%1»", cleanPrompt);
+            hwSubtext = i18n("Control de brillo vía KDE Solid PowerManagement");
+            hwIcon = QStringLiteral("video-display-brightness");
+        } else if (cleanPrompt.contains(QRegularExpression(QStringLiteral("(?:energ[ií]a|ahorro|rendimiento|equilibrado|bater[ií]a)"), QRegularExpression::CaseInsensitiveOption))) {
+            hwTitle = i18n("🔋 Control de Energía: «%1»", cleanPrompt);
+            hwSubtext = i18n("Perfil de energía mediante power-profiles-daemon");
+            hwIcon = QStringLiteral("battery-profile-powersave");
+        }
+
         KRunner::QueryMatch m(this);
         m.setId(QStringLiteral("kity_ask_") + cleanPrompt);
         m.setCategoryRelevance(hasExplicitPrefix
                                ? KRunner::QueryMatch::CategoryRelevance::Highest
                                : KRunner::QueryMatch::CategoryRelevance::Moderate);
         m.setRelevance(hasExplicitPrefix ? 0.98 : 0.72);
-        m.setIconName(QStringLiteral("org.cesar.kity"));
-        m.setText(i18n("Preguntar a Kity: «%1»", cleanPrompt));
-        m.setSubtext(i18n("Procesar con Kity AI (Ollama local / Acciones del sistema Plasma 6)"));
+        m.setIconName(hwIcon);
+        m.setText(!hwTitle.isEmpty() ? hwTitle : i18n("Preguntar a Kity: «%1»", cleanPrompt));
+        m.setSubtext(!hwSubtext.isEmpty() ? hwSubtext : i18n("Procesar con Kity AI (Ollama local / Acciones del sistema Plasma 6)"));
         QVariantMap payload;
         payload[QStringLiteral("type")] = QStringLiteral("ask");
         payload[QStringLiteral("prompt")] = cleanPrompt;
@@ -223,31 +290,62 @@ void KityRunner::run(const KRunner::RunnerContext &context, const KRunner::Query
     const QVariantMap payload = match.data().toMap();
     const QString type = payload.value(QStringLiteral("type")).toString();
 
-    QDBusInterface kityIface(QStringLiteral("org.cesar.kity"),
-                             QStringLiteral("/Kity"),
-                             QStringLiteral("org.cesar.kity"),
-                             QDBusConnection::sessionBus());
+    const bool isServiceActive = QDBusConnection::sessionBus().interface()
+        && QDBusConnection::sessionBus().interface()->isServiceRegistered(QStringLiteral("org.cesar.kity"));
 
-    // Even if interface name is default Qt meta-object, QDBusInterface with empty interface calls any exported slot/invokable on /Kity
     QDBusInterface genericIface(QStringLiteral("org.cesar.kity"),
                                 QStringLiteral("/Kity"),
                                 QString(),
                                 QDBusConnection::sessionBus());
 
-    if (type == QStringLiteral("livetext")) {
-        genericIface.asyncCall(QStringLiteral("runVisualIntelligence"),
-                               payload.value(QStringLiteral("mode")).toString(),
-                               QStringLiteral("ocr"),
-                               QString());
+    const QString kityBin = QStandardPaths::findExecutable(QStringLiteral("kity"));
+
+    if (type == QStringLiteral("open_pill")) {
+        if (isServiceActive) {
+            genericIface.asyncCall(QStringLiteral("toggleUI"));
+        } else if (!kityBin.isEmpty()) {
+            QProcess::startDetached(kityBin, {QStringLiteral("--pill")});
+        }
+    } else if (type == QStringLiteral("listen")) {
+        if (isServiceActive) {
+            genericIface.asyncCall(QStringLiteral("openUI"));
+            genericIface.asyncCall(QStringLiteral("startRecording"));
+        } else if (!kityBin.isEmpty()) {
+            QProcess::startDetached(kityBin, {QStringLiteral("--listen")});
+        }
+    } else if (type == QStringLiteral("writing_tools_panel")) {
+        if (isServiceActive) {
+            genericIface.asyncCall(QStringLiteral("openUI"));
+            genericIface.asyncCall(QStringLiteral("applyWritingTool"), QStringLiteral("proofread"), QString());
+        } else if (!kityBin.isEmpty()) {
+            QProcess::startDetached(kityBin, {QStringLiteral("--writing-tools")});
+        }
+    } else if (type == QStringLiteral("livetext")) {
+        if (isServiceActive) {
+            genericIface.asyncCall(QStringLiteral("runVisualIntelligence"),
+                                   payload.value(QStringLiteral("mode")).toString(),
+                                   QStringLiteral("ocr"),
+                                   QString());
+        } else if (!kityBin.isEmpty()) {
+            QProcess::startDetached(kityBin, {QStringLiteral("--ocr")});
+        }
     } else if (type == QStringLiteral("writing_tool")) {
-        genericIface.asyncCall(QStringLiteral("applyWritingTool"),
-                               payload.value(QStringLiteral("action")).toString(),
-                               payload.value(QStringLiteral("text")).toString());
+        if (isServiceActive) {
+            genericIface.asyncCall(QStringLiteral("applyWritingTool"),
+                                   payload.value(QStringLiteral("action")).toString(),
+                                   payload.value(QStringLiteral("text")).toString());
+        } else if (!kityBin.isEmpty()) {
+            QProcess::startDetached(kityBin, {QStringLiteral("--writing-action"), payload.value(QStringLiteral("action")).toString(), payload.value(QStringLiteral("text")).toString()});
+        }
     } else if (type == QStringLiteral("ask")) {
-        genericIface.asyncCall(QStringLiteral("openUI"));
-        genericIface.asyncCall(QStringLiteral("sendMessage"),
-                               payload.value(QStringLiteral("prompt")).toString(),
-                               false);
+        if (isServiceActive) {
+            genericIface.asyncCall(QStringLiteral("openUI"));
+            genericIface.asyncCall(QStringLiteral("sendMessage"),
+                                   payload.value(QStringLiteral("prompt")).toString(),
+                                   false);
+        } else if (!kityBin.isEmpty()) {
+            QProcess::startDetached(kityBin, {payload.value(QStringLiteral("prompt")).toString()});
+        }
     } else if (type == QStringLiteral("kb_ask")) {
         const QString filePath = payload.value(QStringLiteral("filePath")).toString();
         if (!filePath.isEmpty()) {

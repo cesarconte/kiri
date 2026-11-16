@@ -108,6 +108,12 @@ void KityApplet::init()
                        this,
                        QDBusConnection::ExportAllInvokables | QDBusConnection::ExportAllProperties | QDBusConnection::ExportAllSignals);
 
+    // Global shortcut Meta+K unified registration (Subpoint 4.1)
+    if (globalShortcut().isEmpty()) {
+        setGlobalShortcut(QKeySequence(QStringLiteral("Meta+K")));
+    }
+    connect(this, &Plasma::Applet::activated, this, &KityApplet::toggleUI);
+
     // Initialize Kity Mobile Remote Web/WebSocket Server (Apple Intelligence PWA - Ports 1740/1741 in KDE Connect Firewall Range)
     m_mobileServer = new KityMobileServer(1740, this);
     connect(m_mobileServer, &KityMobileServer::voiceCommandReceived, this, [this](const QString &text, bool fromVoice) {
@@ -3484,7 +3490,28 @@ bool KityApplet::detectAndExecuteSystemAction(const QString &input)
         }
     }
 
-    // 3. Volume Control via PipeWire / WirePlumber (wpctl)
+    // 3. Volume & Microphone Control via PipeWire / WirePlumber (wpctl)
+    static const QRegularExpression volQueryRegex(
+        QStringLiteral("(?:qu[eé]\\s+volumen|cu[aá]l\\s+es\\s+el\\s+volumen|dime\\s+el\\s+volumen|a\\s+qu[eé]\\s+volumen|nivel\\s+de\\s+(?:volumen|audio|sonido))"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(volQueryRegex)) {
+        appendAssistantMessage(getAudioVolumeStatus());
+        return true;
+    }
+
+    static const QRegularExpression volExactRegex(
+        QStringLiteral("(?:pon\\s+el\\s+|ajusta\\s+el\\s+|cambia\\s+el\\s+)?(?:volumen|sonido|audio)\\s+(?:a|al)\\s*(\\d{1,3})\\s*(?:%|por\\s+ciento)?"),
+        QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch volExactMatch = volExactRegex.match(trimmed);
+    if (volExactMatch.hasMatch()) {
+        const int pct = qBound(0, volExactMatch.captured(1).toInt(), 100);
+        QProcess::execute(QStringLiteral("wpctl"),
+                          {QStringLiteral("set-volume"), QStringLiteral("@DEFAULT_AUDIO_SINK@"), QStringLiteral("%1%").arg(pct)});
+        const QString resp = i18n("Volumen ajustado al %1%.", pct);
+        appendAssistantMessage(resp);
+        return true;
+    }
+
     static const QRegularExpression volUpRegex(QStringLiteral("(?:sube|subir|aumenta|aumentar|sube el|subir el)\\s+(?:volumen|sonido|audio)"), QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(volUpRegex)) {
         QProcess::execute(QStringLiteral("wpctl"), QStringList() << QStringLiteral("set-volume") << QStringLiteral("@DEFAULT_AUDIO_SINK@") << QStringLiteral("5%+"));
@@ -3498,6 +3525,33 @@ bool KityApplet::detectAndExecuteSystemAction(const QString &input)
         QProcess::execute(QStringLiteral("wpctl"), QStringList() << QStringLiteral("set-volume") << QStringLiteral("@DEFAULT_AUDIO_SINK@") << QStringLiteral("5%-"));
         const QString resp = i18n("Bajando el volumen.");
         appendAssistantMessage(resp);
+        return true;
+    }
+
+    // Microphone mute / unmute & status
+    static const QRegularExpression micMuteRegex(
+        QStringLiteral("(?:silencia|silenciar|mutea|mutear|desactiva|apaga)\\s+(?:el\\s+)?(?:micr[oó]fono|micro)\\b"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(micMuteRegex)) {
+        QProcess::execute(QStringLiteral("wpctl"), {QStringLiteral("set-mute"), QStringLiteral("@DEFAULT_AUDIO_SOURCE@"), QStringLiteral("1")});
+        appendAssistantMessage(i18n("Micrófono silenciado."));
+        return true;
+    }
+
+    static const QRegularExpression micUnmuteRegex(
+        QStringLiteral("(?:activa|activar|desactiva el silencio|reactiva|enciende)\\s+(?:el\\s+)?(?:micr[oó]fono|micro)\\b"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(micUnmuteRegex)) {
+        QProcess::execute(QStringLiteral("wpctl"), {QStringLiteral("set-mute"), QStringLiteral("@DEFAULT_AUDIO_SOURCE@"), QStringLiteral("0")});
+        appendAssistantMessage(i18n("Micrófono reactivado."));
+        return true;
+    }
+
+    static const QRegularExpression micQueryRegex(
+        QStringLiteral("(?:estado\\s+del\\s+(?:micr[oó]fono|micro)|(?:est[aá]\\s+)?silenciado\\s+el\\s+(?:micr[oó]fono|micro))"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(micQueryRegex)) {
+        appendAssistantMessage(getMicrophoneStatus());
         return true;
     }
 
@@ -3603,7 +3657,15 @@ bool KityApplet::detectAndExecuteSystemAction(const QString &input)
         return true;
     }
 
-    // 7. Power Profile: "modo ahorro/rendimiento/equilibrado"
+    // 7. Power Profile: "modo ahorro/rendimiento/equilibrado" & Queries
+    static const QRegularExpression powerQueryRegex(
+        QStringLiteral("(?:qu[eé]\\s+modo\\s+de\\s+energ[ií]a|cu[aá]l\\s+es\\s+el\\s+perfil\\s+de\\s+energ[ií]a|perfil\\s+de\\s+energ[ií]a|modo\\s+de\\s+energ[ií]a\\s+actual|estado\\s+de\\s+energ[ií]a)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(powerQueryRegex) && !trimmed.contains(QStringLiteral("cambia")) && !trimmed.contains(QStringLiteral("pon"))) {
+        appendAssistantMessage(getActivePowerProfileDescription());
+        return true;
+    }
+
     static const QRegularExpression setPowerRegex(QStringLiteral("(?:pon|cambia a|activa el)?\\s*(?:modo)?\\s*(rendimiento|ahorro|equilibrado)"), QRegularExpression::CaseInsensitiveOption);
     QRegularExpressionMatch pMatch = setPowerRegex.match(trimmed);
     if (pMatch.hasMatch()) {
@@ -3721,20 +3783,6 @@ bool KityApplet::detectAndExecuteSystemAction(const QString &input)
         return true;
     }
 
-    // 15. Exact Volume Percentage: "pon el volumen al 50%" / "volumen al 80 por ciento"
-    static const QRegularExpression volExactRegex(
-        QStringLiteral("(?:pon\\s+el\\s+|ajusta\\s+el\\s+)?(?:volumen|sonido|audio)\\s+(?:a|al)\\s*(\\d{1,3})\\s*(?:%|por\\s+ciento)?"),
-        QRegularExpression::CaseInsensitiveOption);
-    QRegularExpressionMatch volExactMatch = volExactRegex.match(trimmed);
-    if (volExactMatch.hasMatch()) {
-        const int pct = qBound(0, volExactMatch.captured(1).toInt(), 100);
-        QProcess::execute(QStringLiteral("wpctl"),
-                          {QStringLiteral("set-volume"), QStringLiteral("@DEFAULT_AUDIO_SINK@"), QStringLiteral("%1%").arg(pct)});
-        const QString resp = i18n("Volumen ajustado al %1%.", pct);
-        appendAssistantMessage(resp);
-        return true;
-    }
-
     // 16. KDE Plasma 6 Dark / Light Theme Switching
     static const QRegularExpression darkThemeRegex(
         QStringLiteral("(?:activa|pon|cambia\\s+a|habilita)\\s+(?:el\\s+)?(?:modo|tema)\\s+(?:oscuro|noche|dark)"),
@@ -3756,7 +3804,20 @@ bool KityApplet::detectAndExecuteSystemAction(const QString &input)
         return true;
     }
 
-    // 17. Screen Brightness Control (KDE Solid PowerManagement D-Bus)
+    // 17. Screen Brightness Control & Query (KDE Solid PowerManagement D-Bus)
+    static const QRegularExpression brightQueryRegex(
+        QStringLiteral("(?:qu[eé]\\s+brillo|cu[aá]l\\s+es\\s+el\\s+brillo|dime\\s+el\\s+brillo|a\\s+qu[eé]\\s+nivel\\s+est[aá]\\s+el\\s+brillo|nivel\\s+de\\s+brillo)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(brightQueryRegex)) {
+        const int curB = getScreenBrightnessPercent();
+        if (curB >= 0) {
+            appendAssistantMessage(i18n("El brillo actual de la pantalla es del %1%.", curB));
+        } else {
+            appendAssistantMessage(i18n("El control de brillo por software no está disponible para esta pantalla."));
+        }
+        return true;
+    }
+
     static const QRegularExpression brightExactRegex(
         QStringLiteral("(?:pon\\s+el\\s+|ajusta\\s+el\\s+)?brillo\\s+(?:a|al)\\s*(\\d{1,3})\\s*(?:%|por\\s+ciento)?"),
         QRegularExpression::CaseInsensitiveOption);
@@ -4657,7 +4718,28 @@ QString KityApplet::getActivePowerProfile() const
             return reply.value().toString();
         }
     }
+    const QString ppctl = QStandardPaths::findExecutable(QStringLiteral("powerprofilesctl"));
+    if (!ppctl.isEmpty()) {
+        QProcess proc;
+        proc.start(ppctl, {QStringLiteral("get")});
+        if (proc.waitForFinished(800) && proc.exitCode() == 0) {
+            return QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+        }
+    }
     return QString();
+}
+
+QString KityApplet::getActivePowerProfileDescription() const
+{
+    const QString profile = getActivePowerProfile();
+    if (profile == QLatin1String("performance")) {
+        return i18n("El perfil de energía actual es Rendimiento (máxima potencia).");
+    } else if (profile == QLatin1String("power-saver")) {
+        return i18n("El perfil de energía actual es Ahorro de Energía (bajo consumo).");
+    } else if (profile == QLatin1String("balanced")) {
+        return i18n("El perfil de energía actual es Equilibrado.");
+    }
+    return i18n("El perfil de energía actual es %1.", profile.isEmpty() ? i18n("desconocido") : profile);
 }
 
 bool KityApplet::setActivePowerProfile(const QString &profile) const
@@ -4671,7 +4753,13 @@ bool KityApplet::setActivePowerProfile(const QString &profile) const
                                             QStringLiteral("net.hadess.PowerProfiles"),
                                             QStringLiteral("ActiveProfile"),
                                             QVariant::fromValue(QDBusVariant(profile)));
-        return reply.isValid();
+        if (reply.isValid()) {
+            return true;
+        }
+    }
+    const QString ppctl = QStandardPaths::findExecutable(QStringLiteral("powerprofilesctl"));
+    if (!ppctl.isEmpty()) {
+        return (QProcess::execute(ppctl, {QStringLiteral("set"), profile}) == 0);
     }
     return false;
 }
@@ -4814,6 +4902,64 @@ bool KityApplet::adjustScreenBrightness(int deltaPercent, int exactPercent) cons
 
     iface.call(QStringLiteral("setBrightness"), targetVal);
     return true;
+}
+
+int KityApplet::getScreenBrightnessPercent() const
+{
+    QDBusInterface iface(QStringLiteral("org.kde.Solid.PowerManagement"),
+                         QStringLiteral("/org/kde/Solid/PowerManagement/Actions/BrightnessControl"),
+                         QStringLiteral("org.kde.Solid.PowerManagement.Actions.BrightnessControl"),
+                         QDBusConnection::sessionBus());
+    if (iface.isValid()) {
+        QDBusReply<int> maxReply = iface.call(QStringLiteral("brightnessMax"));
+        QDBusReply<int> curReply = iface.call(QStringLiteral("brightness"));
+        if (maxReply.isValid() && maxReply.value() > 0 && curReply.isValid()) {
+            return qRound((static_cast<double>(curReply.value()) / maxReply.value()) * 100.0);
+        }
+    }
+    return -1;
+}
+
+QString KityApplet::getAudioVolumeStatus() const
+{
+    QProcess proc;
+    proc.start(QStringLiteral("wpctl"), {QStringLiteral("get-volume"), QStringLiteral("@DEFAULT_AUDIO_SINK@")});
+    if (proc.waitForFinished(1000) && proc.exitCode() == 0) {
+        const QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+        static const QRegularExpression rx(QStringLiteral("Volume:\\s*([0-9.]+)(?:\\s*\\[MUTED\\])?"));
+        const auto m = rx.match(out);
+        if (m.hasMatch()) {
+            const double vol = m.captured(1).toDouble();
+            const int pct = qRound(vol * 100.0);
+            const bool isMuted = out.contains(QStringLiteral("[MUTED]"), Qt::CaseInsensitive);
+            if (isMuted) {
+                return i18n("El volumen está al %1%, pero el audio está silenciado.", pct);
+            }
+            return i18n("El volumen actual es del %1%.", pct);
+        }
+    }
+    return i18n("No se pudo obtener el nivel de volumen actual.");
+}
+
+QString KityApplet::getMicrophoneStatus() const
+{
+    QProcess proc;
+    proc.start(QStringLiteral("wpctl"), {QStringLiteral("get-volume"), QStringLiteral("@DEFAULT_AUDIO_SOURCE@")});
+    if (proc.waitForFinished(1000) && proc.exitCode() == 0) {
+        const QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+        static const QRegularExpression rx(QStringLiteral("Volume:\\s*([0-9.]+)(?:\\s*\\[MUTED\\])?"));
+        const auto m = rx.match(out);
+        if (m.hasMatch()) {
+            const double vol = m.captured(1).toDouble();
+            const int pct = qRound(vol * 100.0);
+            const bool isMuted = out.contains(QStringLiteral("[MUTED]"), Qt::CaseInsensitive);
+            if (isMuted) {
+                return i18n("El micrófono está silenciado (nivel configurado al %1%).", pct);
+            }
+            return i18n("El micrófono está activo con un nivel del %1%.", pct);
+        }
+    }
+    return i18n("No se pudo consultar el estado del micrófono.");
 }
 
 QString KityApplet::getNowPlayingMetadata() const
