@@ -24,6 +24,7 @@
 #include <QCoreApplication>
 #include <QCursor>
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QDBusInterface>
 #include <QDBusReply>
 #include <QDBusMessage>
@@ -2117,20 +2118,26 @@ QJsonObject KityApplet::executeToolCall(const QString &toolName, const QJsonObje
 
 void KityApplet::openUI()
 {
-    const QString kityBin = QStandardPaths::findExecutable(QStringLiteral("kity"));
-    if (!kityBin.isEmpty()) {
-        QProcess::startDetached(kityBin, QStringList());
-    }
     Q_EMIT openRequested();
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.interface() || !bus.interface()->isServiceRegistered(QStringLiteral("org.cesar.kity_app"))) {
+        const QString kityBin = QStandardPaths::findExecutable(QStringLiteral("kity"));
+        if (!kityBin.isEmpty()) {
+            QProcess::startDetached(kityBin, QStringList());
+        }
+    }
 }
 
 void KityApplet::toggleUI()
 {
-    const QString kityBin = QStandardPaths::findExecutable(QStringLiteral("kity"));
-    if (!kityBin.isEmpty()) {
-        QProcess::startDetached(kityBin, QStringList() << QStringLiteral("-t"));
-    }
     Q_EMIT toggleRequested();
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.interface() || !bus.interface()->isServiceRegistered(QStringLiteral("org.cesar.kity_app"))) {
+        const QString kityBin = QStandardPaths::findExecutable(QStringLiteral("kity"));
+        if (!kityBin.isEmpty()) {
+            QProcess::startDetached(kityBin, QStringList() << QStringLiteral("-t"));
+        }
+    }
 }
 
 void KityApplet::openSettings()

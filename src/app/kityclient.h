@@ -213,6 +213,8 @@ Q_SIGNALS:
     void conversationsChanged();
     void activeConversationIdChanged();
     void goldenGatePrefsChanged();
+    void toggleRequested();
+    void openRequested();
 
 private Q_SLOTS:
     void onServiceRegistered(const QString &service);

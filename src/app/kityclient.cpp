@@ -276,6 +276,20 @@ void KityClient::setupDBus()
                         this,
                         SLOT(syncFromDBus()));
 
+            bus.connect(QStringLiteral("org.cesar.kity"),
+                        QStringLiteral("/Kity"),
+                        m_iface->interface(),
+                        QStringLiteral("toggleRequested"),
+                        this,
+                        SIGNAL(toggleRequested()));
+
+            bus.connect(QStringLiteral("org.cesar.kity"),
+                        QStringLiteral("/Kity"),
+                        m_iface->interface(),
+                        QStringLiteral("openRequested"),
+                        this,
+                        SIGNAL(openRequested()));
+
             syncFromDBus();
         }
     } else {

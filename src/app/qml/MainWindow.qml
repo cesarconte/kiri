@@ -118,6 +118,32 @@ CachyWindow {
         root.show();
     }
 
+    Connections {
+        target: kityClient
+        function onToggleRequested() {
+            if (root.visible && root.active && root.visibility !== Window.Minimized) {
+                root.hide();
+            } else {
+                if (root.visibility === Window.Minimized) {
+                    root.showNormal();
+                } else {
+                    root.show();
+                }
+                root.raise();
+                root.requestActivate();
+            }
+        }
+        function onOpenRequested() {
+            if (root.visibility === Window.Minimized) {
+                root.showNormal();
+            } else {
+                root.show();
+            }
+            root.raise();
+            root.requestActivate();
+        }
+    }
+
     // Shortcuts
     Shortcut {
         sequences: ["Ctrl+M", "Alt+M"]
