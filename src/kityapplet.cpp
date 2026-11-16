@@ -840,6 +840,13 @@ void KityApplet::sendToOllama(const QString &userPrompt, const QString &injected
     const QString currentDateStr = QLocale(QLocale::Spanish, QLocale::Spain).toString(QDateTime::currentDateTime(), QStringLiteral("dddd, d 'de' MMMM 'de' yyyy, HH:mm"));
     fullSysPrompt.append(QStringLiteral("\n[Fecha y hora actual del sistema: %1]").arg(currentDateStr));
     fullSysPrompt.append(QStringLiteral(
+        "\n[IDENTIDAD Y CONOCIMIENTO ESTRICTO DEL SISTEMA OPERATIVO:]\n"
+        "- Eres Kity, el asistente de voz e inteligencia artificial nativo para CachyOS Linux con KDE Plasma 6 bajo Wayland.\n"
+        "- Sistema Operativo: CachyOS Linux (distribución rolling-release de alto rendimiento basada en Arch Linux).\n"
+        "- Gestores de paquetes: 'pacman' y 'paru' (AUR). El comando oficial para actualizar el sistema es 'sudo pacman -Syu' o 'paru -Syu'.\n"
+        "- Terminal predeterminada del sistema: Konsole.\n"
+        "- REGLA ESTRICTA DE LINUX: Este sistema NUNCA es Debian ni Ubuntu. NUNCA menciones ni uses 'apt', 'apt-get', 'dnf', 'yum' ni 'zypper'. Para cualquier tarea o recomendación de comandos de terminal, usa SIEMPRE comandos de Arch / CachyOS (pacman, paru, systemctl, etc.). Si el usuario pide actualizar el sistema, ejecutar comandos o abrir la terminal, invoca la herramienta 'run_terminal_command' o recomienda 'sudo pacman -Syu' / 'paru -Syu'.\n"));
+    fullSysPrompt.append(QStringLiteral(
         "\n[Acceso a Internet en tiempo real:]\n"
         "Dispones de acceso directo a Internet mediante búsqueda web ('web_search') y mediante el contexto web provisto en tiempo real. "
         "Cuando el usuario pregunte por fechas, noticias, acontecimientos actuales o futuros (año 2026 en adelante), "
@@ -1020,6 +1027,8 @@ void KityApplet::handleOllamaFinished()
                 setState(QStringLiteral("thinking"), app.isEmpty() ? i18n("Abriendo aplicación…") : i18n("Abriendo %1…", app));
             } else if (toolName == QLatin1String("web_search")) {
                 setState(QStringLiteral("thinking"), i18n("Buscando información actualizada en la web…"));
+            } else if (toolName == QLatin1String("run_terminal_command")) {
+                setState(QStringLiteral("thinking"), i18n("Abriendo terminal Konsole…"));
             } else if (toolName == QLatin1String("inspect_screen")) {
                 setState(QStringLiteral("thinking"), i18n("Inspeccionando el contenido de la pantalla…"));
             } else {
@@ -1089,10 +1098,24 @@ void KityApplet::handleOllamaFinished()
                     finalResponse = i18n("He actualizado el estado de la reproducción multimedia.");
                 }
                 wasInterceptedTool = true;
+            } else if (toolName == QLatin1String("run_terminal_command") || toolName == QLatin1String("terminal")
+                       || toolName.contains(QStringLiteral("konsole"))) {
+                QString cmd = toolArgs.value(QStringLiteral("command")).toString().trimmed();
+                if (cmd.isEmpty()) {
+                    cmd = toolArgs.value(QStringLiteral("cmd")).toString().trimmed();
+                }
+                if (cmd.isEmpty() || cmd.contains(QStringLiteral("apt"))) {
+                    cmd = QStringLiteral("sudo pacman -Syu");
+                }
+                QProcess::startDetached(QStringLiteral("konsole"), QStringList() << QStringLiteral("--noclose") << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << cmd);
+                finalResponse = i18n("He abierto Konsole para ejecutar `%1`.", cmd);
+                wasInterceptedTool = true;
             } else if (!toolName.isEmpty()) {
                 const QJsonObject res = executeToolCall(toolName, toolArgs);
                 if (toolName == QLatin1String("get_weather")) {
                     finalResponse = res.value(QStringLiteral("weather_report")).toString();
+                } else if (toolName == QLatin1String("run_terminal_command")) {
+                    finalResponse = i18n("He abierto Konsole para ejecutar `%1`.", res.value(QStringLiteral("command")).toString());
                 } else if (toolName == QLatin1String("launch_application")) {
                     finalResponse = i18n("He abierto %1.", res.value(QStringLiteral("launched_app")).toString());
                 } else if (toolName == QLatin1String("set_timer")) {
@@ -1249,6 +1272,13 @@ void KityApplet::sendToGemini(const QString &userPrompt, const QString &injected
     }
     const QString currentDateStr = QLocale(QLocale::Spanish, QLocale::Spain).toString(QDateTime::currentDateTime(), QStringLiteral("dddd, d 'de' MMMM 'de' yyyy, HH:mm"));
     fullSysPrompt.append(QStringLiteral("\n[Fecha y hora actual del sistema: %1]").arg(currentDateStr));
+    fullSysPrompt.append(QStringLiteral(
+        "\n[IDENTIDAD Y CONOCIMIENTO ESTRICTO DEL SISTEMA OPERATIVO:]\n"
+        "- Eres Kity, el asistente de voz e inteligencia artificial nativo para CachyOS Linux con KDE Plasma 6 bajo Wayland.\n"
+        "- Sistema Operativo: CachyOS Linux (distribución rolling-release de alto rendimiento basada en Arch Linux).\n"
+        "- Gestores de paquetes: 'pacman' y 'paru' (AUR). El comando oficial para actualizar el sistema es 'sudo pacman -Syu' o 'paru -Syu'.\n"
+        "- Terminal predeterminada del sistema: Konsole.\n"
+        "- REGLA ESTRICTA DE LINUX: Este sistema NUNCA es Debian ni Ubuntu. NUNCA menciones ni uses 'apt', 'apt-get', 'dnf', 'yum' ni 'zypper'. Para cualquier tarea o recomendación de comandos de terminal, usa SIEMPRE comandos de Arch / CachyOS (pacman, paru, systemctl, etc.). Si el usuario pide actualizar el sistema, ejecutar comandos o abrir la terminal, invoca la herramienta 'run_terminal_command' o recomienda 'sudo pacman -Syu' / 'paru -Syu'.\n"));
     const QString vitals = collectSystemVitals();
     if (!vitals.isEmpty()) {
         fullSysPrompt.append(QStringLiteral("\n[Entorno del sistema: %1]").arg(vitals));
@@ -1863,6 +1893,36 @@ QJsonArray KityApplet::buildAvailableTools(const QString &userPrompt) const
         ));
     }
 
+    // Tool 12: run_terminal_command
+    static const QRegularExpression termSignal(
+        QStringLiteral("(terminal|konsole|consola|actualiza|actualizar|actualizaci[oó]n|upgrade|update|pacman|paru|instala|instalar|comando|ejecuta|ejecutar|bash|sh)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (!isLlama32 || q.isEmpty() || q.contains(termSignal)) {
+        QJsonObject props;
+        QJsonObject cmdProp;
+        cmdProp[QStringLiteral("type")] = QStringLiteral("string");
+        cmdProp[QStringLiteral("description")] = QStringLiteral("Comando de terminal para CachyOS Linux a ejecutar en Konsole (ej. 'sudo pacman -Syu', 'paru -Syu', 'fastfetch', 'btop'). NUNCA uses apt ni ubuntu.");
+        props[QStringLiteral("command")] = cmdProp;
+
+        QJsonObject titleProp;
+        titleProp[QStringLiteral("type")] = QStringLiteral("string");
+        titleProp[QStringLiteral("description")] = QStringLiteral("Título opcional para la pestaña o ventana de Konsole.");
+        props[QStringLiteral("title")] = titleProp;
+
+        QJsonObject params;
+        params[QStringLiteral("type")] = QStringLiteral("object");
+        params[QStringLiteral("properties")] = props;
+        QJsonArray req;
+        req.append(QStringLiteral("command"));
+        params[QStringLiteral("required")] = req;
+
+        tools.append(createTool(
+            QStringLiteral("run_terminal_command"),
+            QStringLiteral("Abre y ejecuta un comando en la terminal Konsole de KDE Plasma en CachyOS Linux (por ejemplo para actualizar el sistema con 'sudo pacman -Syu', instalar o buscar paquetes con pacman/paru, o monitorización del sistema)."),
+            params
+        ));
+    }
+
     return tools;
 }
 
@@ -2163,6 +2223,33 @@ QJsonObject KityApplet::executeToolCall(const QString &toolName, const QJsonObje
 
     if (toolName == QLatin1String("summarize_notifications")) {
         result[QStringLiteral("notifications_summary")] = collectRecentNotificationsContext();
+        return result;
+    }
+
+    if (toolName == QLatin1String("run_terminal_command")) {
+        QString cmd = arguments.value(QStringLiteral("command")).toString().trimmed();
+        if (cmd.contains(QStringLiteral("apt update")) || cmd.contains(QStringLiteral("apt-get update"))
+            || cmd.contains(QStringLiteral("apt upgrade")) || cmd.contains(QStringLiteral("apt-get upgrade"))) {
+            cmd = QStringLiteral("sudo pacman -Syu");
+        }
+        if (cmd.isEmpty()) {
+            cmd = QStringLiteral("sudo pacman -Syu");
+        }
+
+        const QString title = arguments.value(QStringLiteral("title")).toString().trimmed();
+        QStringList args;
+        args << QStringLiteral("--noclose");
+        if (!title.isEmpty()) {
+            args << QStringLiteral("-p") << QStringLiteral("tabtitle=%1").arg(title);
+        }
+        args << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << cmd;
+
+        const bool started = QProcess::startDetached(QStringLiteral("konsole"), args);
+        result[QStringLiteral("success")] = started;
+        result[QStringLiteral("command")] = cmd;
+        result[QStringLiteral("status")] = started ?
+            i18n("Terminal Konsole abierta ejecutando '%1'.", cmd) :
+            i18n("No se pudo iniciar Konsole.");
         return result;
     }
 
@@ -4741,7 +4828,11 @@ void KityApplet::runVisualIntelligence(const QString &captureMode, const QString
 QString KityApplet::collectSystemVitals() const
 {
     QStringList vitals;
-    vitals << QStringLiteral("SO: CachyOS Linux (KDE Plasma 6, Wayland)");
+    vitals << QStringLiteral("SO: %1 (Kernel: %2, KDE Plasma 6, Wayland)")
+              .arg(QSysInfo::prettyProductName(), QSysInfo::kernelVersion());
+    vitals << QStringLiteral("Host: %1 (%2)").arg(QSysInfo::machineHostName(), QSysInfo::currentCpuArchitecture());
+    vitals << QStringLiteral("Gestor de paquetes: pacman, paru (AUR)");
+    vitals << QStringLiteral("Terminal: Konsole");
 
     // RAM stats from /proc/meminfo
     QFile meminfo(QStringLiteral("/proc/meminfo"));
