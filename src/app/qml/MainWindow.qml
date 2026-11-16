@@ -60,15 +60,21 @@ CachyWindow {
 
     Timer {
         id: mathPreviewTimer
-        interval: 120
+        interval: 100
         repeat: false
         onTriggered: {
             let q = spotlightSearchInput.text.trim();
-            if (q.length >= 2 && /[0-9+\-*\/^%()=]|usd|eur|km|m\b|kg|cm|hora|min/i.test(q)) {
+            // Strict math expression pattern: arithmetic, conversions or standard math functions only
+            const mathPattern = /^(?:(?:\s*[\d\.,]+\s*[\+\-\*\/\^%]\s*[\d\.,\s\+\-\*\/\^%()=]+)|(?:\s*(?:sqrt|cbrt|sin|cos|tan|log|ln|abs)\s*\(\s*[\d\.,]+\s*\)\s*=?\s*)|(?:\s*[\d\.,]+\s*(?:km|m|cm|mm|mi|in|ft|kg|g|lb|oz|l|ml|c|f|celsius|fahrenheit|usd|eur|gbp|jpy|btc|eth|horas?|mins?|minutos?|segs?|segundos?)\s+(?:to|in|a|en)\s+(?:km|m|cm|mm|mi|in|ft|kg|g|lb|oz|l|ml|c|f|celsius|fahrenheit|usd|eur|gbp|jpy|btc|eth|horas?|mins?|minutos?|segs?|segundos?)\s*)|(?:\s*[\d\.,]+\s*%\s*(?:of|de)\s+[\d\.,]+))$/i;
+
+            if (q.length >= 3 && mathPattern.test(q)) {
                 let res = kityClient.evaluateMathNotes(q);
-                if (res && res.length > 0 && res[0].trim().length > 0 && res[0].trim() !== q) {
-                    root.liveMathPreview = res[0].trim();
-                    return;
+                if (res && res.length > 0) {
+                    let r = res[0].trim();
+                    if (r.length > 0 && r !== q && !r.startsWith("error") && !r.startsWith("warning") && !r.includes("Σ")) {
+                        root.liveMathPreview = r;
+                        return;
+                    }
                 }
             }
             root.liveMathPreview = "";
