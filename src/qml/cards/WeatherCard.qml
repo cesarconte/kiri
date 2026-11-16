@@ -13,10 +13,9 @@ Rectangle {
     property var cardData: ({})
 
     implicitHeight: mainLayout.implicitHeight + Kirigami.Units.gridUnit
-    radius: 14
-    color: Kirigami.Theme.backgroundColor
-    opacity: 0.95
-    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.15)
+    radius: 16
+    color: Qt.rgba(0.08, 0.10, 0.14, 0.88)
+    border.color: Qt.rgba(1.0, 1.0, 1.0, 0.18)
     border.width: 1
 
     // Dynamic weather atmosphere gradient tint

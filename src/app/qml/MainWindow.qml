@@ -46,6 +46,15 @@ CachyWindow {
         { icon: "edit-paste-symbolic", label: i18n("Clipboard"), shortcut: "⌘4", category: "clipboard" }
     ]
 
+    readonly property var lastAssistantMessage: {
+        for (let i = kityClient.messages.length - 1; i >= 0; --i) {
+            if (kityClient.messages[i].role === "assistant") {
+                return kityClient.messages[i];
+            }
+        }
+        return null;
+    }
+
     Timer {
         id: mathPreviewTimer
         interval: 120
@@ -1248,7 +1257,7 @@ CachyWindow {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     contentWidth: width
-                    contentHeight: spotAnswerText.implicitHeight + 8
+                    contentHeight: spotAnswerCol.implicitHeight + 8
                     flickableDirection: Flickable.VerticalFlick
                     boundsBehavior: Flickable.StopAtBounds
                     clip: true
@@ -1257,28 +1266,55 @@ CachyWindow {
                         policy: QQC2.ScrollBar.AsNeeded
                     }
 
-                    TextEdit {
-                        id: spotAnswerText
+                    ColumnLayout {
+                        id: spotAnswerCol
                         width: Math.max(100, spotAnswerFlickable.width - 16)
-                        readOnly: true
-                        selectByMouse: true
-                        cursorVisible: false
-                        activeFocusOnPress: false
-                        wrapMode: TextEdit.Wrap
-                        color: "#FFFFFF"
-                        font.pixelSize: 13
-                        textFormat: TextEdit.RichText
-                        onLinkActivated: link => Qt.openUrlExternally(link)
-                        text: {
-                            if (kityClient.streamingText.length > 0) {
-                                return kityClient.renderMarkdown(kityClient.streamingText);
-                            }
-                            for (let i = kityClient.messages.length - 1; i >= 0; --i) {
-                                if (kityClient.messages[i].role === "assistant") {
-                                    return kityClient.renderMarkdown(kityClient.messages[i].content);
+                        spacing: 10
+
+                        TextEdit {
+                            id: spotAnswerText
+                            Layout.fillWidth: true
+                            readOnly: true
+                            selectByMouse: true
+                            cursorVisible: false
+                            activeFocusOnPress: false
+                            wrapMode: TextEdit.Wrap
+                            color: "#FFFFFF"
+                            font.pixelSize: 13
+                            textFormat: TextEdit.RichText
+                            onLinkActivated: link => Qt.openUrlExternally(link)
+                            text: {
+                                if (kityClient.streamingText.length > 0) {
+                                    return kityClient.renderMarkdown(kityClient.streamingText);
                                 }
+                                for (let i = kityClient.messages.length - 1; i >= 0; --i) {
+                                    if (kityClient.messages[i].role === "assistant") {
+                                        return kityClient.renderMarkdown(kityClient.messages[i].content);
+                                    }
+                                }
+                                return kityClient.renderMarkdown("### Kity AI\nAsk anything or click **⤢** to open the full Kity conversation app.");
                             }
-                            return kityClient.renderMarkdown("### Kity AI\nAsk anything or click **⤢** to open the full Kity conversation app.");
+                        }
+
+                        // Generative Adaptive Cards inside Compact Spotlight Mode
+                        Cards.WeatherCard {
+                            visible: root.lastAssistantMessage && root.lastAssistantMessage.cardType === "weather" && root.lastAssistantMessage.cardData !== undefined
+                            Layout.fillWidth: true
+                            cardData: (root.lastAssistantMessage && root.lastAssistantMessage.cardData) || ({})
+                        }
+
+                        Cards.MediaCard {
+                            visible: root.lastAssistantMessage && root.lastAssistantMessage.cardType === "media" && root.lastAssistantMessage.cardData !== undefined
+                            Layout.fillWidth: true
+                            cardData: (root.lastAssistantMessage && root.lastAssistantMessage.cardData) || ({})
+                            onMediaActionTriggered: action => kityClient.controlMedia(action)
+                        }
+
+                        Cards.EventCard {
+                            visible: root.lastAssistantMessage && root.lastAssistantMessage.cardType === "event" && root.lastAssistantMessage.cardData !== undefined
+                            Layout.fillWidth: true
+                            cardData: (root.lastAssistantMessage && root.lastAssistantMessage.cardData) || ({})
+                            onOpenCalendarRequested: kityClient.openKOrganizer()
                         }
                     }
                 }
