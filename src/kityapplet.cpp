@@ -691,18 +691,35 @@ void KityApplet::sendMessage(const QString &text, bool fromVoice)
         QStringLiteral("(portapapeles|clipboard|copiado|he copiado|acabo de copiar|texto copiado)"),
         QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(clipRegex)) {
-        if (auto clip = QGuiApplication::clipboard()) {
-            const QString clipText = clip->text().trimmed();
-            if (!clipText.isEmpty()) {
-                effectivePrompt = QStringLiteral(
-                    "Contenido actual de mi portapapeles del sistema:\n\"\"\"\n%1\n\"\"\"\n\n"
-                    "Con base en ese texto copiado en mi portapapeles, responde en español de España a mi petición: %2")
-                    .arg(clipText.left(4000), trimmed);
-            } else {
-                appendAssistantMessage(i18n("Tu portapapeles está vacío en este momento. Copia algún texto primero y vuelve a intentarlo."));
-                return;
-            }
+        const QString clipText = readWaylandSelectionOrClipboard();
+        if (!clipText.isEmpty()) {
+            effectivePrompt = QStringLiteral(
+                "Contenido actual de mi portapapeles del sistema:\n\"\"\"\n%1\n\"\"\"\n\n"
+                "Con base en ese texto copiado en mi portapapeles, responde en español de España a mi petición: %2")
+                .arg(clipText.left(6000), trimmed);
+        } else {
+            appendAssistantMessage(i18n("Tu portapapeles está vacío en este momento. Copia algún texto primero y vuelve a intentarlo."));
+            return;
         }
+    }
+
+    // 2c. Notification Summaries & Priority Alerts (Apple Intelligence style)
+    static const QRegularExpression notifSignal(
+        QStringLiteral("(?:notificaci[oó]n|notificaciones|avisos?\\s+del?\\s+sistema|alertas?|mensajes?\\s+pendientes?)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmed.contains(notifSignal) && (trimmed.contains(QLatin1String("resume")) || trimmed.contains(QLatin1String("tengo")) || trimmed.contains(QLatin1String("hay")) || trimmed.contains(QLatin1String("cu[aá]l")) || trimmed.contains(QLatin1String("qu[eé]")))) {
+        const QString notifContext = collectRecentNotificationsContext();
+        effectivePrompt = QStringLiteral(
+            "Eres el motor de Resumen Inteligente y Priorización de Notificaciones de Kity (estilo Apple Intelligence macOS Sequoia/Tahoe).\n"
+            "A continuación tienes el registro de avisos y eventos del sistema recientes:\n\n"
+            "%1\n\n"
+            "Instrucciones:\n"
+            "- Sintetiza y resume de forma ejecutiva las notificaciones y avisos recibidos.\n"
+            "- Agrupa por aplicación o servicio si hay varias.\n"
+            "- Destaca claramente si hay alguna alerta crítica o prioritaria (por ejemplo, fallos de servicio, batería baja, errores).\n"
+            "- Si no hay notificaciones críticas pendientes, dilo de forma clara y tranquilizadora.\n"
+            "- Responde siempre en español de España de forma concisa y natural.")
+            .arg(notifContext);
     }
 
     // 3. Check vision action (screen vision request)
@@ -1769,6 +1786,22 @@ QJsonArray KityApplet::buildAvailableTools(const QString &userPrompt) const
         ));
     }
 
+    // Tool 11: summarize_notifications (Apple Intelligence Notification Summaries)
+    static const QRegularExpression notifToolSignal(
+        QStringLiteral("(notificaci[oó]n|notificaciones|avisos|alertas|mensajes\\s+pendientes)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (!isLlama32 || q.isEmpty() || q.contains(notifToolSignal)) {
+        QJsonObject params;
+        params[QStringLiteral("type")] = QStringLiteral("object");
+        params[QStringLiteral("properties")] = QJsonObject();
+
+        tools.append(createTool(
+            QStringLiteral("summarize_notifications"),
+            QStringLiteral("Consulta y resume de forma ejecutiva las notificaciones, alertas del sistema y avisos prioritarios recientes."),
+            params
+        ));
+    }
+
     return tools;
 }
 
@@ -2064,6 +2097,11 @@ QJsonObject KityApplet::executeToolCall(const QString &toolName, const QJsonObje
         result[QStringLiteral("to")] = to;
         result[QStringLiteral("subject")] = subject;
         result[QStringLiteral("status")] = QStringLiteral("Borrador de correo abierto con éxito en el cliente de correo del sistema.");
+        return result;
+    }
+
+    if (toolName == QLatin1String("summarize_notifications")) {
+        result[QStringLiteral("notifications_summary")] = collectRecentNotificationsContext();
         return result;
     }
 
@@ -5276,6 +5314,54 @@ QString KityApplet::encodeImageToBase64(const QString &imagePath, int maxDimensi
     buffer.open(QIODevice::WriteOnly);
     img.save(&buffer, "JPEG", 85);
     return QString::fromLatin1(bytes.toBase64());
+}
+
+QString KityApplet::collectRecentNotificationsContext() const
+{
+    QStringList lines;
+
+    // 1. Query journalctl for system warning/error/notice alerts from the last 2 hours
+    QProcess proc;
+    proc.start(QStringLiteral("journalctl"), {
+        QStringLiteral("--user"),
+        QStringLiteral("-p"), QStringLiteral("4..0"),
+        QStringLiteral("--since"), QStringLiteral("2 hours ago"),
+        QStringLiteral("-n"), QStringLiteral("12"),
+        QStringLiteral("--no-pager"),
+        QStringLiteral("-o"), QStringLiteral("short-iso")
+    });
+    if (proc.waitForFinished(1000)) {
+        const QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+        if (!out.isEmpty()) {
+            lines << QStringLiteral("--- Avisos y Eventos del Sistema (últimas 2 horas) ---");
+            const QStringList rawLines = out.split(QLatin1Char('\n'));
+            for (const QString &l : rawLines) {
+                const QString trimmedL = l.trimmed();
+                if (!trimmedL.isEmpty() && !trimmedL.contains(QLatin1String("Unsupported return type"))) {
+                    lines << QStringLiteral("• ") + trimmedL.left(180);
+                }
+            }
+        }
+    }
+
+    // 2. Also check if there are reminders or calendar alerts in Kity
+    const QDateTime now = QDateTime::currentDateTime();
+    int pendingReminders = 0;
+    for (const auto &r : m_scheduledReminders) {
+        if (r.targetTime >= now && r.targetTime <= now.addSecs(86400)) {
+            if (pendingReminders == 0) {
+                lines << QStringLiteral("\n--- Recordatorios y Temporizadores programados hoy ---");
+            }
+            lines << QStringLiteral("• %1 a las %2").arg(r.text, r.targetTime.toString(QStringLiteral("HH:mm")));
+            pendingReminders++;
+        }
+    }
+
+    if (lines.isEmpty()) {
+        return QStringLiteral("No hay notificaciones ni avisos pendientes en el sistema en las últimas 2 horas.");
+    }
+
+    return lines.join(QLatin1Char('\n'));
 }
 
 QString KityApplet::collectKWinWindowsInfo() const

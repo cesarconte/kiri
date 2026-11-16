@@ -247,6 +247,7 @@ private:
     QString fetchDynamicLocalContext(const QString &query, const QString &intent) const;
     QString fetchKnowledgeBaseContext(const QString &query) const;
     QString collectSystemVitals() const;
+    QString collectRecentNotificationsContext() const;
     QString collectKWinWindowsInfo() const;
     QString extractScreenOcrText(const QString &imagePath) const;
     QString detectAvailableVisionModel() const;

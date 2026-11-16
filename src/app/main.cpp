@@ -197,8 +197,15 @@ int main(int argc, char *argv[])
 
             QString prompt;
             if (summarizeOnly) {
-                prompt = QStringLiteral("Por favor, resume de forma clara, ejecutiva y estructurada el siguiente documento (%1):\n\n\"\"\"\n%2\n\"\"\"")
-                            .arg(fi.fileName(), extractedContent);
+                prompt = QStringLiteral(
+                    "Eres el motor de Resumen Inteligente de Kity (estilo Apple Intelligence). "
+                    "Genera un resumen ejecutivo, conciso y de alta prioridad del siguiente documento (%1). "
+                    "Estructura la respuesta en:\n"
+                    "1. 📌 **Resumen Ejecutivo:** (1-2 frases directas).\n"
+                    "2. • **Puntos Clave y Decisiones:**\n"
+                    "3. ⚠️ **Acciones pendientes o Fechas:** (si las hay).\n\n"
+                    "\"\"\"\n%2\n\"\"\"")
+                    .arg(fi.fileName(), extractedContent);
             } else {
                 prompt = QStringLiteral("He abierto el archivo \"%1\". Este es su contenido principal:\n\n\"\"\"\n%2\n\"\"\"\n\nExplica brevemente de qué trata este documento y qué puntos clave contiene.")
                             .arg(fi.fileName(), extractedContent);

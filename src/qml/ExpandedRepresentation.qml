@@ -574,6 +574,7 @@ Item {
                             { label: "🖥️ Analizar pantalla", prompt: "Analiza qué hay en mi pantalla", isWritingTool: false },
                             { label: "✍️ Herramientas de escritura", prompt: "", isWritingTool: true },
                             { label: "📋 Resumir copiado", prompt: "Resume lo que he copiado en el portapapeles", isWritingTool: false },
+                            { label: "🔔 Notificaciones", prompt: "Resume mis notificaciones del sistema", isWritingTool: false },
                             { label: "⚡ Estado del sistema", prompt: "Estado del sistema", isWritingTool: false },
                             { label: "🎵 ¿Qué canción suena?", prompt: "¿Qué canción está sonando?", isWritingTool: false },
                             { label: "🌙 Modo oscuro", prompt: "Activa el modo oscuro", isWritingTool: false }

@@ -1528,10 +1528,10 @@ CachyWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                // Empty State
+                // Empty State (Apple Intelligence suggestions)
                 ColumnLayout {
                     anchors.centerIn: parent
-                    width: Math.min(parent.width * 0.9, 440)
+                    width: Math.min(parent.width * 0.9, 480)
                     visible: kityClient.messages.length === 0
                     spacing: 14
 
@@ -1539,7 +1539,7 @@ CachyWindow {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
-                        text: i18n("What can I help you with?")
+                        text: i18n("¿En qué te puedo ayudar hoy?")
                         font.pixelSize: 22
                         font.weight: Font.Bold
                         color: CachyTheme.textPrimary
@@ -1549,9 +1549,55 @@ CachyWindow {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
-                        text: i18n("Press Meta + K anytime for the quick floating pill, or start a conversation below.")
+                        text: i18n("Pulsa Meta + K para la píldora flotante rápida o selecciona una sugerencia inteligente:")
                         font.pixelSize: 13
                         color: CachyTheme.textSecondary
+                    }
+
+                    Flow {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 8
+                        spacing: 8
+
+                        Repeater {
+                            model: [
+                                { label: i18n("📋 Resumir portapapeles"), prompt: "Resume lo que he copiado en el portapapeles", isWritingTool: false },
+                                { label: i18n("🔔 Resumen de notificaciones"), prompt: "Resume mis notificaciones del sistema", isWritingTool: false },
+                                { label: i18n("🖥️ Analizar pantalla"), prompt: "Analiza qué hay en mi pantalla", isWritingTool: false },
+                                { label: i18n("⚡ Estado del sistema"), prompt: "Estado del sistema", isWritingTool: false },
+                                { label: i18n("✍️ Herramientas de escritura"), prompt: "", isWritingTool: true }
+                            ]
+
+                            Rectangle {
+                                required property var modelData
+                                height: 32
+                                implicitWidth: chipText.implicitWidth + 24
+                                radius: 16
+                                color: chipHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
+                                border.width: 1
+                                border.color: CachyTheme.specularBorder
+
+                                HoverHandler { id: chipHover; cursorShape: Qt.PointingHandCursor }
+                                TapHandler {
+                                    onTapped: {
+                                        if (modelData.isWritingTool) {
+                                            root.showWritingTools = true;
+                                        } else {
+                                            kityClient.sendMessage(modelData.prompt);
+                                        }
+                                    }
+                                }
+
+                                Text {
+                                    id: chipText
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    font.pixelSize: 12
+                                    font.weight: Font.Medium
+                                    color: CachyTheme.textPrimary
+                                }
+                            }
+                        }
                     }
                 }
 
