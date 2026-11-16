@@ -1306,53 +1306,216 @@ CachyWindow {
             }
 
             // -----------------------------------------------------------------
-            // Math Notes Drawer
+            // Math Notes Drawer (Apple Intelligence Sequoia/Tahoe style)
             // -----------------------------------------------------------------
             Rectangle {
                 Layout.fillWidth: true
                 visible: root.showMathNotes
-                implicitHeight: mnCol.implicitHeight + 16
+                implicitHeight: 220
                 radius: CachyTheme.radiusMedium
                 color: CachyTheme.cardBackground
                 border.width: 1
                 border.color: CachyTheme.specularBorder
 
+                Timer {
+                    id: mathDebounce
+                    interval: 250
+                    onTriggered: {
+                        if (mathTextArea.text.trim().length > 0) {
+                            root.mathResults = kityClient.evaluateMathNotes(mathTextArea.text);
+                        } else {
+                            root.mathResults = [];
+                        }
+                    }
+                }
+
                 ColumnLayout {
-                    id: mnCol
                     anchors.fill: parent
-                    anchors.margins: 8
-                    spacing: 6
+                    anchors.margins: 10
+                    spacing: 8
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        CachyTextField {
-                            id: mathInput
-                            Layout.fillWidth: true
-                            placeholderText: i18n("e.g. price = 250, tax = price * 0.21, total =")
+                        Kirigami.Icon {
+                            source: "view-time-schedule-calculus-symbolic"
+                            Layout.preferredWidth: 16
+                            Layout.preferredHeight: 16
+                            color: CachyTheme.accentColor
                         }
 
-                        CachyButton {
-                            text: i18n("Calculate")
-                            primary: true
-                            onClicked: {
-                                if (mathInput.text.trim().length > 0) {
-                                    root.mathResults = kityClient.evaluateMathNotes(mathInput.text);
+                        Text {
+                            text: i18n("Notas Matemáticas & Scratchpad:")
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            color: CachyTheme.textPrimary
+                        }
+
+                        Text {
+                            text: i18n("(evaluación reactiva, variables persistentes, unidades y divisas)")
+                            font.pixelSize: 11
+                            color: CachyTheme.textSecondary
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        // Action Buttons: Copy Results & Clear
+                        Rectangle {
+                            height: 24
+                            implicitWidth: copyMathRow.implicitWidth + 14
+                            radius: 12
+                            color: copyMathHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
+                            border.width: 1
+                            border.color: CachyTheme.specularBorder
+
+                            HoverHandler { id: copyMathHover; cursorShape: Qt.PointingHandCursor }
+                            TapHandler {
+                                onTapped: {
+                                    var lines = mathTextArea.text.split("\n");
+                                    var combined = [];
+                                    for (var i = 0; i < lines.length; ++i) {
+                                        var r = (root.mathResults && i < root.mathResults.length) ? root.mathResults[i] : "";
+                                        if (r && r.length > 0) {
+                                            combined.push(lines[i] + " = " + r);
+                                        } else {
+                                            combined.push(lines[i]);
+                                        }
+                                    }
+                                    kityClient.copyToClipboard(combined.join("\n"));
+                                }
+                            }
+
+                            RowLayout {
+                                id: copyMathRow
+                                anchors.centerIn: parent
+                                spacing: 4
+
+                                Kirigami.Icon {
+                                    source: "edit-copy-symbolic"
+                                    Layout.preferredWidth: 12
+                                    Layout.preferredHeight: 12
+                                    color: CachyTheme.textSecondary
+                                }
+
+                                Text {
+                                    text: i18n("Copiar cálculos")
+                                    font.pixelSize: 11
+                                    color: CachyTheme.textPrimary
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            height: 24
+                            implicitWidth: clearMathRow.implicitWidth + 14
+                            radius: 12
+                            color: clearMathHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
+                            border.width: 1
+                            border.color: CachyTheme.specularBorder
+
+                            HoverHandler { id: clearMathHover; cursorShape: Qt.PointingHandCursor }
+                            TapHandler {
+                                onTapped: {
+                                    mathTextArea.text = "";
+                                    root.mathResults = [];
+                                }
+                            }
+
+                            RowLayout {
+                                id: clearMathRow
+                                anchors.centerIn: parent
+                                spacing: 4
+
+                                Kirigami.Icon {
+                                    source: "edit-clear-all-symbolic"
+                                    Layout.preferredWidth: 12
+                                    Layout.preferredHeight: 12
+                                    color: CachyTheme.textSecondary
+                                }
+
+                                Text {
+                                    text: i18n("Limpiar")
+                                    font.pixelSize: 11
+                                    color: CachyTheme.textPrimary
                                 }
                             }
                         }
                     }
 
-                    Repeater {
-                        model: root.mathResults
-                        QQC2.Label {
-                            required property string modelData
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            font.family: "monospace"
-                            color: CachyTheme.textPrimary
-                            text: modelData
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: 8
+                        color: CachyTheme.surfacePill
+                        border.width: 1
+                        border.color: CachyTheme.specularBorder
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            spacing: 8
+
+                            // Left: Editor
+                            QQC2.ScrollView {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                Layout.preferredWidth: parent.width * 0.62
+
+                                QQC2.TextArea {
+                                    id: mathTextArea
+                                    font.family: "monospace"
+                                    font.pixelSize: 12
+                                    wrapMode: TextEdit.NoWrap
+                                    color: CachyTheme.textPrimary
+                                    placeholderTextColor: CachyTheme.textMuted
+                                    placeholderText: i18n("precio = 12,5\ncantidad = 8\ntotal = precio * cantidad\n15% de total\n100 dolares a euros\n5 km a millas\n25 celsius a fahrenheit")
+                                    onTextChanged: mathDebounce.restart()
+                                    background: null
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: 1
+                                Layout.fillHeight: true
+                                color: CachyTheme.specularBorder
+                            }
+
+                            // Right: Results Column
+                            QQC2.ScrollView {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                Layout.preferredWidth: parent.width * 0.38
+
+                                ColumnLayout {
+                                    width: parent.width
+                                    spacing: 0
+
+                                    Repeater {
+                                        model: root.mathResults
+
+                                        Item {
+                                            required property var modelData
+                                            required property int index
+                                            Layout.fillWidth: true
+                                            height: mathTextArea.font.pixelSize > 0 ? Math.round(mathTextArea.font.pixelSize * 1.55) : 19
+
+                                            Text {
+                                                anchors.fill: parent
+                                                anchors.rightMargin: 8
+                                                verticalAlignment: Text.AlignVCenter
+                                                horizontalAlignment: Text.AlignRight
+                                                elide: Text.ElideRight
+                                                font.family: "monospace"
+                                                font.pixelSize: 12
+                                                font.weight: Font.DemiBold
+                                                color: CachyTheme.accentColor
+                                                text: (modelData && modelData.length > 0) ? ("= " + modelData) : ""
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

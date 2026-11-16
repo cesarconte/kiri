@@ -33,14 +33,46 @@ bool MathNotes::isEvaluableLine(const QString &line)
 QString MathNotes::normalizeExpression(const QString &line)
 {
     QString t = line.trimmed();
-    // "15% of 240" / "15 % de 240"  ->  "15% * 240"
+    // 1. "15% of 240" / "15 % de 240" / "15% de total" -> "15% * 240" / "15% * total"
     static const QRegularExpression percentOf(QStringLiteral("(\\d+(?:[.,]\\d+)?)\\s*%\\s*(?:of|de)\\s+"),
                                               QRegularExpression::CaseInsensitiveOption);
     t.replace(percentOf, QStringLiteral("\\1% * "));
-    // Spanish decimal comma between digits -> dot (session runs with LC_ALL=C)
+
+    // 2. Spanish decimal comma between digits -> dot (session runs with LC_ALL=C)
     static const QRegularExpression decimalComma(QStringLiteral("(?<=\\d),(?=\\d)"));
     t.replace(decimalComma, QStringLiteral("."));
-    // Trailing "=" the user may type, as in Apple's Math Notes ("12*3 =")
+
+    // 3. Conversions in natural Spanish / English:
+    static const QRegularExpression rxDolares(QStringLiteral("\\b(?:d[oó]lares|dollars)\\b"), QRegularExpression::CaseInsensitiveOption);
+    t.replace(rxDolares, QStringLiteral("usd"));
+
+    static const QRegularExpression rxEuros(QStringLiteral("\\beuros\\b"), QRegularExpression::CaseInsensitiveOption);
+    t.replace(rxEuros, QStringLiteral("eur"));
+
+    static const QRegularExpression rxMillas(QStringLiteral("\\b(?:millas|miles)\\b"), QRegularExpression::CaseInsensitiveOption);
+    t.replace(rxMillas, QStringLiteral("mi"));
+
+    static const QRegularExpression rxPulgadas(QStringLiteral("\\b(?:pulgadas|inches)\\b"), QRegularExpression::CaseInsensitiveOption);
+    t.replace(rxPulgadas, QStringLiteral("in"));
+
+    static const QRegularExpression rxPies(QStringLiteral("\\b(?:pies|feet)\\b"), QRegularExpression::CaseInsensitiveOption);
+    t.replace(rxPies, QStringLiteral("ft"));
+
+    static const QRegularExpression rxLibras(QStringLiteral("\\b(?:libras|pounds)\\b"), QRegularExpression::CaseInsensitiveOption);
+    t.replace(rxLibras, QStringLiteral("lb"));
+
+    static const QRegularExpression rxCelsius(QStringLiteral("\\b(?:celsius|cent[ií]grados)\\b"), QRegularExpression::CaseInsensitiveOption);
+    t.replace(rxCelsius, QStringLiteral("celsius"));
+
+    static const QRegularExpression rxFahrenheit(QStringLiteral("\\bfahrenheit\\b"), QRegularExpression::CaseInsensitiveOption);
+    t.replace(rxFahrenheit, QStringLiteral("fahrenheit"));
+
+    // Replace " a " / " en " before a target unit with " to "
+    // e.g. "5 km a mi" -> "5 km to mi"
+    static const QRegularExpression rxTo(QStringLiteral("\\s+(?:a|en|in|to)\\s+([a-zA-Z°]+)"), QRegularExpression::CaseInsensitiveOption);
+    t.replace(rxTo, QStringLiteral(" to \\1"));
+
+    // 4. Trailing "=" the user may type, as in Apple's Math Notes ("12*3 =")
     while (t.endsWith(QLatin1Char('=')) || t.endsWith(QLatin1Char(' '))) {
         t.chop(1);
     }
@@ -109,7 +141,13 @@ QStringList MathNotes::evaluateLines(const QString &text, int timeoutMs)
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert(QStringLiteral("LC_ALL"), QStringLiteral("C"));
     proc.setProcessEnvironment(env);
-    proc.start(qalc, {QStringLiteral("-t")});
+    proc.start(qalc, {
+        QStringLiteral("-defaults"),
+        QStringLiteral("-s"), QStringLiteral("decimal comma 0"),
+        QStringLiteral("-s"), QStringLiteral("ignore dot 0"),
+        QStringLiteral("-s"), QStringLiteral("conv 0"),
+        QStringLiteral("-t")
+    });
     if (!proc.waitForStarted(1000)) {
         return results;
     }
