@@ -147,7 +147,16 @@ int main(int argc, char *argv[])
         auto updateBlurRegion = [window]() {
             const bool compact = window->property("compactMode").toBool();
             const bool compactWorking = window->property("compactWorking").toBool();
-            const qreal radius = compact ? (compactWorking ? 31.0 : 24.0) : 20.0;
+            const bool compactCategories = window->property("compactCategoriesVisible").toBool();
+            const bool compactAnswer = window->property("compactAnswerVisible").toBool();
+            qreal radius = 20.0;
+            if (compact) {
+                if (compactWorking || (!compactCategories && !compactAnswer)) {
+                    radius = window->height() / 2.0;
+                } else {
+                    radius = 24.0;
+                }
+            }
             QPainterPath path;
             path.addRoundedRect(QRectF(0, 0, window->width(), window->height()), radius, radius);
             KWindowEffects::enableBlurBehind(window, true, QRegion(path.toFillPolygon().toPolygon()));
@@ -164,10 +173,12 @@ int main(int argc, char *argv[])
             } else if (p.isSet(compactOption)) {
                 window->setProperty("compactMode", true);
                 window->setProperty("compactAnswerVisible", false);
+                window->setProperty("compactCategoriesVisible", false);
             } else if (!isSecondActivation || !window->isVisible()) {
                 // Default invocation (Meta + K or kity -t when hidden) opens the Golden Gate Quick Pill
                 window->setProperty("compactMode", true);
                 window->setProperty("compactAnswerVisible", false);
+                window->setProperty("compactCategoriesVisible", false);
             }
         }
         if (p.isSet(newChatOption)) {
@@ -397,6 +408,8 @@ int main(int argc, char *argv[])
         if (window) {
             const auto bringToFront = [window]() {
                 if (window->property("compactMode").toBool()) {
+                    window->setProperty("compactAnswerVisible", false);
+                    window->setProperty("compactCategoriesVisible", false);
                     QScreen *screen = window->screen() ? window->screen() : QGuiApplication::primaryScreen();
                     if (screen) {
                         const QRect geom = screen->availableGeometry();

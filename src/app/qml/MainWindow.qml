@@ -21,7 +21,7 @@ CachyWindow {
 
     title: i18n("Kity")
     width: compactMode ? (compactWorking ? 310 : (compactAnswerVisible ? 400 : 420)) : 880
-    height: compactMode ? (compactWorking ? 62 : (compactAnswerVisible ? 520 : 272)) : 620
+    height: compactMode ? (compactWorking ? 62 : (compactAnswerVisible ? 520 : (compactCategoriesVisible ? 272 : 58))) : 620
     color: "transparent"
 
     showTrafficLights: !root.compactMode
@@ -29,12 +29,13 @@ CachyWindow {
     showWindowFrame: true
     sidebarVisible: !root.compactMode
     sidebarWidth: 280
-    cornerRadius: root.compactMode ? (root.compactWorking ? 31 : 24) : CachyTheme.radiusWindow
+    cornerRadius: root.compactMode ? ((root.compactWorking || (!root.compactCategoriesVisible && !root.compactAnswerVisible)) ? 29 : 24) : CachyTheme.radiusWindow
     backgroundColor: root.compactMode ? Qt.rgba(0.07, 0.08, 0.11, 0.90) : "transparent"
 
     property bool isPinned: false
     property bool compactMode: true
     property bool compactAnswerVisible: false
+    property bool compactCategoriesVisible: false
     readonly property bool compactWorking: root.compactMode && (kityClient.state === "thinking" || kityClient.state === "transcribing")
 
     property int selectedCategoryIndex: -1
@@ -126,7 +127,7 @@ CachyWindow {
     readonly property bool isDark: CachyTheme.isDark
 
     minimumWidth: compactMode ? 300 : 680
-    minimumHeight: compactMode ? 60 : 480
+    minimumHeight: compactMode ? 50 : 480
 
     property real animTime: 0.0
     NumberAnimation on animTime {
@@ -140,6 +141,7 @@ CachyWindow {
     onIsPinnedChanged: updateWindowFlags()
     onCompactModeChanged: {
         root.selectedCategoryIndex = -1;
+        root.compactCategoriesVisible = false;
         if (!compactMode) {
             root.compactAnswerVisible = false;
         } else {
@@ -148,6 +150,8 @@ CachyWindow {
     }
     onVisibleChanged: {
         if (visible && root.compactMode) {
+            root.compactAnswerVisible = false;
+            root.compactCategoriesVisible = false;
             root.selectedCategoryIndex = -1;
             centerSpotlight();
         }
@@ -175,6 +179,13 @@ CachyWindow {
             if (root.visible && root.active && root.visibility !== Window.Minimized) {
                 root.hide();
             } else {
+                root.compactMode = true;
+                root.compactAnswerVisible = false;
+                root.compactCategoriesVisible = false;
+                root.selectedCategoryIndex = -1;
+                if (spotlightSearchInput) {
+                    spotlightSearchInput.text = "";
+                }
                 if (root.visibility === Window.Minimized) {
                     root.showNormal();
                 } else {
@@ -182,9 +193,17 @@ CachyWindow {
                 }
                 root.raise();
                 root.requestActivate();
+                centerSpotlight();
             }
         }
         function onOpenRequested() {
+            root.compactMode = true;
+            root.compactAnswerVisible = false;
+            root.compactCategoriesVisible = false;
+            root.selectedCategoryIndex = -1;
+            if (spotlightSearchInput) {
+                spotlightSearchInput.text = "";
+            }
             if (root.visibility === Window.Minimized) {
                 root.showNormal();
             } else {
@@ -192,6 +211,7 @@ CachyWindow {
             }
             root.raise();
             root.requestActivate();
+            centerSpotlight();
         }
     }
 
@@ -257,6 +277,10 @@ CachyWindow {
             } else if (root.compactMode) {
                 if (root.compactAnswerVisible) {
                     root.compactAnswerVisible = false;
+                    root.compactCategoriesVisible = false;
+                } else if (root.compactCategoriesVisible) {
+                    root.compactCategoriesVisible = false;
+                    root.selectedCategoryIndex = -1;
                 } else {
                     root.hide();
                 }
@@ -929,8 +953,8 @@ CachyWindow {
             // -----------------------------------------------------------------
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 12
-                spacing: 10
+                anchors.margins: root.compactCategoriesVisible ? 12 : 5
+                spacing: root.compactCategoriesVisible ? 10 : 0
                 visible: !root.compactWorking && !root.compactAnswerVisible
 
                 // Top Pill: "Search or Ask" + Live Math + Mic
@@ -938,8 +962,8 @@ CachyWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 48
                     radius: 24
-                    color: Qt.rgba(0.06, 0.07, 0.10, 0.92)
-                    border.width: 1
+                    color: root.compactCategoriesVisible ? Qt.rgba(0.06, 0.07, 0.10, 0.92) : "transparent"
+                    border.width: root.compactCategoriesVisible ? 1 : 0
                     border.color: Qt.rgba(1, 1, 1, 0.20)
 
                     RowLayout {
@@ -959,23 +983,35 @@ CachyWindow {
                             background: null
 
                             Keys.onDownPressed: {
-                                root.selectedCategoryIndex = (root.selectedCategoryIndex + 1) % root.spotlightCategories.length;
+                                if (!root.compactCategoriesVisible) {
+                                    root.compactCategoriesVisible = true;
+                                    root.selectedCategoryIndex = 0;
+                                } else {
+                                    root.selectedCategoryIndex = (root.selectedCategoryIndex + 1) % root.spotlightCategories.length;
+                                }
                             }
                             Keys.onUpPressed: {
                                 if (root.selectedCategoryIndex > 0) {
                                     root.selectedCategoryIndex--;
                                 } else {
                                     root.selectedCategoryIndex = -1;
+                                    root.compactCategoriesVisible = false;
                                 }
                             }
                             Keys.onTabPressed: {
-                                root.selectedCategoryIndex = (root.selectedCategoryIndex + 1) % root.spotlightCategories.length;
+                                if (!root.compactCategoriesVisible) {
+                                    root.compactCategoriesVisible = true;
+                                    root.selectedCategoryIndex = 0;
+                                } else {
+                                    root.selectedCategoryIndex = (root.selectedCategoryIndex + 1) % root.spotlightCategories.length;
+                                }
                             }
                             Keys.onBacktabPressed: {
                                 if (root.selectedCategoryIndex > 0) {
                                     root.selectedCategoryIndex--;
                                 } else {
                                     root.selectedCategoryIndex = -1;
+                                    root.compactCategoriesVisible = false;
                                 }
                             }
                             Keys.onReturnPressed: event => handleAccept(event)
@@ -1078,7 +1114,10 @@ CachyWindow {
                             }
 
                             TapHandler {
-                                onTapped: root.compactMode = false
+                                onTapped: {
+                                    root.compactCategoriesVisible = false;
+                                    root.compactMode = false;
+                                }
                             }
                         }
                     }
@@ -1086,6 +1125,7 @@ CachyWindow {
 
                 // Bottom Card: Applications ⌘1, Files ⌘2, Actions ⌘3, Clipboard ⌘4
                 Rectangle {
+                    visible: root.compactCategoriesVisible
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: 18
