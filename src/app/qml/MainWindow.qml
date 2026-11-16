@@ -20,15 +20,15 @@ CachyWindow {
     id: root
 
     title: i18n("Kity")
-    width: compactMode ? (compactWorking ? 310 : (compactAnswerVisible ? 400 : 420)) : 860
-    height: compactMode ? (compactWorking ? 62 : (compactAnswerVisible ? 520 : 272)) : 600
+    width: compactMode ? (compactWorking ? 310 : (compactAnswerVisible ? 400 : 420)) : 880
+    height: compactMode ? (compactWorking ? 62 : (compactAnswerVisible ? 520 : 272)) : 620
     color: "transparent"
 
     showTrafficLights: !root.compactMode
     showTitleBarDivider: !root.compactMode
     showWindowFrame: true
     sidebarVisible: !root.compactMode
-    sidebarWidth: 272
+    sidebarWidth: 280
     cornerRadius: root.compactMode ? (root.compactWorking ? 31 : 24) : CachyTheme.radiusWindow
     backgroundColor: root.compactMode ? Qt.rgba(0.07, 0.08, 0.11, 0.90) : "transparent"
 
@@ -570,6 +570,42 @@ CachyWindow {
                     }
                 }
             }
+
+            // Empty State in Sidebar (when 0 conversations exist)
+            ColumnLayout {
+                visible: kityClient.conversations.length === 0
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.topMargin: 24
+                spacing: 10
+
+                Kirigami.Icon {
+                    source: "chat"
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: 36
+                    Layout.preferredHeight: 36
+                    isMask: true
+                    color: CachyTheme.textMuted
+                    opacity: 0.5
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    text: i18n("Sin conversaciones guardadas")
+                    font.pixelSize: 12
+                    font.weight: Font.Medium
+                    color: CachyTheme.textMuted
+                }
+
+                CachyButton {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: i18n("Nueva conversación")
+                    onClicked: kityClient.newConversation()
+                }
+
+                Item { Layout.fillHeight: true }
+            }
         }
     ]
 
@@ -650,9 +686,14 @@ CachyWindow {
             height: 26
             width: siriPillRow.implicitWidth + 20
             radius: 13
-            color: CachyTheme.surfacePill
+            color: modelPillHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
             border.width: 1
             border.color: CachyTheme.specularBorder
+
+            HoverHandler { id: modelPillHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler {
+                onTapped: modelMenu.popup()
+            }
 
             RowLayout {
                 id: siriPillRow
@@ -667,10 +708,41 @@ CachyWindow {
                 }
 
                 QQC2.Label {
-                    text: i18n("Kity")
+                    text: kityClient.ollamaModel.length > 0 ? ("Kity • " + kityClient.ollamaModel) : i18n("Kity")
                     font.bold: true
-                    font.pixelSize: 13
+                    font.pixelSize: 12
                     color: CachyTheme.textPrimary
+                    elide: Text.ElideRight
+                    Layout.maximumWidth: 190
+                }
+
+                Text {
+                    text: "▾"
+                    font.pixelSize: 10
+                    color: CachyTheme.textSecondary
+                }
+            }
+
+            QQC2.Menu {
+                id: modelMenu
+
+                QQC2.MenuItem {
+                    text: i18n("Modelos de Ollama disponibles:")
+                    enabled: false
+                }
+
+                QQC2.MenuSeparator {}
+
+                Repeater {
+                    model: kityClient.availableModels
+
+                    QQC2.MenuItem {
+                        required property var modelData
+                        text: modelData
+                        checkable: true
+                        checked: kityClient.ollamaModel === modelData
+                        onTriggered: kityClient.setOllamaModel(modelData)
+                    }
                 }
             }
         }
@@ -1851,6 +1923,14 @@ CachyWindow {
                     visible: kityClient.messages.length === 0
                     spacing: 14
 
+                    SiriOrbAnimation {
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.preferredWidth: 64
+                        Layout.preferredHeight: 64
+                        assistantState: kityClient.state
+                        audioLevel: kityClient.audioLevel
+                    }
+
                     Text {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
@@ -1877,11 +1957,12 @@ CachyWindow {
 
                         Repeater {
                             model: [
-                                { label: i18n("📋 Resumir portapapeles"), prompt: "Resume lo que he copiado en el portapapeles", isWritingTool: false },
-                                { label: i18n("🔔 Resumen de notificaciones"), prompt: "Resume mis notificaciones del sistema", isWritingTool: false },
-                                { label: i18n("🖥️ Analizar pantalla"), prompt: "Analiza qué hay en mi pantalla", isWritingTool: false },
-                                { label: i18n("⚡ Estado del sistema"), prompt: "Estado del sistema", isWritingTool: false },
-                                { label: i18n("✍️ Herramientas de escritura"), prompt: "", isWritingTool: true }
+                                { label: i18n("📋 Resumir portapapeles"), prompt: "Resume lo que he copiado en el portapapeles", isWritingTool: false, isMathNotes: false },
+                                { label: i18n("🔔 Resumen de notificaciones"), prompt: "Resume mis notificaciones del sistema", isWritingTool: false, isMathNotes: false },
+                                { label: i18n("🖥️ Analizar pantalla"), prompt: "Analiza qué hay en mi pantalla", isWritingTool: false, isMathNotes: false },
+                                { label: i18n("⚡ Estado del sistema"), prompt: "Estado del sistema", isWritingTool: false, isMathNotes: false },
+                                { label: i18n("✍️ Herramientas de escritura"), prompt: "", isWritingTool: true, isMathNotes: false },
+                                { label: i18n("∑ Notas matemáticas"), prompt: "", isWritingTool: false, isMathNotes: true }
                             ]
 
                             Rectangle {
@@ -1898,6 +1979,8 @@ CachyWindow {
                                     onTapped: {
                                         if (modelData.isWritingTool) {
                                             root.showWritingTools = true;
+                                        } else if (modelData.isMathNotes) {
+                                            root.showMathNotes = true;
                                         } else {
                                             kityClient.sendMessage(modelData.prompt);
                                         }
@@ -2192,6 +2275,46 @@ CachyWindow {
                                             Text {
                                                 text: i18n("Escuchar")
                                                 font.pixelSize: 11
+                                                color: CachyTheme.textPrimary
+                                            }
+                                        }
+                                    }
+
+                                    // Execute in Konsole (when shell commands were detected in response)
+                                    Rectangle {
+                                        visible: msgDelegate.detectedCmds.length > 0
+                                        height: 26
+                                        implicitWidth: runRow.implicitWidth + 14
+                                        radius: 13
+                                        color: runHover.hovered ? CachyTheme.withAlpha("#00e5ff", 0.30) : CachyTheme.withAlpha("#00e5ff", 0.16)
+                                        border.width: 1
+                                        border.color: CachyTheme.withAlpha("#00e5ff", 0.45)
+
+                                        HoverHandler { id: runHover; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler {
+                                            onTapped: {
+                                                if (msgDelegate.detectedCmds.length > 0) {
+                                                    kityClient.executeCommandInKonsole(msgDelegate.detectedCmds[0]);
+                                                }
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            id: runRow
+                                            anchors.centerIn: parent
+                                            spacing: 5
+
+                                            Kirigami.Icon {
+                                                source: "utilities-terminal-symbolic"
+                                                Layout.preferredWidth: 13
+                                                Layout.preferredHeight: 13
+                                                color: "#00e5ff"
+                                            }
+
+                                            Text {
+                                                text: i18n("Ejecutar en Konsole")
+                                                font.pixelSize: 11
+                                                font.weight: Font.DemiBold
                                                 color: CachyTheme.textPrimary
                                             }
                                         }
