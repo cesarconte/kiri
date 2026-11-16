@@ -2734,8 +2734,10 @@ void KityApplet::playNextTtsQueueItem()
     if (m_ttsQueue.isEmpty()) {
         m_isSpeakingSentence = false;
         if (m_state == QLatin1String("speaking") || m_state == QLatin1String("transcribing")) {
-            const bool continuousVoice = readConfigBool(QStringLiteral("continuousConversation"), true);
-            if (m_lastQueryWasVoice && continuousVoice) {
+            const bool continuousVoice = readConfigBool(QStringLiteral("continuousConversation"), false);
+            bool isBt = false;
+            const QString captureSource = resolvePreferredCaptureSource(&isBt);
+            if (m_lastQueryWasVoice && continuousVoice && !isBt && !captureSource.isEmpty()) {
                 qInfo() << "Kity: Full-Duplex continuous conversational turn-taking active. Listening for natural follow-up...";
                 setState(QStringLiteral("listening"), i18n("Escuchando respuesta…"));
                 startRecording();
