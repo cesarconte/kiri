@@ -1050,6 +1050,7 @@ void KityApplet::handleOllamaFinished()
     finalResponse.remove(thinkRegex);
     finalResponse = finalResponse.trimmed();
 
+    bool wasInterceptedTool = false;
     // Fallback: If the model generated a JSON tool call as text content instead of API tool_calls
     if (finalResponse.startsWith(QLatin1Char('{')) && (finalResponse.contains(QStringLiteral("\"name\"")) || finalResponse.contains(QStringLiteral("\"parameters\"")))) {
         QJsonParseError parseErr;
@@ -1087,6 +1088,7 @@ void KityApplet::handleOllamaFinished()
                     executeToolCall(QStringLiteral("media_control"), toolArgs);
                     finalResponse = i18n("He actualizado el estado de la reproducción multimedia.");
                 }
+                wasInterceptedTool = true;
             } else if (!toolName.isEmpty()) {
                 const QJsonObject res = executeToolCall(toolName, toolArgs);
                 if (toolName == QLatin1String("get_weather")) {
@@ -1098,10 +1100,12 @@ void KityApplet::handleOllamaFinished()
                 } else {
                     finalResponse = i18n("Acción realizada con éxito.");
                 }
+                wasInterceptedTool = true;
             } else if (obj.contains(QStringLiteral("parameters")) && obj.value(QStringLiteral("parameters")).isObject()) {
                 const QJsonObject params = obj.value(QStringLiteral("parameters")).toObject();
                 if (params.contains(QStringLiteral("text"))) {
                     finalResponse = params.value(QStringLiteral("text")).toString().trimmed();
+                    wasInterceptedTool = true;
                 }
             }
         }
@@ -1154,14 +1158,17 @@ void KityApplet::handleOllamaFinished()
         saveConversationHistory();
 
         // Flush any remaining text to TTS
-        if (!m_ttsSpeechBuffer.isEmpty()) {
+        if (wasInterceptedTool) {
+            m_ttsSpeechBuffer.clear();
+            if (!finalResponse.isEmpty()) {
+                enqueueSentenceForSpeech(stripMarkdownForSpeech(finalResponse));
+            }
+        } else if (!m_ttsSpeechBuffer.isEmpty()) {
             const QString clean = stripMarkdownForSpeech(m_ttsSpeechBuffer);
             if (!clean.isEmpty()) {
                 enqueueSentenceForSpeech(clean);
             }
             m_ttsSpeechBuffer.clear();
-        } else if (!finalResponse.isEmpty() && !finalResponse.startsWith(QLatin1Char('{'))) {
-            enqueueSentenceForSpeech(stripMarkdownForSpeech(finalResponse));
         }
     }
 
