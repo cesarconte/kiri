@@ -22,6 +22,7 @@
 #include <QStandardPaths>
 #include <QProcess>
 #include <QTimer>
+#include <QScreen>
 #include <KDBusService>
 #include <KNotification>
 #include <KLocalizedString>
@@ -145,7 +146,8 @@ int main(int argc, char *argv[])
     if (window) {
         auto updateBlurRegion = [window]() {
             const bool compact = window->property("compactMode").toBool();
-            const qreal radius = compact ? 24.0 : 20.0;
+            const bool compactWorking = window->property("compactWorking").toBool();
+            const qreal radius = compact ? (compactWorking ? 31.0 : 24.0) : 20.0;
             QPainterPath path;
             path.addRoundedRect(QRectF(0, 0, window->width(), window->height()), radius, radius);
             KWindowEffects::enableBlurBehind(window, true, QRegion(path.toFillPolygon().toPolygon()));
@@ -394,6 +396,15 @@ int main(int argc, char *argv[])
 
         if (window) {
             const auto bringToFront = [window]() {
+                if (window->property("compactMode").toBool()) {
+                    QScreen *screen = window->screen() ? window->screen() : QGuiApplication::primaryScreen();
+                    if (screen) {
+                        const QRect geom = screen->availableGeometry();
+                        const int targetX = geom.x() + (geom.width() - window->width()) / 2;
+                        const int targetY = geom.y() + int(geom.height() * 0.22);
+                        window->setPosition(targetX, targetY);
+                    }
+                }
                 if (window->visibility() == QWindow::Minimized) {
                     window->showNormal();
                 } else {

@@ -37,6 +37,32 @@ CachyWindow {
     property bool compactAnswerVisible: false
     readonly property bool compactWorking: root.compactMode && (kityClient.state === "thinking" || kityClient.state === "transcribing")
 
+    property int selectedCategoryIndex: -1
+    property string liveMathPreview: ""
+    readonly property var spotlightCategories: [
+        { icon: "applications-all-symbolic", label: i18n("Applications"), shortcut: "⌘1", category: "applications" },
+        { icon: "folder-symbolic", label: i18n("Files"), shortcut: "⌘2", category: "files" },
+        { icon: "quickopen", label: i18n("Actions"), shortcut: "⌘3", category: "actions" },
+        { icon: "edit-paste-symbolic", label: i18n("Clipboard"), shortcut: "⌘4", category: "clipboard" }
+    ]
+
+    Timer {
+        id: mathPreviewTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            let q = spotlightSearchInput.text.trim();
+            if (q.length >= 2 && /[0-9+\-*\/^%()=]|usd|eur|km|m\b|kg|cm|hora|min/i.test(q)) {
+                let res = kityClient.evaluateMathNotes(q);
+                if (res && res.length > 0 && res[0].trim().length > 0 && res[0].trim() !== q) {
+                    root.liveMathPreview = res[0].trim();
+                    return;
+                }
+            }
+            root.liveMathPreview = "";
+        }
+    }
+
     property bool showWritingTools: false
     property bool showVisualIntelligence: false
     property bool showMathNotes: false
@@ -104,8 +130,24 @@ CachyWindow {
 
     onIsPinnedChanged: updateWindowFlags()
     onCompactModeChanged: {
+        root.selectedCategoryIndex = -1;
         if (!compactMode) {
             root.compactAnswerVisible = false;
+        } else {
+            centerSpotlight();
+        }
+    }
+    onVisibleChanged: {
+        if (visible && root.compactMode) {
+            root.selectedCategoryIndex = -1;
+            centerSpotlight();
+        }
+    }
+
+    function centerSpotlight() {
+        if (root.compactMode && root.screen) {
+            root.x = Math.round(root.screen.virtualX + (root.screen.width - root.width) / 2);
+            root.y = Math.round(root.screen.virtualY + root.screen.height * 0.22);
         }
     }
 
@@ -176,6 +218,17 @@ CachyWindow {
             root.compactAnswerVisible = true;
             kityClient.launchSpotlightCategory("clipboard");
         }
+    }
+
+    Shortcut {
+        sequences: ["Ctrl+E", "Alt+E"]
+        onActivated: root.compactMode = !root.compactMode
+    }
+
+    Shortcut {
+        sequences: ["Ctrl+Return", "Ctrl+Enter"]
+        enabled: root.compactMode
+        onActivated: root.compactMode = false
     }
 
     Shortcut {
@@ -765,11 +818,27 @@ CachyWindow {
 
                 Text {
                     Layout.fillWidth: true
-                    text: i18n("Looking into it")
+                    text: {
+                        if (kityClient.state === "transcribing") {
+                            return i18n("Transcribiendo audio…");
+                        }
+                        if (kityClient.statusMessage.length > 0) {
+                            return kityClient.statusMessage;
+                        }
+                        return i18n("Looking into it");
+                    }
                     color: "#FFFFFF"
                     font.pixelSize: 17
                     font.weight: Font.Medium
                     elide: Text.ElideRight
+                }
+
+                TapHandler {
+                    onTapped: {
+                        if (kityClient.state === "thinking") {
+                            kityClient.stopGeneration();
+                        }
+                    }
                 }
             }
 
@@ -782,7 +851,7 @@ CachyWindow {
                 spacing: 10
                 visible: !root.compactWorking && !root.compactAnswerVisible
 
-                // Top Pill: "Search or Ask" + Mic
+                // Top Pill: "Search or Ask" + Live Math + Mic
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 48
@@ -800,17 +869,90 @@ CachyWindow {
                         QQC2.TextField {
                             id: spotlightSearchInput
                             Layout.fillWidth: true
-                            focus: root.compactMode && !root.compactAnswerVisible
+                            focus: root.compactMode && !root.compactAnswerVisible && !root.compactWorking
                             placeholderText: i18n("Search or Ask")
                             placeholderTextColor: Qt.rgba(1, 1, 1, 0.48)
                             color: "#FFFFFF"
                             font.pixelSize: 16
                             background: null
-                            onAccepted: {
+
+                            Keys.onDownPressed: {
+                                root.selectedCategoryIndex = (root.selectedCategoryIndex + 1) % root.spotlightCategories.length;
+                            }
+                            Keys.onUpPressed: {
+                                if (root.selectedCategoryIndex > 0) {
+                                    root.selectedCategoryIndex--;
+                                } else {
+                                    root.selectedCategoryIndex = -1;
+                                }
+                            }
+                            Keys.onTabPressed: {
+                                root.selectedCategoryIndex = (root.selectedCategoryIndex + 1) % root.spotlightCategories.length;
+                            }
+                            Keys.onBacktabPressed: {
+                                if (root.selectedCategoryIndex > 0) {
+                                    root.selectedCategoryIndex--;
+                                } else {
+                                    root.selectedCategoryIndex = -1;
+                                }
+                            }
+                            Keys.onReturnPressed: event => handleAccept(event)
+                            Keys.onEnterPressed: event => handleAccept(event)
+
+                            function handleAccept(event) {
+                                if (root.selectedCategoryIndex >= 0 && root.selectedCategoryIndex < root.spotlightCategories.length) {
+                                    let cat = root.spotlightCategories[root.selectedCategoryIndex].category;
+                                    if (cat === "actions" || cat === "clipboard") {
+                                        root.compactAnswerVisible = true;
+                                    }
+                                    kityClient.launchSpotlightCategory(cat);
+                                    root.selectedCategoryIndex = -1;
+                                    event.accepted = true;
+                                    return;
+                                }
+                                if (root.liveMathPreview.length > 0) {
+                                    kityClient.copyToClipboard(root.liveMathPreview);
+                                }
                                 if (text.trim().length > 0) {
                                     root.compactAnswerVisible = true;
                                     kityClient.sendMessage(text.trim(), false);
                                     text = "";
+                                    event.accepted = true;
+                                }
+                            }
+
+                            onTextChanged: {
+                                mathPreviewTimer.restart();
+                                if (text.length > 0) {
+                                    root.selectedCategoryIndex = -1;
+                                }
+                            }
+                        }
+
+                        // Live Math Preview Pill (macOS Spotlight Instant Calc)
+                        Rectangle {
+                            visible: root.liveMathPreview.length > 0
+                            height: 26
+                            radius: 13
+                            color: Qt.rgba(0.0, 0.88, 0.55, 0.22)
+                            border.width: 1
+                            border.color: Qt.rgba(0.0, 0.88, 0.55, 0.50)
+                            Layout.preferredWidth: mathLabel.implicitWidth + 16
+
+                            HoverHandler { id: mathPillHover; cursorShape: Qt.PointingHandCursor }
+
+                            Text {
+                                id: mathLabel
+                                anchors.centerIn: parent
+                                text: "= " + root.liveMathPreview
+                                color: "#FFFFFF"
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                            }
+
+                            TapHandler {
+                                onTapped: {
+                                    kityClient.copyToClipboard(root.liveMathPreview);
                                 }
                             }
                         }
@@ -875,22 +1017,30 @@ CachyWindow {
                         spacing: 2
 
                         Repeater {
-                            model: [
-                                { icon: "applications-all-symbolic", label: i18n("Applications"), shortcut: "⌘1", category: "applications" },
-                                { icon: "folder-symbolic", label: i18n("Files"), shortcut: "⌘2", category: "files" },
-                                { icon: "quickopen", label: i18n("Actions"), shortcut: "⌘3", category: "actions" },
-                                { icon: "edit-paste-symbolic", label: i18n("Clipboard"), shortcut: "⌘4", category: "clipboard" }
-                            ]
+                            model: root.spotlightCategories
 
                             Rectangle {
                                 id: spotRow
                                 required property var modelData
+                                required property int index
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 radius: 10
-                                color: spotRowHover.hovered ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
+                                color: (spotRow.index === root.selectedCategoryIndex || spotRowHover.hovered)
+                                    ? Qt.rgba(1, 1, 1, 0.14)
+                                    : "transparent"
+                                border.width: spotRow.index === root.selectedCategoryIndex ? 1 : 0
+                                border.color: Qt.rgba(1, 1, 1, 0.25)
 
-                                HoverHandler { id: spotRowHover; cursorShape: Qt.PointingHandCursor }
+                                HoverHandler {
+                                    id: spotRowHover
+                                    cursorShape: Qt.PointingHandCursor
+                                    onHoveredChanged: {
+                                        if (hovered) {
+                                            root.selectedCategoryIndex = spotRow.index;
+                                        }
+                                    }
+                                }
                                 TapHandler {
                                     onTapped: {
                                         if (spotRow.modelData.category === "actions" || spotRow.modelData.category === "clipboard") {
@@ -1060,6 +1210,99 @@ CachyWindow {
                     }
                 }
 
+                // Quick Action Chips: [Copiar] [Escuchar]
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    visible: !root.compactWorking && root.compactAnswerVisible
+
+                    Rectangle {
+                        height: 24
+                        radius: 12
+                        color: copyHover.hovered ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(1, 1, 1, 0.10)
+                        border.width: 1
+                        border.color: Qt.rgba(1, 1, 1, 0.14)
+                        Layout.preferredWidth: copyRow.implicitWidth + 16
+
+                        HoverHandler { id: copyHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler {
+                            onTapped: {
+                                for (let i = kityClient.messages.length - 1; i >= 0; --i) {
+                                    if (kityClient.messages[i].role === "assistant") {
+                                        kityClient.copyToClipboard(kityClient.messages[i].content);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            id: copyRow
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Kirigami.Icon {
+                                source: "edit-copy-symbolic"
+                                Layout.preferredWidth: 12
+                                Layout.preferredHeight: 12
+                                isMask: true
+                                color: "#FFFFFF"
+                            }
+                            Text {
+                                text: i18n("Copiar")
+                                color: "#FFFFFF"
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 24
+                        radius: 12
+                        color: speakHover.hovered ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(1, 1, 1, 0.10)
+                        border.width: 1
+                        border.color: Qt.rgba(1, 1, 1, 0.14)
+                        Layout.preferredWidth: speakRow.implicitWidth + 16
+
+                        HoverHandler { id: speakHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler {
+                            onTapped: {
+                                if (kityClient.isSpeaking) {
+                                    kityClient.stopSpeaking();
+                                } else {
+                                    for (let i = kityClient.messages.length - 1; i >= 0; --i) {
+                                        if (kityClient.messages[i].role === "assistant") {
+                                            kityClient.speakText(kityClient.messages[i].content);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            id: speakRow
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Kirigami.Icon {
+                                source: kityClient.isSpeaking ? "media-playback-stop-symbolic" : "audio-volume-high-symbolic"
+                                Layout.preferredWidth: 12
+                                Layout.preferredHeight: 12
+                                isMask: true
+                                color: kityClient.isSpeaking ? "#FF375F" : "#FFFFFF"
+                            }
+                            Text {
+                                text: kityClient.isSpeaking ? i18n("Detener voz") : i18n("Escuchar")
+                                color: "#FFFFFF"
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                            }
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+                }
+
                 // Bottom Bar: Circular + (left), "Ask Siri/Kity" Pill (center), Circular Mic (right)
                 RowLayout {
                     Layout.fillWidth: true
@@ -1069,7 +1312,9 @@ CachyWindow {
                         width: 30
                         height: 30
                         radius: 15
-                        color: Qt.rgba(1, 1, 1, 0.14)
+                        color: compactPlusHover.hovered ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.14)
+
+                        HoverHandler { id: compactPlusHover; cursorShape: Qt.PointingHandCursor }
 
                         Text {
                             anchors.centerIn: parent
@@ -1079,7 +1324,52 @@ CachyWindow {
                         }
 
                         TapHandler {
-                            onTapped: plusMenu.popup()
+                            onTapped: compactPlusMenu.popup()
+                        }
+
+                        QQC2.Menu {
+                            id: compactPlusMenu
+
+                            QQC2.MenuItem {
+                                icon.name: "image-x-generic"
+                                text: i18n("Fotos…")
+                                onTriggered: photoAttachDialog.open()
+                            }
+
+                            QQC2.MenuItem {
+                                icon.name: "document-open"
+                                text: i18n("Archivos…")
+                                onTriggered: fileAttachDialog.open()
+                            }
+
+                            QQC2.MenuSeparator {}
+
+                            QQC2.MenuItem {
+                                icon.name: "document-edit-symbolic"
+                                text: i18n("Herramientas de Escritura")
+                                onTriggered: {
+                                    root.compactMode = false;
+                                    root.showWritingTools = true;
+                                }
+                            }
+
+                            QQC2.MenuItem {
+                                icon.name: "camera-photo-symbolic"
+                                text: i18n("Inteligencia Visual (Capturar pantalla)")
+                                onTriggered: {
+                                    root.compactMode = false;
+                                    root.showVisualIntelligence = true;
+                                }
+                            }
+
+                            QQC2.MenuItem {
+                                icon.name: "accessories-calculator"
+                                text: i18n("Notas Matemáticas")
+                                onTriggered: {
+                                    root.compactMode = false;
+                                    root.showMathNotes = true;
+                                }
+                            }
                         }
                     }
 
