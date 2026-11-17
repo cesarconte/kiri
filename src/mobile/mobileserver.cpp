@@ -337,6 +337,8 @@ void KityMobileServer::sendHttpResponse(QTcpSocket *socket, int statusCode, cons
     response.append(QStringLiteral("Content-Length: %1\r\n").arg(body.size()).toUtf8());
     response.append("Connection: close\r\n");
     response.append("Access-Control-Allow-Origin: *\r\n");
+    response.append("Cache-Control: no-cache, no-store, must-revalidate\r\n");
+    response.append("Pragma: no-cache\r\n");
     response.append("\r\n");
     response.append(body);
 
