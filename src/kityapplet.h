@@ -220,6 +220,8 @@ private:
     void speakSentence(const QString &sentence);
     void processStreamingTtsChunk(const QString &newChunk);
     QString stripMarkdownForSpeech(const QString &markdown) const;
+    static QString cleanWhisperOutput(const QString &raw);
+    static QString removeFillerWords(const QString &text, const QString &lang = QStringLiteral("es"));
     void startVad();
     void stopVad();
     bool isPipeWireEchoCancelAvailable() const;

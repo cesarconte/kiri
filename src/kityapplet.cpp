@@ -657,7 +657,10 @@ QString KityApplet::analyzeImageWithVisionModel(const QString &base64Image) cons
 
 void KityApplet::sendMessage(const QString &text, bool fromVoice)
 {
-    const QString trimmed = text.trimmed();
+    QString trimmed = text.trimmed();
+    if (fromVoice) {
+        trimmed = removeFillerWords(trimmed, resolveWhisperLanguage());
+    }
     if (trimmed.isEmpty()) {
         return;
     }
@@ -2731,20 +2734,17 @@ void KityApplet::runGeminiAudioTranscription(const QByteArray &pcmData)
         for (const QJsonValue &pv : candParts) {
             text += pv.toObject().value(QStringLiteral("text")).toString();
         }
-        text = text.trimmed();
+        QString cleaned = cleanWhisperOutput(text);
+        cleaned = removeFillerWords(cleaned, QStringLiteral("es"));
 
-        static const QRegularExpression bracketRegex(QStringLiteral("\\[.*?\\]|\\(.*?\\)"));
-        text.remove(bracketRegex);
-        text = text.trimmed();
-
-        if (text.isEmpty()) {
+        if (cleaned.isEmpty()) {
             qWarning() << "Kity: Gemini transcription text was empty - Falling back to local Whisper.cpp";
             runWhisperTranscription(pcmData);
             return;
         }
 
-        Q_EMIT transcriptionReady(text);
-        sendMessage(text, true);
+        Q_EMIT transcriptionReady(cleaned);
+        sendMessage(cleaned, true);
     });
 }
 
@@ -2790,24 +2790,105 @@ void KityApplet::runWhisperTranscription(const QString &targetWavPath)
 
 void KityApplet::onWhisperTranscriptionReady(const QString &rawTranscript)
 {
-    QString text = rawTranscript.trimmed();
+    QString cleaned = cleanWhisperOutput(rawTranscript);
+    cleaned = removeFillerWords(cleaned, resolveWhisperLanguage());
 
-    static const QRegularExpression bracketRegex(QStringLiteral("\\[.*?\\]|\\(.*?\\)"));
-    text.remove(bracketRegex);
-    text = text.trimmed();
-
-    if (text.isEmpty()) {
+    if (cleaned.isEmpty()) {
         setState(QStringLiteral("idle"), i18n("No se reconoció ninguna frase."));
         return;
     }
 
-    Q_EMIT transcriptionReady(text);
-    sendMessage(text, true);
+    Q_EMIT transcriptionReady(cleaned);
+    sendMessage(cleaned, true);
 }
 
 void KityApplet::onWhisperTranscriptionFailed(const QString &errorMessage)
 {
     setState(QStringLiteral("idle"), errorMessage);
+}
+
+QString KityApplet::cleanWhisperOutput(const QString &raw)
+{
+    QStringList keptLines;
+    static const QRegularExpression timestampRe(
+        QStringLiteral(R"(^\s*\[[0-9:.]+\s*-->\s*[0-9:.]+\]\s*)"));
+    static const QRegularExpression bracketTagRe(
+        QStringLiteral(R"(\[[^\]]*\])"));
+    static const QRegularExpression parenTagRe(
+        QStringLiteral(R"(\([^\)]*\))"));
+
+    const QStringList lines = raw.split(QLatin1Char('\n'));
+    for (QString line : lines) {
+        line.remove(timestampRe);
+        line.remove(bracketTagRe);
+        line.remove(parenTagRe);
+        line = line.trimmed();
+        if (!line.isEmpty()) {
+            keptLines.append(line);
+        }
+    }
+    return keptLines.join(QLatin1Char(' ')).simplified();
+}
+
+QString KityApplet::removeFillerWords(const QString &text, const QString &lang)
+{
+    if (text.trimmed().isEmpty()) {
+        return QString();
+    }
+
+    QString out = text;
+
+    if (lang.startsWith(QLatin1String("es"), Qt::CaseInsensitive)) {
+        // 1. Eliminar repetición accidental de palabras contiguas (tartamudeo: "el el", "vamos vamos")
+        static const QRegularExpression stutterRe(
+            QStringLiteral(R"(\b([a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]+)\s+\1\b)"),
+            QRegularExpression::CaseInsensitiveOption);
+        out.replace(stutterRe, QStringLiteral("\\1"));
+
+        // 2. Muletillas y sonidos de titubeo (eh, em, este, mmm, ah)
+        static const QRegularExpression hesitationRe(
+            QStringLiteral(R"(\b(?:eh+|em+|este+|mmm+|ah+)\b)"),
+            QRegularExpression::CaseInsensitiveOption);
+        out.replace(hesitationRe, QStringLiteral(""));
+
+        // 3. Muletillas conversacionales al inicio de frase o encadenadas
+        static const QRegularExpression starterFillerRe(
+            QStringLiteral(R"(^(?:\s*(?:bueno|pues|o sea|en plan|digamos que)[,\s]*)+)"),
+            QRegularExpression::CaseInsensitiveOption);
+        out.replace(starterFillerRe, QStringLiteral(""));
+
+        static const QRegularExpression inlineFillerRe(
+            QStringLiteral(R"((?:,\s*|\s+)(?:o sea|en plan)(?:,\s*|\s+))"),
+            QRegularExpression::CaseInsensitiveOption);
+        out.replace(inlineFillerRe, QStringLiteral(", "));
+    } else if (lang.startsWith(QLatin1String("en"), Qt::CaseInsensitive)) {
+        static const QRegularExpression stutterRe(
+            QStringLiteral(R"(\b([a-zA-Z]+)\s+\1\b)"),
+            QRegularExpression::CaseInsensitiveOption);
+        out.replace(stutterRe, QStringLiteral("\\1"));
+
+        static const QRegularExpression hesitationRe(
+            QStringLiteral(R"(\b(?:uh+|um+|er+|ah+|like,?\s+|you know,?\s+)\b)"),
+            QRegularExpression::CaseInsensitiveOption);
+        out.replace(hesitationRe, QStringLiteral(""));
+    }
+
+    // Normalizar signos y espacios residuales
+    static const QRegularExpression orphanLeadingPunctRe(QStringLiteral(R"(^[,\s;:.-]+)"));
+    out.remove(orphanLeadingPunctRe);
+    static const QRegularExpression multiSpaceRe(QStringLiteral(R"([ \t]{2,})"));
+    out.replace(multiSpaceRe, QStringLiteral(" "));
+    static const QRegularExpression spaceBeforePunctRe(QStringLiteral(R"( +([,.;:?!]))"));
+    out.replace(spaceBeforePunctRe, QStringLiteral("\\1"));
+    static const QRegularExpression multiCommaRe(QStringLiteral(R"(,{2,})"));
+    out.replace(multiCommaRe, QStringLiteral(","));
+
+    out = out.trimmed();
+    if (!out.isEmpty()) {
+        out[0] = out[0].toUpper();
+    }
+
+    return out;
 }
 
 void KityApplet::transcribeAndExecuteAudio(const QString &wavPath)
