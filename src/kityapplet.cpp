@@ -845,7 +845,7 @@ void KityApplet::sendToOllama(const QString &userPrompt, const QString &injected
         "- Sistema Operativo: CachyOS Linux (distribución rolling-release de alto rendimiento basada en Arch Linux).\n"
         "- Gestores de paquetes: 'pacman' y 'paru' (AUR). El comando oficial para actualizar el sistema es 'sudo pacman -Syu' o 'paru -Syu'.\n"
         "- Terminal predeterminada del sistema: Konsole.\n"
-        "- REGLA ESTRICTA DE LINUX: Este sistema NUNCA es Debian ni Ubuntu. NUNCA menciones ni uses 'apt', 'apt-get', 'dnf', 'yum' ni 'zypper'. Para cualquier tarea o recomendación de comandos de terminal, usa SIEMPRE comandos de Arch / CachyOS (pacman, paru, systemctl, etc.). Si el usuario pide actualizar el sistema, ejecutar comandos o abrir la terminal, invoca la herramienta 'run_terminal_command' o recomienda 'sudo pacman -Syu' / 'paru -Syu'.\n"));
+        "- REGLA ESTRICTA DE LINUX: Este sistema NUNCA es Debian ni Ubuntu. NUNCA menciones ni uses 'apt', 'apt-get', 'dnf', 'yum' ni 'zypper'. Para cualquier tarea o recomendación de comandos de terminal, usa SIEMPRE comandos de Arch / CachyOS (pacman, paru, systemctl, etc.). Si el usuario pide actualizar el sistema, ejecutar comandos o abrir la terminal, invoca la herramienta 'run_terminal_command' o recomienda 'sudo pacman -Syu' / 'paru -Syu'. La terminal Konsole se cerrará automáticamente al finalizar la actualización si el proceso concluye con éxito.\n"));
     fullSysPrompt.append(QStringLiteral(
         "\n[Acceso a Internet en tiempo real:]\n"
         "Dispones de acceso directo a Internet mediante búsqueda web ('web_search') y mediante el contexto web provisto en tiempo real. "
@@ -1100,22 +1100,34 @@ void KityApplet::handleOllamaFinished()
                 wasInterceptedTool = true;
             } else if (toolName == QLatin1String("run_terminal_command") || toolName == QLatin1String("terminal")
                        || toolName.contains(QStringLiteral("konsole"))) {
-                QString cmd = toolArgs.value(QStringLiteral("command")).toString().trimmed();
+                QJsonObject argsToPass = toolArgs;
+                QString cmd = argsToPass.value(QStringLiteral("command")).toString().trimmed();
                 if (cmd.isEmpty()) {
-                    cmd = toolArgs.value(QStringLiteral("cmd")).toString().trimmed();
+                    cmd = argsToPass.value(QStringLiteral("cmd")).toString().trimmed();
                 }
                 if (cmd.isEmpty() || cmd.contains(QStringLiteral("apt"))) {
                     cmd = QStringLiteral("sudo pacman -Syu");
                 }
-                QProcess::startDetached(QStringLiteral("konsole"), QStringList() << QStringLiteral("--noclose") << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << cmd);
-                finalResponse = i18n("He abierto Konsole para ejecutar `%1`.", cmd);
+                argsToPass[QStringLiteral("command")] = cmd;
+                const QJsonObject res = executeToolCall(QStringLiteral("run_terminal_command"), argsToPass);
+                const QString executedCmd = res.value(QStringLiteral("command")).toString();
+                if (executedCmd.contains(QStringLiteral("pacman")) || executedCmd.contains(QStringLiteral("paru"))) {
+                    finalResponse = i18n("He abierto Konsole para actualizar el sistema con `%1`. La terminal se cerrará automáticamente al finalizar.", executedCmd);
+                } else {
+                    finalResponse = i18n("He abierto Konsole para ejecutar `%1`.", executedCmd);
+                }
                 wasInterceptedTool = true;
             } else if (!toolName.isEmpty()) {
                 const QJsonObject res = executeToolCall(toolName, toolArgs);
                 if (toolName == QLatin1String("get_weather")) {
                     finalResponse = res.value(QStringLiteral("weather_report")).toString();
                 } else if (toolName == QLatin1String("run_terminal_command")) {
-                    finalResponse = i18n("He abierto Konsole para ejecutar `%1`.", res.value(QStringLiteral("command")).toString());
+                    const QString executedCmd = res.value(QStringLiteral("command")).toString();
+                    if (executedCmd.contains(QStringLiteral("pacman")) || executedCmd.contains(QStringLiteral("paru"))) {
+                        finalResponse = i18n("He abierto Konsole para actualizar el sistema con `%1`. La terminal se cerrará automáticamente al finalizar.", executedCmd);
+                    } else {
+                        finalResponse = i18n("He abierto Konsole para ejecutar `%1`.", executedCmd);
+                    }
                 } else if (toolName == QLatin1String("launch_application")) {
                     finalResponse = i18n("He abierto %1.", res.value(QStringLiteral("launched_app")).toString());
                 } else if (toolName == QLatin1String("set_timer")) {
@@ -1278,7 +1290,7 @@ void KityApplet::sendToGemini(const QString &userPrompt, const QString &injected
         "- Sistema Operativo: CachyOS Linux (distribución rolling-release de alto rendimiento basada en Arch Linux).\n"
         "- Gestores de paquetes: 'pacman' y 'paru' (AUR). El comando oficial para actualizar el sistema es 'sudo pacman -Syu' o 'paru -Syu'.\n"
         "- Terminal predeterminada del sistema: Konsole.\n"
-        "- REGLA ESTRICTA DE LINUX: Este sistema NUNCA es Debian ni Ubuntu. NUNCA menciones ni uses 'apt', 'apt-get', 'dnf', 'yum' ni 'zypper'. Para cualquier tarea o recomendación de comandos de terminal, usa SIEMPRE comandos de Arch / CachyOS (pacman, paru, systemctl, etc.). Si el usuario pide actualizar el sistema, ejecutar comandos o abrir la terminal, invoca la herramienta 'run_terminal_command' o recomienda 'sudo pacman -Syu' / 'paru -Syu'.\n"));
+        "- REGLA ESTRICTA DE LINUX: Este sistema NUNCA es Debian ni Ubuntu. NUNCA menciones ni uses 'apt', 'apt-get', 'dnf', 'yum' ni 'zypper'. Para cualquier tarea o recomendación de comandos de terminal, usa SIEMPRE comandos de Arch / CachyOS (pacman, paru, systemctl, etc.). Si el usuario pide actualizar el sistema, ejecutar comandos o abrir la terminal, invoca la herramienta 'run_terminal_command' o recomienda 'sudo pacman -Syu' / 'paru -Syu'. La terminal Konsole se cerrará automáticamente al finalizar la actualización si el proceso concluye con éxito.\n"));
     const QString vitals = collectSystemVitals();
     if (!vitals.isEmpty()) {
         fullSysPrompt.append(QStringLiteral("\n[Entorno del sistema: %1]").arg(vitals));
@@ -1909,6 +1921,11 @@ QJsonArray KityApplet::buildAvailableTools(const QString &userPrompt) const
         titleProp[QStringLiteral("description")] = QStringLiteral("Título opcional para la pestaña o ventana de Konsole.");
         props[QStringLiteral("title")] = titleProp;
 
+        QJsonObject autoCloseProp;
+        autoCloseProp[QStringLiteral("type")] = QStringLiteral("boolean");
+        autoCloseProp[QStringLiteral("description")] = QStringLiteral("Indica si la terminal debe cerrarse automáticamente al completar la tarea (por defecto true para actualizaciones de paquetes con pacman/paru).");
+        props[QStringLiteral("auto_close")] = autoCloseProp;
+
         QJsonObject params;
         params[QStringLiteral("type")] = QStringLiteral("object");
         params[QStringLiteral("properties")] = props;
@@ -2228,6 +2245,9 @@ QJsonObject KityApplet::executeToolCall(const QString &toolName, const QJsonObje
 
     if (toolName == QLatin1String("run_terminal_command")) {
         QString cmd = arguments.value(QStringLiteral("command")).toString().trimmed();
+        if (cmd.isEmpty()) {
+            cmd = arguments.value(QStringLiteral("cmd")).toString().trimmed();
+        }
         if (cmd.contains(QStringLiteral("apt update")) || cmd.contains(QStringLiteral("apt-get update"))
             || cmd.contains(QStringLiteral("apt upgrade")) || cmd.contains(QStringLiteral("apt-get upgrade"))) {
             cmd = QStringLiteral("sudo pacman -Syu");
@@ -2236,13 +2256,45 @@ QJsonObject KityApplet::executeToolCall(const QString &toolName, const QJsonObje
             cmd = QStringLiteral("sudo pacman -Syu");
         }
 
+        const bool isUpdate = cmd.contains(QStringLiteral("pacman -S"), Qt::CaseInsensitive)
+                           || cmd.contains(QStringLiteral("pacman -Syu"), Qt::CaseInsensitive)
+                           || cmd.contains(QStringLiteral("pacman -Syyu"), Qt::CaseInsensitive)
+                           || cmd.contains(QStringLiteral("paru"), Qt::CaseInsensitive)
+                           || cmd.contains(QStringLiteral("yay"), Qt::CaseInsensitive)
+                           || cmd.contains(QStringLiteral("flatpak update"), Qt::CaseInsensitive)
+                           || arguments.value(QStringLiteral("auto_close")).toBool(false);
+
         const QString title = arguments.value(QStringLiteral("title")).toString().trimmed();
         QStringList args;
-        args << QStringLiteral("--noclose");
-        if (!title.isEmpty()) {
-            args << QStringLiteral("-p") << QStringLiteral("tabtitle=%1").arg(title);
+
+        if (isUpdate) {
+            if (!title.isEmpty()) {
+                args << QStringLiteral("-p") << QStringLiteral("tabtitle=%1").arg(title);
+            } else {
+                args << QStringLiteral("-p") << QStringLiteral("tabtitle=Actualización del Sistema");
+            }
+
+            const QString wrappedCmd = QStringLiteral(
+                "%1; RET=$?; "
+                "if [ $RET -eq 0 ]; then "
+                    "echo -e \"\\n\\033[1;32m✓ Proceso finalizado con éxito.\\033[0m Cerrando terminal en 4 segundos (pulsa cualquier tecla para cerrar de inmediato)...\"; "
+                    "read -t 4 -n 1 -s -r; "
+                    "exit 0; "
+                "else "
+                    "echo -e \"\\n\\033[1;31m✗ El proceso no se completó o fue cancelado (código $RET).\\033[0m\"; "
+                    "read -n 1 -s -r -p \"Presiona cualquier tecla para cerrar la ventana...\"; "
+                    "exit $RET; "
+                "fi"
+            ).arg(cmd);
+
+            args << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << wrappedCmd;
+        } else {
+            args << QStringLiteral("--noclose");
+            if (!title.isEmpty()) {
+                args << QStringLiteral("-p") << QStringLiteral("tabtitle=%1").arg(title);
+            }
+            args << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << cmd;
         }
-        args << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << cmd;
 
         const bool started = QProcess::startDetached(QStringLiteral("konsole"), args);
         result[QStringLiteral("success")] = started;
@@ -4365,8 +4417,37 @@ QStringList KityApplet::extractTerminalCommands(const QString &markdown) const
 void KityApplet::executeCommandInKonsole(const QString &command)
 {
     const QString konsole = QStandardPaths::findExecutable(QStringLiteral("konsole"));
-    if (!konsole.isEmpty()) {
-        QProcess::startDetached(konsole, QStringList() << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << QStringLiteral("%1; exec bash").arg(command));
+    if (konsole.isEmpty()) return;
+
+    QString cmd = command.trimmed();
+    if (cmd.contains(QStringLiteral("apt update")) || cmd.contains(QStringLiteral("apt-get update"))
+        || cmd.contains(QStringLiteral("apt upgrade")) || cmd.contains(QStringLiteral("apt-get upgrade"))) {
+        cmd = QStringLiteral("sudo pacman -Syu");
+    }
+
+    const bool isUpdate = cmd.contains(QStringLiteral("pacman -S"), Qt::CaseInsensitive)
+                       || cmd.contains(QStringLiteral("pacman -Syu"), Qt::CaseInsensitive)
+                       || cmd.contains(QStringLiteral("pacman -Syyu"), Qt::CaseInsensitive)
+                       || cmd.contains(QStringLiteral("paru"), Qt::CaseInsensitive)
+                       || cmd.contains(QStringLiteral("yay"), Qt::CaseInsensitive)
+                       || cmd.contains(QStringLiteral("flatpak update"), Qt::CaseInsensitive);
+
+    if (isUpdate) {
+        const QString wrappedCmd = QStringLiteral(
+            "%1; RET=$?; "
+            "if [ $RET -eq 0 ]; then "
+                "echo -e \"\\n\\033[1;32m✓ Proceso finalizado con éxito.\\033[0m Cerrando terminal en 4 segundos (pulsa cualquier tecla para cerrar de inmediato)...\"; "
+                "read -t 4 -n 1 -s -r; "
+                "exit 0; "
+            "else "
+                "echo -e \"\\n\\033[1;31m✗ El proceso no se completó o fue cancelado (código $RET).\\033[0m\"; "
+                "read -n 1 -s -r -p \"Presiona cualquier tecla para cerrar la ventana...\"; "
+                "exit $RET; "
+            "fi"
+        ).arg(cmd);
+        QProcess::startDetached(konsole, QStringList() << QStringLiteral("-p") << QStringLiteral("tabtitle=Actualización del Sistema") << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << wrappedCmd);
+    } else {
+        QProcess::startDetached(konsole, QStringList() << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << QStringLiteral("%1; exec bash").arg(cmd));
     }
 }
 

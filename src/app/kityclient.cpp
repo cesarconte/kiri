@@ -644,7 +644,36 @@ void KityClient::executeCommandInKonsole(const QString &command)
 {
     const QString konsole = QStandardPaths::findExecutable(QStringLiteral("konsole"));
     if (!konsole.isEmpty()) {
-        QProcess::startDetached(konsole, QStringList() << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << QStringLiteral("%1; exec bash").arg(command));
+        QString cmd = command.trimmed();
+        if (cmd.contains(QStringLiteral("apt update")) || cmd.contains(QStringLiteral("apt-get update"))
+            || cmd.contains(QStringLiteral("apt upgrade")) || cmd.contains(QStringLiteral("apt-get upgrade"))) {
+            cmd = QStringLiteral("sudo pacman -Syu");
+        }
+
+        const bool isUpdate = cmd.contains(QStringLiteral("pacman -S"), Qt::CaseInsensitive)
+                           || cmd.contains(QStringLiteral("pacman -Syu"), Qt::CaseInsensitive)
+                           || cmd.contains(QStringLiteral("pacman -Syyu"), Qt::CaseInsensitive)
+                           || cmd.contains(QStringLiteral("paru"), Qt::CaseInsensitive)
+                           || cmd.contains(QStringLiteral("yay"), Qt::CaseInsensitive)
+                           || cmd.contains(QStringLiteral("flatpak update"), Qt::CaseInsensitive);
+
+        if (isUpdate) {
+            const QString wrappedCmd = QStringLiteral(
+                "%1; RET=$?; "
+                "if [ $RET -eq 0 ]; then "
+                    "echo -e \"\\n\\033[1;32m✓ Proceso finalizado con éxito.\\033[0m Cerrando terminal en 4 segundos (pulsa cualquier tecla para cerrar de inmediato)...\"; "
+                    "read -t 4 -n 1 -s -r; "
+                    "exit 0; "
+                "else "
+                    "echo -e \"\\n\\033[1;31m✗ El proceso no se completó o fue cancelado (código $RET).\\033[0m\"; "
+                    "read -n 1 -s -r -p \"Presiona cualquier tecla para cerrar la ventana...\"; "
+                    "exit $RET; "
+                "fi"
+            ).arg(cmd);
+            QProcess::startDetached(konsole, QStringList() << QStringLiteral("-p") << QStringLiteral("tabtitle=Actualización del Sistema") << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << wrappedCmd);
+        } else {
+            QProcess::startDetached(konsole, QStringList() << QStringLiteral("-e") << QStringLiteral("bash") << QStringLiteral("-c") << QStringLiteral("%1; exec bash").arg(cmd));
+        }
     } else if (m_iface && m_iface->isValid()) {
         m_iface->asyncCall(QStringLiteral("executeCommandInKonsole"), command);
     }
