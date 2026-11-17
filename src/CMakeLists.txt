@@ -13,6 +13,8 @@ ecm_qt_declare_logging_category(kity_SRCS
 plasma_add_applet(org.cesar.kity
     CPP_SOURCES
         kityapplet.cpp
+        pipewirerecorder.cpp
+        pipewirerecorder.h
         mathnotes.cpp
         mathnotes.h
         mobile/mobileserver.cpp
@@ -40,6 +42,7 @@ qt6_add_resources(org.cesar.kity "mobile_resources"
 target_include_directories(org.cesar.kity PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/mobile
+    ${PIPEWIRE_INCLUDE_DIRS}
 )
 
 target_link_libraries(org.cesar.kity PRIVATE
@@ -56,6 +59,7 @@ target_link_libraries(org.cesar.kity PRIVATE
     KF6::Service
     Plasma::Plasma
     Plasma::PlasmaQuick
+    ${PIPEWIRE_LIBRARIES}
 )
 
 # Install icons to standard hicolor icon directories

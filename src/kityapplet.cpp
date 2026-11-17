@@ -59,6 +59,17 @@ KityApplet::KityApplet(QObject *parent, const KPluginMetaData &data, const QVari
     , m_reminderTimer(new QTimer(this))
     , m_readinessTimer(new QTimer(this))
 {
+    m_voiceRecorder = std::make_unique<PipeWireRecorder>(this);
+    connect(m_voiceRecorder.get(), &PipeWireRecorder::audioLevelChanged, this, [this](double level) {
+        if (m_state == QLatin1String("listening")) {
+            m_audioLevel = level;
+            Q_EMIT audioLevelChanged();
+        }
+    });
+    connect(m_voiceRecorder.get(), &PipeWireRecorder::audioChunkReady, this, &KityApplet::onVoiceAudioChunkReady);
+
+    m_wakeWordRecorder = std::make_unique<PipeWireRecorder>(this);
+    connect(m_wakeWordRecorder.get(), &PipeWireRecorder::audioChunkReady, this, &KityApplet::onWakeWordAudioChunk);
 }
 
 KityApplet::~KityApplet()
@@ -87,7 +98,6 @@ void KityApplet::init()
     loadScheduledReminders();
     ensureKnowledgeBaseReady();
 
-    connect(m_vadTimer, &QTimer::timeout, this, &KityApplet::checkVoiceActivity);
     connect(m_reminderTimer, &QTimer::timeout, this, &KityApplet::checkScheduledReminders);
     m_reminderTimer->start(30000); // Check reminders every 30s
 
@@ -501,11 +511,10 @@ void KityApplet::setEarconsEnabled(bool enabled)
 void KityApplet::checkReadiness()
 {
     // 1. Whisper check
-    const bool hasPwRecord = !QStandardPaths::findExecutable(QStringLiteral("pw-record")).isEmpty();
     const bool hasWhisperCli = !QStandardPaths::findExecutable(QStringLiteral("whisper-cli")).isEmpty() ||
                                !QStandardPaths::findExecutable(QStringLiteral("whisper")).isEmpty();
     const bool hasWhisperModel = !resolveWhisperModelPath().isEmpty();
-    const bool newWhisperAvailable = hasPwRecord && hasWhisperCli && hasWhisperModel;
+    const bool newWhisperAvailable = hasWhisperCli && hasWhisperModel;
 
     // 2. TTS engine check (Google Cloud, Edge Neural, Kokoro-82M, Piper)
     const bool hasPiperCli = !QStandardPaths::findExecutable(QStringLiteral("piper")).isEmpty();
@@ -2491,63 +2500,47 @@ void KityApplet::startRecording()
         return;
     }
 
-    const QString pwRecord = QStandardPaths::findExecutable(QStringLiteral("pw-record"));
-    if (pwRecord.isEmpty()) {
-        setState(QStringLiteral("error"), i18n("PipeWire (pw-record) no fue encontrado en este sistema."));
-        return;
-    }
-
     stopWakeWordListener();
     stopSpeaking();
     playSiriEarcon(true);
 
-    m_currentRecordingPath = resolveAudioRecordingPath();
-
-    m_recordProcess = new QProcess(this);
-    QStringList args;
-    args << QStringLiteral("--format=s16")
-         << QStringLiteral("--rate=16000")
-         << QStringLiteral("--channels=1")
-         << QStringLiteral("--latency=20ms")
-         << QStringLiteral("--media-category=Capture");
-
     const QString targetSource = resolvePreferredCaptureSource();
-    if (!targetSource.isEmpty()) {
-        args << QStringLiteral("--target=%1").arg(targetSource);
-    }
-    args << m_currentRecordingPath;
-
-    m_recordProcess->start(pwRecord, args);
-    if (!m_recordProcess->waitForStarted(2000)) {
-        setState(QStringLiteral("error"), i18n("No se pudo iniciar la grabación de audio."));
-        m_recordProcess->deleteLater();
-        m_recordProcess = nullptr;
+    if (!m_voiceRecorder->startRecording(16000, 1, targetSource, QStringLiteral("kity-voice-capture"))) {
+        setState(QStringLiteral("error"), i18n("No se pudo iniciar la captura de audio con PipeWire nativo."));
         return;
     }
 
+    m_speechDetected = false;
+    m_speechSilenceTimer.invalidate();
+    m_recordingDurationTimer.start();
+
     setState(QStringLiteral("listening"), i18n("Escuchando… Habla ahora, Kity detectará cuando termines."));
-    startVad();
 }
 
 void KityApplet::stopRecording()
 {
-    stopVad();
+    m_speechSilenceTimer.invalidate();
+    m_recordingDurationTimer.invalidate();
 
-    if (m_recordProcess) {
-        if (m_recordProcess->state() == QProcess::Running) {
-            m_recordProcess->terminate();
-            if (!m_recordProcess->waitForFinished(1500)) {
-                m_recordProcess->kill();
-            }
-        }
-        m_recordProcess->deleteLater();
-        m_recordProcess = nullptr;
+    QByteArray pcmData;
+    if (m_voiceRecorder && m_voiceRecorder->isRecording()) {
+        pcmData = m_voiceRecorder->stopRecording();
     }
+
+    m_audioLevel = 0.0;
+    Q_EMIT audioLevelChanged();
 
     if (m_state == QLatin1String("listening")) {
         playSiriEarcon(false);
+
+        if (pcmData.size() < 3200) { // Menos de 100ms
+            setState(QStringLiteral("idle"), i18n("Audio demasiado corto."));
+            return;
+        }
+
+        m_recordedPcmBuffer = pcmData;
         setState(QStringLiteral("transcribing"), i18n("Transcribiendo voz…"));
-        runSpeechTranscription();
+        runSpeechTranscription(pcmData);
     }
 }
 
@@ -2564,52 +2557,27 @@ void KityApplet::startVad()
 {
     m_speechDetected = false;
     m_speechSilenceTimer.invalidate();
-    m_vadTimer->start(100); // Check file growth / volume every 100ms
+    m_recordingDurationTimer.start();
 }
 
 void KityApplet::stopVad()
 {
-    m_vadTimer->stop();
+    m_speechSilenceTimer.invalidate();
+    m_recordingDurationTimer.invalidate();
     m_audioLevel = 0.0;
     Q_EMIT audioLevelChanged();
 }
 
-void KityApplet::checkVoiceActivity()
+void KityApplet::onVoiceAudioChunkReady(const QByteArray &chunk, double level)
 {
-    if (!m_recordProcess || m_currentRecordingPath.isEmpty()) return;
-
-    QFile file(m_currentRecordingPath);
-    if (!file.open(QIODevice::ReadOnly)) return;
-
-    const qint64 fileSize = file.size();
-    if (fileSize <= 44) return; // Wait for WAV header to finish
-
-    // Read the most recent ~100ms of 16kHz 16-bit mono PCM (3200 bytes)
-    const qint64 bytesToRead = qMin<qint64>(fileSize - 44, 3200);
-    if (!file.seek(fileSize - bytesToRead)) return;
-
-    const QByteArray chunk = file.read(bytesToRead);
-    const int sampleCount = chunk.size() / sizeof(qint16);
-    if (sampleCount <= 0) return;
-
-    const qint16 *samples = reinterpret_cast<const qint16 *>(chunk.constData());
-    double sumSquares = 0.0;
-    for (int i = 0; i < sampleCount; ++i) {
-        const double norm = samples[i] / 32768.0;
-        sumSquares += norm * norm;
-    }
-    const double rms = std::sqrt(sumSquares / sampleCount);
-
-    // Audio level normalized for reactive Siri orb animation (0.0 to 1.0)
-    const qreal newLevel = qBound(0.0, rms * 4.5, 1.0);
-    if (std::abs(m_audioLevel - newLevel) > 0.015) {
-        m_audioLevel = newLevel;
-        Q_EMIT audioLevelChanged();
+    Q_UNUSED(chunk);
+    if (m_state != QLatin1String("listening")) {
+        return;
     }
 
     // Voice Activity Detection (audible speech typically > 0.025 RMS)
     const double speechRmsThreshold = 0.025;
-    const bool isSpeakingNow = (rms >= speechRmsThreshold);
+    const bool isSpeakingNow = (level >= speechRmsThreshold);
 
     if (isSpeakingNow) {
         m_speechDetected = true;
@@ -2628,7 +2596,7 @@ void KityApplet::checkVoiceActivity()
         } else {
             // Safety guard: stop after 4.5 seconds if in conversational follow-up, or 7 seconds initially
             const double maxSilenceSeconds = (m_lastQueryWasVoice ? 4.5 : 7.0);
-            if (fileSize > static_cast<qint64>(16000 * sizeof(qint16) * maxSilenceSeconds)) {
+            if (m_recordingDurationTimer.isValid() && m_recordingDurationTimer.elapsed() > static_cast<qint64>(maxSilenceSeconds * 1000)) {
                 stopRecording();
                 setState(QStringLiteral("idle"), QString());
             }
@@ -2636,15 +2604,16 @@ void KityApplet::checkVoiceActivity()
     }
 }
 
-void KityApplet::runSpeechTranscription()
+void KityApplet::runSpeechTranscription(const QByteArray &pcmData)
 {
+    const QByteArray data = pcmData.isEmpty() ? m_recordedPcmBuffer : pcmData;
     const QString engine = resolveSttEngine();
     const QString apiKey = resolveGeminiApiKey();
 
     if (engine == QLatin1String("gemini") && !apiKey.isEmpty()) {
-        runGeminiAudioTranscription(m_currentRecordingPath);
+        runGeminiAudioTranscription(data);
     } else {
-        runWhisperTranscription(m_currentRecordingPath);
+        runWhisperTranscription(data);
     }
 }
 
@@ -2658,21 +2627,28 @@ void KityApplet::runGeminiAudioTranscription(const QString &wavPath)
     const QByteArray audioData = file.readAll();
     file.close();
 
-    if (audioData.size() < 1024) {
+    // Extraer datos PCM descartando cabecera RIFF de 44 bytes si la tiene
+    const QByteArray pcm = audioData.size() > 44 ? audioData.mid(44) : audioData;
+    runGeminiAudioTranscription(pcm);
+}
+
+void KityApplet::runGeminiAudioTranscription(const QByteArray &pcmData)
+{
+    if (pcmData.size() < 1024) {
         setState(QStringLiteral("idle"), i18n("No se detectó audio de voz."));
-        QFile::remove(wavPath);
         return;
     }
 
     const QString apiKey = resolveGeminiApiKey();
     if (apiKey.isEmpty()) {
-        runWhisperTranscription(wavPath);
+        runWhisperTranscription(pcmData);
         return;
     }
 
     setState(QStringLiteral("transcribing"), i18n("Transcribiendo con Google Gemini…"));
 
-    const QString base64Audio = QString::fromLatin1(audioData.toBase64());
+    const QByteArray wavData = PipeWireRecorder::pcmToWav(pcmData, 16000, 1);
+    const QString base64Audio = QString::fromLatin1(wavData.toBase64());
     const QString geminiModel = resolveGeminiModel();
     const QString modelToUse = (geminiModel.isEmpty() ? QStringLiteral("gemini-2.0-flash") : geminiModel);
 
@@ -2710,13 +2686,13 @@ void KityApplet::runGeminiAudioTranscription(const QString &wavPath)
     req.setTransferTimeout(8000);
 
     QNetworkReply *reply = m_nam->post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, wavPath]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, pcmData]() {
         reply->deleteLater();
 
         if (reply->error() != QNetworkReply::NoError) {
             qWarning() << "Kity: Gemini audio transcription error:" << reply->errorString()
                        << "- Falling back to local Whisper.cpp";
-            runWhisperTranscription(wavPath);
+            runWhisperTranscription(pcmData);
             return;
         }
 
@@ -2726,7 +2702,7 @@ void KityApplet::runGeminiAudioTranscription(const QString &wavPath)
         const QJsonArray candidates = root.value(QStringLiteral("candidates")).toArray();
         if (candidates.isEmpty()) {
             qWarning() << "Kity: Gemini returned no candidates - Falling back to local Whisper.cpp";
-            runWhisperTranscription(wavPath);
+            runWhisperTranscription(pcmData);
             return;
         }
 
@@ -2745,11 +2721,10 @@ void KityApplet::runGeminiAudioTranscription(const QString &wavPath)
 
         if (text.isEmpty()) {
             qWarning() << "Kity: Gemini transcription text was empty - Falling back to local Whisper.cpp";
-            runWhisperTranscription(wavPath);
+            runWhisperTranscription(pcmData);
             return;
         }
 
-        QFile::remove(wavPath);
         Q_EMIT transcriptionReady(text);
         sendMessage(text, true);
     });
@@ -2814,6 +2789,16 @@ void KityApplet::runWhisperTranscription(const QString &targetWavPath)
     whisperProc->start(whisperCli, args);
 }
 
+void KityApplet::runWhisperTranscription(const QByteArray &pcmData)
+{
+    const QString tmpWav = resolveAudioRecordingPath();
+    if (!PipeWireRecorder::savePcmToWavFile(tmpWav, pcmData, 16000, 1)) {
+        setState(QStringLiteral("error"), i18n("Error al preparar buffer de audio para transcripción."));
+        return;
+    }
+    runWhisperTranscription(tmpWav);
+}
+
 void KityApplet::transcribeAndExecuteAudio(const QString &wavPath)
 {
     const QString engine = resolveSttEngine();
@@ -2823,6 +2808,11 @@ void KityApplet::transcribeAndExecuteAudio(const QString &wavPath)
         return;
     }
     runWhisperTranscription(wavPath);
+}
+
+void KityApplet::transcribeAndExecuteAudio(const QByteArray &pcmData)
+{
+    runSpeechTranscription(pcmData);
 }
 
 // =========================================================================
@@ -3096,7 +3086,7 @@ void KityApplet::speakSentence(const QString &sentence)
         m_isSpeakingSentence = true;
         setState(QStringLiteral("speaking"), i18n("Reproduciendo respuesta…"));
 
-        if (m_wakeWordEnabled && (!m_wakeWordProcess || m_wakeWordProcess->state() != QProcess::Running)) {
+        if (m_wakeWordEnabled && (!m_wakeWordRecorder || !m_wakeWordRecorder->isRecording())) {
             startWakeWordListener();
         }
 
@@ -3201,7 +3191,7 @@ void KityApplet::speakSentence(const QString &sentence)
         m_isSpeakingSentence = true;
         setState(QStringLiteral("speaking"), i18n("Reproduciendo respuesta…"));
 
-        if (m_wakeWordEnabled && (!m_wakeWordProcess || m_wakeWordProcess->state() != QProcess::Running)) {
+        if (m_wakeWordEnabled && (!m_wakeWordRecorder || !m_wakeWordRecorder->isRecording())) {
             startWakeWordListener();
         }
 
@@ -3273,7 +3263,7 @@ void KityApplet::speakSentence(const QString &sentence)
     m_isSpeakingSentence = true;
     setState(QStringLiteral("speaking"), i18n("Reproduciendo respuesta…"));
 
-    if (m_wakeWordEnabled && (!m_wakeWordProcess || m_wakeWordProcess->state() != QProcess::Running)) {
+    if (m_wakeWordEnabled && (!m_wakeWordRecorder || !m_wakeWordRecorder->isRecording())) {
         startWakeWordListener();
     }
 
@@ -3408,13 +3398,7 @@ void KityApplet::startWakeWordListener()
         return;
     }
 
-    if (m_wakeWordProcess && m_wakeWordProcess->state() == QProcess::Running) {
-        return;
-    }
-
-    const QString pwRecord = QStandardPaths::findExecutable(QStringLiteral("pw-record"));
-    if (pwRecord.isEmpty()) {
-        qWarning() << "Kity: pw-record not found in PATH for wake word listener";
+    if (m_wakeWordRecorder && m_wakeWordRecorder->isRecording()) {
         return;
     }
 
@@ -3430,52 +3414,25 @@ void KityApplet::startWakeWordListener()
     m_wakeWordEvaluating = false;
     m_bargeInVoiceFrames = 0;
 
-    if (!m_wakeWordProcess) {
-        m_wakeWordProcess = new QProcess(this);
-        connect(m_wakeWordProcess, &QProcess::readyReadStandardOutput, this, &KityApplet::onWakeWordAudioChunkReady);
-    }
-
-    QStringList args;
-    args << QStringLiteral("--format=s16")
-         << QStringLiteral("--rate=16000")
-         << QStringLiteral("--channels=1")
-         << QStringLiteral("--container=raw")
-         << QStringLiteral("--latency=20ms")
-         << QStringLiteral("--media-category=Capture");
-
-    if (!targetSource.isEmpty()) {
-        args << QStringLiteral("--target=%1").arg(targetSource);
-    }
-    args << QStringLiteral("-");
-
-    m_wakeWordProcess->start(pwRecord, args);
-    if (!m_wakeWordProcess->waitForStarted(2000)) {
-        qWarning() << "Kity: Failed to start pw-record for wake word listener";
+    if (!m_wakeWordRecorder->startRecording(16000, 1, targetSource, QStringLiteral("kity-wake-word"))) {
+        qWarning() << "Kity: Failed to start PipeWire wake word listener";
     } else {
-        qInfo() << "Kity: Wake word & Barge-in background listener started successfully (PID:" << m_wakeWordProcess->processId() << ")";
+        qInfo() << "Kity: PipeWire native wake word & Barge-in background listener started successfully";
     }
 }
 
 void KityApplet::stopWakeWordListener()
 {
-    if (m_wakeWordProcess) {
-        if (m_wakeWordProcess->state() == QProcess::Running) {
-            m_wakeWordProcess->terminate();
-            if (!m_wakeWordProcess->waitForFinished(500)) {
-                m_wakeWordProcess->kill();
-            }
-        }
+    if (m_wakeWordRecorder && m_wakeWordRecorder->isRecording()) {
+        m_wakeWordRecorder->stopRecording();
     }
     m_wakeWordPcmBuffer.clear();
     m_wakeWordEvaluating = false;
     m_bargeInVoiceFrames = 0;
 }
 
-void KityApplet::onWakeWordAudioChunkReady()
+void KityApplet::onWakeWordAudioChunk(const QByteArray &chunk, double rms)
 {
-    if (!m_wakeWordProcess) return;
-
-    const QByteArray chunk = m_wakeWordProcess->readAllStandardOutput();
     if (chunk.isEmpty()) return;
 
     m_wakeWordPcmBuffer.append(chunk);
@@ -3484,18 +3441,6 @@ void KityApplet::onWakeWordAudioChunkReady()
     if (m_wakeWordPcmBuffer.size() > 80000) {
         m_wakeWordPcmBuffer = m_wakeWordPcmBuffer.right(80000);
     }
-
-    // Fast RMS volume check on the incoming audio chunk
-    const int sampleCount = chunk.size() / sizeof(qint16);
-    if (sampleCount <= 0) return;
-
-    const qint16 *samples = reinterpret_cast<const qint16 *>(chunk.constData());
-    double sumSquares = 0.0;
-    for (int i = 0; i < sampleCount; ++i) {
-        const double s = samples[i] / 32768.0;
-        sumSquares += s * s;
-    }
-    const double rms = std::sqrt(sumSquares / sampleCount);
 
     // Live Full-Duplex Barge-in detection: if Kity is speaking and user begins speaking directly
     if (m_state == QLatin1String("speaking")) {
@@ -3529,21 +3474,21 @@ void KityApplet::onWakeWordAudioChunkReady()
                     m_wakeWordEvaluating = false;
                     return;
                 }
-                const QString tmpWav = QDir::tempPath() + QStringLiteral("/kity_ww_probe_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
-                QFile f(tmpWav);
-                if (f.open(QIODevice::WriteOnly)) {
-                    const QByteArray pcmData = m_wakeWordPcmBuffer.right(64000); // last ~2 seconds
-                    const QByteArray header = createWavHeader(pcmData.size(), 16000, 1, 16);
-                    f.write(header);
-                    f.write(pcmData);
-                    f.close();
-                    checkWakeWordTranscription(tmpWav);
-                } else {
-                    m_wakeWordEvaluating = false;
-                }
+                const QByteArray pcmData = m_wakeWordPcmBuffer.right(64000); // last ~2 seconds
+                checkWakeWordTranscription(pcmData);
             });
         }
     }
+}
+
+void KityApplet::checkWakeWordTranscription(const QByteArray &pcmData)
+{
+    const QString tmpWav = QDir::tempPath() + QStringLiteral("/kity_ww_probe_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
+    if (!PipeWireRecorder::savePcmToWavFile(tmpWav, pcmData, 16000, 1)) {
+        m_wakeWordEvaluating = false;
+        return;
+    }
+    checkWakeWordTranscription(tmpWav);
 }
 
 void KityApplet::checkWakeWordTranscription(const QString &wavPath)

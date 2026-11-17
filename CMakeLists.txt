@@ -44,6 +44,9 @@ find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS
 find_package(Plasma REQUIRED)
 find_package(PlasmaQuick REQUIRED)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
+
 add_subdirectory(src)
 
 include(CTest)

@@ -20,6 +20,9 @@
 #include <QRegularExpression>
 #include <QTimer>
 #include <QVariantList>
+#include <memory>
+
+#include "pipewirerecorder.h"
 
 class KityMobileServer;
 
@@ -182,9 +185,9 @@ Q_SIGNALS:
 private Q_SLOTS:
     void handleOllamaStreamChunk();
     void handleOllamaFinished();
-    void checkVoiceActivity();
     void checkScheduledReminders();
-    void onWakeWordAudioChunkReady();
+    void onVoiceAudioChunkReady(const QByteArray &chunk, double level);
+    void onWakeWordAudioChunk(const QByteArray &chunk, double level);
 
 private:
     void setState(const QString &newState, const QString &newStatus = QString());
@@ -200,11 +203,15 @@ private:
 
     // Speech & Audio
     QString resolveSttEngine() const;
-    void runSpeechTranscription();
+    void runSpeechTranscription(const QByteArray &pcmData = QByteArray());
     void runGeminiAudioTranscription(const QString &wavPath);
+    void runGeminiAudioTranscription(const QByteArray &pcmData);
     void runWhisperTranscription(const QString &wavPath = QString());
+    void runWhisperTranscription(const QByteArray &pcmData);
     void transcribeAndExecuteAudio(const QString &wavPath);
+    void transcribeAndExecuteAudio(const QByteArray &pcmData);
     void checkWakeWordTranscription(const QString &wavPath);
+    void checkWakeWordTranscription(const QByteArray &pcmData);
     void enqueueSentenceForSpeech(const QString &sentence);
     void playNextTtsQueueItem();
     void speakSentence(const QString &sentence);
@@ -334,11 +341,13 @@ private:
     QJsonArray m_currentChatMessages;
     QJsonArray m_pendingToolCalls;
     bool m_isToolFollowUpRound = false;
-    QProcess *m_recordProcess = nullptr;
+    std::unique_ptr<PipeWireRecorder> m_voiceRecorder;
+    std::unique_ptr<PipeWireRecorder> m_wakeWordRecorder;
+    QByteArray m_recordedPcmBuffer;
+    QElapsedTimer m_recordingDurationTimer;
     QProcess *m_ttsProcess = nullptr;
     QPointer<QProcess> m_pwPlayProcess;
     int m_bargeInVoiceFrames = 0;
-    QProcess *m_wakeWordProcess = nullptr;
     QByteArray m_wakeWordPcmBuffer;
     bool m_wakeWordEvaluating = false;
     QElapsedTimer m_wakeWordCooldown;
