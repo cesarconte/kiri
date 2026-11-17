@@ -181,6 +181,82 @@ void KDictationClient::onWatcherFinished(QDBusPendingCallWatcher *watcher)
     Q_EMIT transcriptionReady(transcript);
 }
 
+void KDictationClient::transcribeAndInjectPcmAsync(const QByteArray &pcmData, const QString &language, int timeoutMs)
+{
+    if (pcmData.isEmpty()) {
+        Q_EMIT transcriptionFailed(QStringLiteral("Audio PCM vacío."));
+        return;
+    }
+
+    if (m_dictationWatcher) {
+        m_dictationWatcher->deleteLater();
+        m_dictationWatcher = nullptr;
+    }
+
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) {
+        Q_EMIT transcriptionFailed(QStringLiteral("D-Bus no está conectado."));
+        return;
+    }
+
+    QDBusInterface iface(
+        QLatin1String(SERVICE_NAME),
+        QLatin1String(OBJECT_PATH),
+        QLatin1String(INTERFACE_NAME),
+        bus);
+
+    iface.setTimeout(timeoutMs);
+
+    const QString lang = language.trimmed().isEmpty() ? QStringLiteral("es") : language.trimmed();
+    QDBusPendingCall pcall = iface.asyncCall(QStringLiteral("TranscribeAndInjectPcm"), pcmData, lang);
+
+    m_dictationWatcher = new QDBusPendingCallWatcher(pcall, this);
+    connect(m_dictationWatcher, &QDBusPendingCallWatcher::finished,
+            this, &KDictationClient::onDictationWatcherFinished);
+}
+
+void KDictationClient::onDictationWatcherFinished(QDBusPendingCallWatcher *watcher)
+{
+    if (watcher != m_dictationWatcher) {
+        watcher->deleteLater();
+        return;
+    }
+    m_dictationWatcher = nullptr;
+
+    QDBusPendingReply<QString> reply = *watcher;
+    watcher->deleteLater();
+
+    if (reply.isError()) {
+        qWarning() << "KDictationClient: Error en D-Bus TranscribeAndInjectPcm:" << reply.error().message();
+        Q_EMIT transcriptionFailed(reply.error().message());
+        return;
+    }
+
+    const QString transcript = reply.value();
+    Q_EMIT dictationInjected(transcript);
+}
+
+void KDictationClient::injectText(const QString &text)
+{
+    if (text.trimmed().isEmpty()) {
+        return;
+    }
+
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) {
+        return;
+    }
+
+    QDBusInterface iface(
+        QLatin1String(SERVICE_NAME),
+        QLatin1String(OBJECT_PATH),
+        QLatin1String(INTERFACE_NAME),
+        bus);
+
+    iface.asyncCall(QStringLiteral("InjectText"), text.trimmed());
+    Q_EMIT dictationInjected(text.trimmed());
+}
+
 void KDictationClient::onCallTimeout()
 {
     if (m_activeWatcher) {

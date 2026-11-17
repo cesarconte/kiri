@@ -37,10 +37,13 @@ public:
 
     Q_INVOKABLE bool checkAvailability();
     Q_INVOKABLE void transcribePcmAsync(const QByteArray &pcmData, const QString &language = QStringLiteral("es"), int timeoutMs = 15000);
+    Q_INVOKABLE void transcribeAndInjectPcmAsync(const QByteArray &pcmData, const QString &language = QStringLiteral("es"), int timeoutMs = 15000);
+    Q_INVOKABLE void injectText(const QString &text);
 
 Q_SIGNALS:
     void transcriptionReady(const QString &text);
     void transcriptionFailed(const QString &errorMessage);
+    void dictationInjected(const QString &text);
     void availabilityChanged(bool available);
     void engineReadyChanged(bool ready);
 
@@ -48,6 +51,7 @@ private Q_SLOTS:
     void onServiceRegistered(const QString &serviceName);
     void onServiceUnregistered(const QString &serviceName);
     void onWatcherFinished(QDBusPendingCallWatcher *watcher);
+    void onDictationWatcherFinished(QDBusPendingCallWatcher *watcher);
     void onCallTimeout();
 
 private:
@@ -55,6 +59,7 @@ private:
 
     QDBusServiceWatcher *m_serviceWatcher = nullptr;
     QDBusPendingCallWatcher *m_activeWatcher = nullptr;
+    QDBusPendingCallWatcher *m_dictationWatcher = nullptr;
     QTimer *m_callTimeoutTimer = nullptr;
     bool m_isAvailable = false;
     bool m_isEngineReady = false;

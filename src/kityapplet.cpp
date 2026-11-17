@@ -91,6 +91,12 @@ KityApplet::KityApplet(QObject *parent, const KPluginMetaData &data, const QVari
             this, &KityApplet::onCentralizedTranscriptionReady);
     connect(m_kdictationClient.get(), &KDictationClient::transcriptionFailed,
             this, &KityApplet::onCentralizedTranscriptionFailed);
+    connect(m_kdictationClient.get(), &KDictationClient::dictationInjected, this, [this](const QString &text) {
+        qInfo() << "Kity: Dictado inyectado remotamente en el PC:" << text;
+        if (m_mobileServer) {
+            m_mobileServer->broadcastState(QStringLiteral("idle"), i18n("✍️ Dictado insertado en el cursor"));
+        }
+    });
     connect(m_kdictationClient.get(), &KDictationClient::availabilityChanged,
             this, &KityApplet::kdictationAvailableChanged);
 
@@ -184,6 +190,12 @@ void KityApplet::init()
     });
     connect(m_mobileServer, &KityMobileServer::voiceAudioReceived, this, [this](const QString &wavPath) {
         transcribeAndExecuteAudio(wavPath);
+    });
+    connect(m_mobileServer, &KityMobileServer::dictationAudioReceived, this, [this](const QString &wavPath) {
+        handleMobileDictationAudio(wavPath);
+    });
+    connect(m_mobileServer, &KityMobileServer::dictationTextReceived, this, [this](const QString &text) {
+        handleMobileDictationText(text);
     });
     connect(this, &KityApplet::stateChanged, this, [this]() {
         if (m_mobileServer) {
@@ -3048,6 +3060,49 @@ void KityApplet::transcribeAndExecuteAudio(const QString &wavPath)
 void KityApplet::transcribeAndExecuteAudio(const QByteArray &pcmData)
 {
     runSpeechTranscription(pcmData);
+}
+
+void KityApplet::handleMobileDictationAudio(const QString &wavPath)
+{
+    QFile file(wavPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (m_mobileServer) {
+            m_mobileServer->broadcastState(QStringLiteral("idle"), i18n("Audio no válido"));
+        }
+        return;
+    }
+    const QByteArray audioData = file.readAll();
+    file.close();
+    QFile::remove(wavPath);
+
+    const QByteArray pcm = audioData.size() > 44 ? audioData.mid(44) : audioData;
+    if (pcm.isEmpty()) {
+        if (m_mobileServer) {
+            m_mobileServer->broadcastState(QStringLiteral("idle"), i18n("Audio vacío"));
+        }
+        return;
+    }
+
+    if (m_mobileServer) {
+        m_mobileServer->broadcastState(QStringLiteral("thinking"), i18n("✍️ Dictando en PC (KDictation)…"));
+    }
+
+    if (m_kdictationClient) {
+        m_kdictationClient->transcribeAndInjectPcmAsync(pcm, resolveWhisperLanguage());
+    }
+}
+
+void KityApplet::handleMobileDictationText(const QString &text)
+{
+    if (text.trimmed().isEmpty()) {
+        return;
+    }
+    if (m_mobileServer) {
+        m_mobileServer->broadcastState(QStringLiteral("thinking"), i18n("✍️ Insertando dictado en PC…"));
+    }
+    if (m_kdictationClient) {
+        m_kdictationClient->injectText(text.trimmed());
+    }
 }
 
 // =========================================================================

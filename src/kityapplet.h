@@ -398,6 +398,10 @@ private:
     QString m_lastWritingToolSource;
     QString m_lastWritingToolAction;
 
+    // Mobile Remote Helpers
+    void handleMobileDictationAudio(const QString &wavPath);
+    void handleMobileDictationText(const QString &text);
+
     // Mobile Remote Web/WebSocket Server
     KityMobileServer *m_mobileServer = nullptr;
 };

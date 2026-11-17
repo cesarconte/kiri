@@ -21,6 +21,8 @@
   const hapticToggle = document.getElementById('hapticToggle');
   const autoSendToggle = document.getElementById('autoSendToggle');
   const hintText = document.getElementById('hintText');
+  const modeAssistantBtn = document.getElementById('modeAssistantBtn');
+  const modeDictationBtn = document.getElementById('modeDictationBtn');
 
   // State
   let ws = null;
@@ -36,6 +38,7 @@
   let lastFinalTranscript = '';
   let currentInterimTranscript = '';
   let sttMode = localStorage.getItem('kity_mobile_stt_mode') || 'pc';
+  let targetMode = localStorage.getItem('kity_mobile_target_mode') || 'assistant';
   let speechSilenceTimer = null;
   let vadSilenceTimer = null;
   let maxRecordingTimer = null;
@@ -177,27 +180,75 @@
     }
   }
 
+  function updateTargetMode(mode) {
+    targetMode = mode;
+    localStorage.setItem('kity_mobile_target_mode', mode);
+    if (mode === 'dictation') {
+      if (modeAssistantBtn) {
+        modeAssistantBtn.classList.remove('active');
+        modeAssistantBtn.setAttribute('aria-selected', 'false');
+      }
+      if (modeDictationBtn) {
+        modeDictationBtn.classList.add('active');
+        modeDictationBtn.setAttribute('aria-selected', 'true');
+      }
+      if (!isRecording) {
+        transcriptEl.textContent = 'Toca para dictar en el PC';
+        hintText.textContent = '✍️ Lo que digas se escribirá en el cursor del PC';
+      }
+    } else {
+      if (modeDictationBtn) {
+        modeDictationBtn.classList.remove('active');
+        modeDictationBtn.setAttribute('aria-selected', 'false');
+      }
+      if (modeAssistantBtn) {
+        modeAssistantBtn.classList.add('active');
+        modeAssistantBtn.setAttribute('aria-selected', 'true');
+      }
+      if (!isRecording) {
+        transcriptEl.textContent = 'Toca el orbe para hablar';
+        hintText.textContent = 'Pulsa para hablar o mantén pulsado';
+      }
+    }
+  }
+
+  if (modeAssistantBtn && modeDictationBtn) {
+    modeAssistantBtn.addEventListener('click', () => {
+      triggerHaptic(14);
+      updateTargetMode('assistant');
+    });
+    modeDictationBtn.addEventListener('click', () => {
+      triggerHaptic(14);
+      updateTargetMode('dictation');
+    });
+    updateTargetMode(targetMode);
+  }
+
   // Update Visual State (Glow, Orb, Transcript)
   function updateUIState(state, text) {
     orb.setState(state);
     screenGlow.className = `screen-glow ${state}`;
 
     if (state === 'listening') {
-      transcriptEl.textContent = text || 'Escuchando...';
-      transcriptEl.style.color = '#00e5ff';
-      hintText.textContent = 'Habla ahora...';
+      transcriptEl.textContent = text || (targetMode === 'dictation' ? 'Dictando al PC...' : 'Escuchando...');
+      transcriptEl.style.color = targetMode === 'dictation' ? '#00e676' : '#00e5ff';
+      hintText.textContent = targetMode === 'dictation' ? 'Habla para escribir en el PC...' : 'Habla ahora...';
     } else if (state === 'thinking') {
-      transcriptEl.textContent = text || 'Pensando...';
-      transcriptEl.style.color = '#b388ff';
-      hintText.textContent = 'Kity está procesando la respuesta';
+      transcriptEl.textContent = text || (targetMode === 'dictation' ? 'Insertando en el cursor…' : 'Pensando...');
+      transcriptEl.style.color = targetMode === 'dictation' ? '#00e676' : '#b388ff';
+      hintText.textContent = targetMode === 'dictation' ? 'KDictation procesando audio' : 'Kity está procesando la respuesta';
     } else if (state === 'speaking') {
       transcriptEl.textContent = text || 'Kity hablando...';
       transcriptEl.style.color = '#00e676';
       hintText.textContent = 'Reproduciendo audio en el PC';
     } else {
-      transcriptEl.textContent = text || 'Toca el orbe para hablar';
+      if (text) {
+        transcriptEl.textContent = text;
+      } else {
+        transcriptEl.textContent = targetMode === 'dictation' ? 'Toca para dictar en el PC' : 'Toca el orbe para hablar';
+      }
       transcriptEl.style.color = 'var(--text-primary)';
-      hintText.textContent = 'Pulsa para hablar o mantén pulsado';
+      hintText.textContent = targetMode === 'dictation' ? '✍️ Lo que digas se escribirá en el cursor del PC' : 'Pulsa para hablar o mantén pulsado';
       btnMic.classList.remove('recording');
       orb.setAudioLevel(0);
     }
@@ -489,6 +540,7 @@
           if (base64Data && ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
               type: 'audio',
+              mode: targetMode,
               data: base64Data,
               format: 'webm'
             }));
@@ -527,6 +579,7 @@
 
     const payload = {
       type: 'command',
+      mode: targetMode,
       text: text,
       fromVoice: true,
       timestamp: Date.now()

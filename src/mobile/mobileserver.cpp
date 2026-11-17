@@ -408,13 +408,18 @@ void KityMobileServer::onWebSocketTextMessage(const QString &message)
 
     const QJsonObject obj = doc.object();
     const QString type = obj.value(QStringLiteral("type")).toString();
+    const QString mode = obj.value(QStringLiteral("mode")).toString();
 
     if (type == QStringLiteral("command")) {
         const QString text = obj.value(QStringLiteral("text")).toString().trimmed();
         const bool fromVoice = obj.value(QStringLiteral("fromVoice")).toBool(true);
 
         if (!text.isEmpty()) {
-            Q_EMIT voiceCommandReceived(text, fromVoice);
+            if (mode == QStringLiteral("dictation")) {
+                Q_EMIT dictationTextReceived(text);
+            } else {
+                Q_EMIT voiceCommandReceived(text, fromVoice);
+            }
         }
     } else if (type == QStringLiteral("audio")) {
         const QString b64Data = obj.value(QStringLiteral("data")).toString();
@@ -442,7 +447,11 @@ void KityMobileServer::onWebSocketTextMessage(const QString &message)
                 QFile::remove(webmPath);
 
                 if (QFileInfo::exists(wavPath) && QFileInfo(wavPath).size() > 100) {
-                    Q_EMIT voiceAudioReceived(wavPath);
+                    if (mode == QStringLiteral("dictation")) {
+                        Q_EMIT dictationAudioReceived(wavPath);
+                    } else {
+                        Q_EMIT voiceAudioReceived(wavPath);
+                    }
                 }
             }
         }

@@ -154,6 +154,52 @@ html, body {
   background: rgba(255, 255, 255, 0.12);
 }
 
+/* Mode Pill Selector (Liquid Glass Switcher) */
+.mode-pill-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  padding: 4px;
+  border-radius: 28px;
+  border: 1px solid var(--glass-border);
+  margin: 10px auto 0 auto;
+  max-width: 300px;
+  width: 100%;
+  z-index: 20;
+}
+
+.mode-pill-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 22px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mode-pill-btn.active {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.mode-pill-icon {
+  font-size: 14px;
+}
+
 /* Center Stage */
 .stage {
   display: flex;
