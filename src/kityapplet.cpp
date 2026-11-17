@@ -640,6 +640,11 @@ QString KityApplet::analyzeImageWithVisionModel(const QString &base64Image) cons
     reqPayload[QStringLiteral("model")] = detectAvailableVisionModel();
     reqPayload[QStringLiteral("prompt")] = QStringLiteral("Describe accurately and in detail everything visible on this computer screen, including open applications, window titles, visible text, and interface elements.");
     reqPayload[QStringLiteral("stream")] = false;
+    reqPayload[QStringLiteral("keep_alive")] = QStringLiteral("15m");
+
+    QJsonObject opts;
+    opts[QStringLiteral("temperature")] = 0.2;
+    reqPayload[QStringLiteral("options")] = opts;
 
     QJsonArray imgs;
     imgs.append(base64Image);
@@ -925,6 +930,10 @@ void KityApplet::sendToOllama(const QString &userPrompt, const QString &injected
     opts[QStringLiteral("num_thread")] = readConfigInt(QStringLiteral("ollamaNumThread"), 6);
     opts[QStringLiteral("num_predict")] = readConfigInt(QStringLiteral("ollamaNumPredict"), 384);
 
+    m_lastOllamaPrompt = userPrompt;
+    m_lastOllamaContext = injectedContext;
+    m_lastOllamaImage = base64Image;
+
     m_currentChatMessages = chatMsgs;
     m_pendingToolCalls = QJsonArray();
     m_isToolFollowUpRound = false;
@@ -935,7 +944,8 @@ void KityApplet::sendToOllama(const QString &userPrompt, const QString &injected
     reqPayload[QStringLiteral("messages")] = chatMsgs;
     reqPayload[QStringLiteral("stream")] = true;
     reqPayload[QStringLiteral("options")] = opts;
-    reqPayload[QStringLiteral("keep_alive")] = readConfigString(QStringLiteral("ollamaKeepAlive"), QStringLiteral("24h"));
+    const QString keepAlive = readConfigString(QStringLiteral("ollamaKeepAlive"), QStringLiteral("15m"));
+    reqPayload[QStringLiteral("keep_alive")] = keepAlive.isEmpty() ? QStringLiteral("15m") : keepAlive;
 
     if (!hasVision) {
         const QJsonArray tools = buildAvailableTools(userPrompt);
@@ -947,6 +957,8 @@ void KityApplet::sendToOllama(const QString &userPrompt, const QString &injected
     const QUrl chatUrl(resolveOllamaUrl() + QStringLiteral("/api/chat"));
     QNetworkRequest req(chatUrl);
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    const int timeoutMs = readConfigInt(QStringLiteral("ollamaTimeoutMs"), 20000);
+    req.setTransferTimeout(timeoutMs);
 
     if (m_currentOllamaReply) {
         m_currentOllamaReply->abort();
@@ -1015,6 +1027,7 @@ void KityApplet::handleOllamaFinished()
     const bool error = (m_currentOllamaReply->error() != QNetworkReply::NoError &&
                         m_currentOllamaReply->error() != QNetworkReply::OperationCanceledError);
 
+    const QNetworkReply::NetworkError errCode = m_currentOllamaReply->error();
     const QString httpError = m_currentOllamaReply->errorString();
     fprintf(stderr, "KityApplet::handleOllamaFinished: error=%d httpError=%s streamLen=%lld\n",
             error, qPrintable(httpError), (long long)m_streamingText.length());
@@ -1023,7 +1036,24 @@ void KityApplet::handleOllamaFinished()
     m_currentOllamaReply = nullptr;
 
     if (error) {
-        setState(QStringLiteral("error"), i18n("Error al comunicarse con Ollama: %1", httpError));
+        // Fallback elegante a Gemini si Ollama no está disponible localmente o agotó tiempo
+        const QString geminiKey = resolveGeminiApiKey();
+        if (!geminiKey.isEmpty() && !m_lastOllamaPrompt.isEmpty() && m_streamingText.isEmpty()) {
+            qWarning() << "Kity: Ollama unreachable or timed out (" << httpError << "). Executing graceful fallback to Google Gemini.";
+            setState(QStringLiteral("thinking"), i18n("Ollama no responde. Consultando con Google Gemini…"));
+            sendToGemini(m_lastOllamaPrompt, m_lastOllamaContext, m_lastOllamaImage);
+            return;
+        }
+
+        QString friendlyErr;
+        if (errCode == QNetworkReply::ConnectionRefusedError || errCode == QNetworkReply::HostNotFoundError) {
+            friendlyErr = i18n("Ollama no está en ejecución. Inícialo con 'ollama serve' o revisa la URL.");
+        } else if (errCode == QNetworkReply::TimeoutError) {
+            friendlyErr = i18n("Tiempo de espera agotado al consultar a Ollama.");
+        } else {
+            friendlyErr = i18n("Error al comunicarse con Ollama: %1", httpError);
+        }
+        setState(QStringLiteral("error"), friendlyErr);
         return;
     }
 
@@ -1267,7 +1297,8 @@ void KityApplet::sendOllamaToolFollowUp(const QJsonArray &messages)
     reqPayload[QStringLiteral("messages")] = messages;
     reqPayload[QStringLiteral("stream")] = true;
     reqPayload[QStringLiteral("options")] = opts;
-    reqPayload[QStringLiteral("keep_alive")] = readConfigString(QStringLiteral("ollamaKeepAlive"), QStringLiteral("24h"));
+    const QString keepAlive = readConfigString(QStringLiteral("ollamaKeepAlive"), QStringLiteral("15m"));
+    reqPayload[QStringLiteral("keep_alive")] = keepAlive.isEmpty() ? QStringLiteral("15m") : keepAlive;
 
     const QJsonArray tools = buildAvailableTools(QString());
     if (!tools.isEmpty()) {
@@ -1277,6 +1308,8 @@ void KityApplet::sendOllamaToolFollowUp(const QJsonArray &messages)
     const QUrl chatUrl(resolveOllamaUrl() + QStringLiteral("/api/chat"));
     QNetworkRequest req(chatUrl);
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    const int timeoutMs = readConfigInt(QStringLiteral("ollamaTimeoutMs"), 20000);
+    req.setTransferTimeout(timeoutMs);
 
     if (m_currentOllamaReply) {
         m_currentOllamaReply->abort();

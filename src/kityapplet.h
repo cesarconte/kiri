@@ -343,6 +343,9 @@ private:
     QNetworkReply *m_currentOllamaReply = nullptr;
     QNetworkReply *m_currentGeminiReply = nullptr;
     QList<QPair<QString, QString>> m_geminiSources;
+    QString m_lastOllamaPrompt;
+    QString m_lastOllamaContext;
+    QString m_lastOllamaImage;
     QJsonArray m_currentChatMessages;
     QJsonArray m_pendingToolCalls;
     bool m_isToolFollowUpRound = false;
