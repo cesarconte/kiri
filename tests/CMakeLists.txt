@@ -33,3 +33,15 @@ target_link_libraries(test_mobileserver PRIVATE
     Qt6::Test
 )
 add_test(NAME test_mobileserver COMMAND test_mobileserver)
+
+add_executable(test_kdictationclient
+    test_kdictationclient.cpp
+    ${CMAKE_SOURCE_DIR}/src/kdictationclient.cpp
+)
+target_include_directories(test_kdictationclient PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_kdictationclient PRIVATE
+    Qt6::Core
+    Qt6::DBus
+    Qt6::Test
+)
+add_test(NAME test_kdictationclient COMMAND test_kdictationclient)

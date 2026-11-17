@@ -13,6 +13,7 @@ import QtQuick.Dialogs as QtDialogs
 
 import org.kde.kcmutils as KCMUtils
 import org.kde.kirigami as Kirigami
+import org.cesar.kity 1.0
 
 KCMUtils.SimpleKCM {
     id: configRoot
@@ -28,6 +29,7 @@ KCMUtils.SimpleKCM {
     property alias cfg_vadEnabled: vadEnabledCheck.checked
     property alias cfg_vadSilenceTimeoutMs: vadSilenceSpinBox.value
     property alias cfg_autoListenOnActivate: autoListenCheck.checked
+    property alias cfg_useCentralizedVoice: centralizedVoiceCheck.checked
     property string cfg_whisperLanguage: "es"
     property alias cfg_whisperModelPath: whisperModelField.text
     property alias cfg_piperVoicePath: piperVoiceField.text
@@ -96,8 +98,23 @@ KCMUtils.SimpleKCM {
         xhr.send();
     }
 
+    KDictationClient {
+        id: kdictationClient
+    }
+
+    Timer {
+        id: kdictationCheckTimer
+        interval: 3000
+        running: true
+        repeat: true
+        onTriggered: kdictationClient.checkAvailability()
+    }
+
+    readonly property bool isKDictationAvailable: kdictationClient.isServiceAvailable
+
     Component.onCompleted: {
         fetchOllamaModels();
+        kdictationClient.checkAvailability();
     }
 
     // =========================================================================
@@ -257,6 +274,45 @@ KCMUtils.SimpleKCM {
             id: autoListenCheck
             Kirigami.FormData.label: i18n("Al abrir el popup:")
             text: i18n("Empezar a escuchar por micrófono inmediatamente al abrir Kity")
+        }
+
+        QQC2.CheckBox {
+            id: centralizedVoiceCheck
+            Kirigami.FormData.label: i18n("Voz centralizada:")
+            text: i18n("Usar motor de voz centralizado (KDictation vía D-Bus) [Recomendado]")
+            QQC2.ToolTip.text: i18n("Transcribe el audio a través de KDictation vía D-Bus para reducir la memoria RAM de plasmashell y garantizar máxima estabilidad")
+            QQC2.ToolTip.visible: hovered
+        }
+
+        RowLayout {
+            Kirigami.FormData.label: i18n("Estado de KDictation:")
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            Kirigami.Icon {
+                source: configRoot.isKDictationAvailable ? "emblem-checked" : "state-warning"
+                implicitWidth: Kirigami.Units.iconSizes.small
+                implicitHeight: Kirigami.Units.iconSizes.small
+            }
+
+            QQC2.Label {
+                Layout.fillWidth: true
+                text: configRoot.isKDictationAvailable
+                    ? i18n("KDictation detectado y activo en D-Bus (org.cesar.kdictation)")
+                    : i18n("KDictation no detectado en D-Bus — Kity usará el motor local embebido (Fallback Transparente)")
+                font: Kirigami.Theme.smallFont
+                opacity: 0.9
+                color: configRoot.isKDictationAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.neutralTextColor
+                wrapMode: Text.WordWrap
+            }
+
+            QQC2.Button {
+                icon.name: "view-refresh-symbolic"
+                text: i18n("Comprobar")
+                QQC2.ToolTip.text: i18n("Consultar disponibilidad de KDictation en D-Bus")
+                QQC2.ToolTip.visible: hovered
+                onClicked: kdictationClient.checkAvailability()
+            }
         }
 
         RowLayout {

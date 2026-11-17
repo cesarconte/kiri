@@ -17,6 +17,8 @@ plasma_add_applet(org.cesar.kity
         pipewirerecorder.h
         whisperengine.cpp
         whisperengine.h
+        kdictationclient.cpp
+        kdictationclient.h
         mathnotes.cpp
         mathnotes.h
         mobile/mobileserver.cpp

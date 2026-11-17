@@ -82,6 +82,10 @@
       <label>Play Siri-style acoustic confirmation tones when starting and stopping voice listening</label>
       <default>true</default>
     </entry>
+    <entry name="useCentralizedVoice" type="Bool">
+      <label>Usar motor de voz centralizado (KDictation vía D-Bus) [Recomendado]</label>
+      <default>true</default>
+    </entry>
     <entry name="defaultEmailClient" type="String">
       <label>Default email service for composing emails: proton or gmail</label>
       <default>proton</default>

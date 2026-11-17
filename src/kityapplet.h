@@ -24,6 +24,7 @@
 
 #include "pipewirerecorder.h"
 #include "whisperengine.h"
+#include "kdictationclient.h"
 
 class KityMobileServer;
 
@@ -49,6 +50,8 @@ class KityApplet : public Plasma::Applet
     Q_PROPERTY(QString panelIconStyle READ panelIconStyle WRITE setPanelIconStyle NOTIFY panelIconStyleChanged)
     Q_PROPERTY(bool vadEnabled READ vadEnabled WRITE setVadEnabled NOTIFY vadEnabledChanged)
     Q_PROPERTY(bool earconsEnabled READ earconsEnabled WRITE setEarconsEnabled NOTIFY earconsEnabledChanged)
+    Q_PROPERTY(bool useCentralizedVoice READ useCentralizedVoice WRITE setUseCentralizedVoice NOTIFY useCentralizedVoiceChanged)
+    Q_PROPERTY(bool kdictationAvailable READ isKDictationAvailable NOTIFY kdictationAvailableChanged)
     Q_PROPERTY(QString ollamaModel READ resolveOllamaModel WRITE setOllamaModel NOTIFY ollamaModelChanged)
     Q_PROPERTY(QString mobilePairingUrl READ mobilePairingUrl NOTIFY mobilePairingUrlChanged)
 
@@ -106,6 +109,10 @@ public:
     void setVadEnabled(bool enabled);
     bool earconsEnabled() const;
     void setEarconsEnabled(bool enabled);
+    bool useCentralizedVoice() const;
+    void setUseCentralizedVoice(bool enabled);
+    bool isKDictationAvailable() const;
+    Q_INVOKABLE bool checkKDictationAvailable();
 
     // Q_INVOKABLE Methods
     Q_INVOKABLE void sendMessage(const QString &text, bool fromVoice = false);
@@ -181,6 +188,8 @@ Q_SIGNALS:
     void speechOutputModeChanged();
     void vadEnabledChanged();
     void earconsEnabledChanged();
+    void useCentralizedVoiceChanged();
+    void kdictationAvailableChanged();
     void ollamaModelChanged();
 
 private Q_SLOTS:
@@ -191,6 +200,9 @@ private Q_SLOTS:
     void onWakeWordAudioChunk(const QByteArray &chunk, double level);
     void onWhisperTranscriptionReady(const QString &rawTranscript);
     void onWhisperTranscriptionFailed(const QString &errorMessage);
+    void onCentralizedTranscriptionReady(const QString &rawTranscript);
+    void onCentralizedTranscriptionFailed(const QString &errorMessage);
+    void onCentralizedSTTTimeout();
 
 private:
     void setState(const QString &newState, const QString &newStatus = QString());
@@ -352,6 +364,10 @@ private:
     std::unique_ptr<PipeWireRecorder> m_voiceRecorder;
     std::unique_ptr<PipeWireRecorder> m_wakeWordRecorder;
     std::unique_ptr<WhisperEngine> m_whisperEngine;
+    std::unique_ptr<KDictationClient> m_kdictationClient;
+    QTimer *m_centralizedFallbackTimer = nullptr;
+    bool m_waitingForCentralizedSTT = false;
+    quint64 m_sttSessionId = 0;
     QByteArray m_recordedPcmBuffer;
     QElapsedTimer m_recordingDurationTimer;
     QProcess *m_ttsProcess = nullptr;

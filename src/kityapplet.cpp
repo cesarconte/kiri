@@ -20,6 +20,7 @@
 #include <KService>
 
 #include <QBuffer>
+#include <QQmlEngine>
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QCursor>
@@ -84,6 +85,25 @@ KityApplet::KityApplet(QObject *parent, const KPluginMetaData &data, const QVari
         m_whisperAvailable = false;
         Q_EMIT readinessChanged();
     });
+
+    m_kdictationClient = std::make_unique<KDictationClient>(this);
+    connect(m_kdictationClient.get(), &KDictationClient::transcriptionReady,
+            this, &KityApplet::onCentralizedTranscriptionReady);
+    connect(m_kdictationClient.get(), &KDictationClient::transcriptionFailed,
+            this, &KityApplet::onCentralizedTranscriptionFailed);
+    connect(m_kdictationClient.get(), &KDictationClient::availabilityChanged,
+            this, &KityApplet::kdictationAvailableChanged);
+
+    m_centralizedFallbackTimer = new QTimer(this);
+    m_centralizedFallbackTimer->setSingleShot(true);
+    connect(m_centralizedFallbackTimer, &QTimer::timeout,
+            this, &KityApplet::onCentralizedSTTTimeout);
+
+    static bool s_qmlTypesRegistered = false;
+    if (!s_qmlTypesRegistered) {
+        qmlRegisterType<KDictationClient>("org.cesar.kity", 1, 0, "KDictationClient");
+        s_qmlTypesRegistered = true;
+    }
 }
 
 KityApplet::~KityApplet()
@@ -91,6 +111,9 @@ KityApplet::~KityApplet()
     stopRecording();
     stopSpeaking();
     stopWakeWordListener();
+    if (m_centralizedFallbackTimer && m_centralizedFallbackTimer->isActive()) {
+        m_centralizedFallbackTimer->stop();
+    }
     if (m_currentOllamaReply) {
         m_currentOllamaReply->abort();
         m_currentOllamaReply->deleteLater();
@@ -121,13 +144,22 @@ void KityApplet::init()
     checkReadiness();
     refreshModels();
 
-    // Precargar modelo Whisper en RAM en segundo plano (Warm Model)
-    const QString whisperModel = resolveWhisperModelPath();
-    if (!whisperModel.isEmpty()) {
-        m_whisperEngine->loadModelAsync(whisperModel);
+    m_wakeWordEnabled = readConfigBool(QStringLiteral("wakeWordEnabled"), true);
+
+    // Precargar modelo Whisper en RAM solo si KDictation no está activo o si el usuario
+    // desactivó el servicio centralizado, o si wake-word requiere evaluación pasiva local.
+    const bool centralizedEnabled = useCentralizedVoice();
+    const bool kdictationReady = m_kdictationClient && m_kdictationClient->isServiceAvailable();
+
+    if (!centralizedEnabled || !kdictationReady || m_wakeWordEnabled) {
+        const QString whisperModel = resolveWhisperModelPath();
+        if (!whisperModel.isEmpty()) {
+            m_whisperEngine->loadModelAsync(whisperModel);
+        }
+    } else {
+        qInfo() << "Kity: Servicio KDictation activo en D-Bus. Se omite precarga de Whisper en RAM de plasmashell.";
     }
 
-    m_wakeWordEnabled = readConfigBool(QStringLiteral("wakeWordEnabled"), true);
     if (m_wakeWordEnabled) {
         startWakeWordListener();
     }
@@ -524,14 +556,51 @@ void KityApplet::setEarconsEnabled(bool enabled)
     Q_EMIT earconsEnabledChanged();
 }
 
+bool KityApplet::useCentralizedVoice() const
+{
+    return readConfigBool(QStringLiteral("useCentralizedVoice"), true);
+}
+
+void KityApplet::setUseCentralizedVoice(bool enabled)
+{
+    auto kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+    kityrc->group(QStringLiteral("General")).writeEntry(QStringLiteral("useCentralizedVoice"), enabled);
+    kityrc->sync();
+    KConfigGroup cfg = config();
+    cfg.group(QStringLiteral("General")).writeEntry(QStringLiteral("useCentralizedVoice"), enabled);
+    cfg.sync();
+    Q_EMIT useCentralizedVoiceChanged();
+}
+
+bool KityApplet::isKDictationAvailable() const
+{
+    return m_kdictationClient && m_kdictationClient->isServiceAvailable();
+}
+
+bool KityApplet::checkKDictationAvailable()
+{
+    if (!m_kdictationClient) {
+        return false;
+    }
+    const bool available = m_kdictationClient->checkAvailability();
+    Q_EMIT kdictationAvailableChanged();
+    return available;
+}
+
 // =========================================================================
 // Health & Readiness
 // =========================================================================
 
 void KityApplet::checkReadiness()
 {
-    // 1. Whisper check (Warm Native Model in RAM)
-    const bool hasWhisperModel = (m_whisperEngine && m_whisperEngine->isModelLoaded()) || !resolveWhisperModelPath().isEmpty();
+    // 0. KDictation D-Bus check
+    if (m_kdictationClient) {
+        m_kdictationClient->checkAvailability();
+    }
+
+    // 1. STT / Whisper check (KDictation centralizado o Warm Native Model en RAM)
+    const bool centralizedReady = m_kdictationClient && m_kdictationClient->isServiceAvailable();
+    const bool hasWhisperModel = centralizedReady || (m_whisperEngine && m_whisperEngine->isModelLoaded()) || !resolveWhisperModelPath().isEmpty();
     const bool newWhisperAvailable = hasWhisperModel;
 
     // 2. TTS engine check (Google Cloud, Edge Neural, Kokoro-82M, Piper)
@@ -1619,6 +1688,11 @@ void KityApplet::handleGeminiFinished()
 
 void KityApplet::stopGeneration()
 {
+    if (m_centralizedFallbackTimer && m_centralizedFallbackTimer->isActive()) {
+        m_centralizedFallbackTimer->stop();
+    }
+    m_waitingForCentralizedSTT = false;
+
     if (m_currentOllamaReply) {
         m_currentOllamaReply->abort();
         m_currentOllamaReply->deleteLater();
@@ -2410,7 +2484,9 @@ void KityApplet::reloadConfig()
     Q_EMIT speechOutputModeChanged();
     Q_EMIT vadEnabledChanged();
     Q_EMIT earconsEnabledChanged();
+    Q_EMIT useCentralizedVoiceChanged();
     Q_EMIT ollamaModelChanged();
+    checkKDictationAvailable();
     checkReadiness();
     refreshModels();
 }
@@ -2661,14 +2737,35 @@ void KityApplet::onVoiceAudioChunkReady(const QByteArray &chunk, double level)
 void KityApplet::runSpeechTranscription(const QByteArray &pcmData)
 {
     const QByteArray data = pcmData.isEmpty() ? m_recordedPcmBuffer : pcmData;
+    m_recordedPcmBuffer = data;
+
     const QString engine = resolveSttEngine();
     const QString apiKey = resolveGeminiApiKey();
 
     if (engine == QLatin1String("gemini") && !apiKey.isEmpty()) {
         runGeminiAudioTranscription(data);
-    } else {
-        runWhisperTranscription(data);
+        return;
     }
+
+    // Pipeline Híbrido con KDictation centralizado vía D-Bus
+    const bool centralizedEnabled = useCentralizedVoice();
+    const bool kdictationReady = m_kdictationClient && m_kdictationClient->checkAvailability();
+
+    if (centralizedEnabled && kdictationReady) {
+        m_waitingForCentralizedSTT = true;
+        ++m_sttSessionId;
+
+        setState(QStringLiteral("transcribing"), i18n("Transcribiendo con KDictation (D-Bus)…"));
+
+        // Timeout corto de 500 ms: si KDictation no responde a tiempo, conmutar a Whisper local
+        m_centralizedFallbackTimer->start(500);
+
+        m_kdictationClient->transcribePcmAsync(data, resolveWhisperLanguage());
+        return;
+    }
+
+    // Fallback inmediato a WhisperEngine local en RAM
+    runWhisperTranscription(data);
 }
 
 void KityApplet::runGeminiAudioTranscription(const QString &wavPath)
@@ -2838,6 +2935,47 @@ void KityApplet::onWhisperTranscriptionReady(const QString &rawTranscript)
 void KityApplet::onWhisperTranscriptionFailed(const QString &errorMessage)
 {
     setState(QStringLiteral("idle"), errorMessage);
+}
+
+void KityApplet::onCentralizedTranscriptionReady(const QString &rawTranscript)
+{
+    if (!m_waitingForCentralizedSTT) {
+        return;
+    }
+
+    m_waitingForCentralizedSTT = false;
+    if (m_centralizedFallbackTimer && m_centralizedFallbackTimer->isActive()) {
+        m_centralizedFallbackTimer->stop();
+    }
+
+    qInfo() << "Kity: Transcripción recibida exitosamente desde KDictation vía D-Bus:" << rawTranscript;
+    onWhisperTranscriptionReady(rawTranscript);
+}
+
+void KityApplet::onCentralizedTranscriptionFailed(const QString &errorMessage)
+{
+    if (!m_waitingForCentralizedSTT) {
+        return;
+    }
+
+    m_waitingForCentralizedSTT = false;
+    if (m_centralizedFallbackTimer && m_centralizedFallbackTimer->isActive()) {
+        m_centralizedFallbackTimer->stop();
+    }
+
+    qWarning() << "Kity: Error en llamada a KDictation (" << errorMessage << "). Activando fallback local a WhisperEngine…";
+    runWhisperTranscription(m_recordedPcmBuffer);
+}
+
+void KityApplet::onCentralizedSTTTimeout()
+{
+    if (!m_waitingForCentralizedSTT) {
+        return;
+    }
+
+    m_waitingForCentralizedSTT = false;
+    qInfo() << "Kity: Timeout de 500 ms esperando a KDictation D-Bus. Conmutando transparentemente a WhisperEngine local…";
+    runWhisperTranscription(m_recordedPcmBuffer);
 }
 
 QString KityApplet::cleanWhisperOutput(const QString &raw)
