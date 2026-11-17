@@ -2615,15 +2615,6 @@ QString KityApplet::resolvePreferredCaptureSource(bool *isBluetoothOut) const
     return !alsaSource.isEmpty() ? alsaSource : fallbackSource;
 }
 
-QString KityApplet::resolveAudioRecordingPath() const
-{
-    QString baseDir = QStringLiteral("/dev/shm");
-    if (!QDir(baseDir).exists() || !QFileInfo(baseDir).isWritable()) {
-        baseDir = QDir::tempPath();
-    }
-    return baseDir + QStringLiteral("/kity_rec_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
-}
-
 void KityApplet::startRecording()
 {
     if (m_state == QLatin1String("listening")) {
@@ -2768,21 +2759,6 @@ void KityApplet::runSpeechTranscription(const QByteArray &pcmData)
     runWhisperTranscription(data);
 }
 
-void KityApplet::runGeminiAudioTranscription(const QString &wavPath)
-{
-    QFile file(wavPath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        runWhisperTranscription(wavPath);
-        return;
-    }
-    const QByteArray audioData = file.readAll();
-    file.close();
-
-    // Extraer datos PCM descartando cabecera RIFF de 44 bytes si la tiene
-    const QByteArray pcm = audioData.size() > 44 ? audioData.mid(44) : audioData;
-    runGeminiAudioTranscription(pcm);
-}
-
 void KityApplet::runGeminiAudioTranscription(const QByteArray &pcmData)
 {
     if (pcmData.size() < 1024) {
@@ -2902,22 +2878,6 @@ void KityApplet::runWhisperTranscription(const QByteArray &pcmData)
     m_whisperEngine->transcribeAsync(pcmData, resolveWhisperLanguage());
 }
 
-void KityApplet::runWhisperTranscription(const QString &targetWavPath)
-{
-    const QString wavPath = targetWavPath.isEmpty() ? m_currentRecordingPath : targetWavPath;
-    QFile file(wavPath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        setState(QStringLiteral("idle"), i18n("No se detectó audio de voz."));
-        return;
-    }
-    const QByteArray audioData = file.readAll();
-    file.close();
-    QFile::remove(wavPath);
-
-    const QByteArray pcm = audioData.size() > 44 ? audioData.mid(44) : audioData;
-    runWhisperTranscription(pcm);
-}
-
 void KityApplet::onWhisperTranscriptionReady(const QString &rawTranscript)
 {
     QString cleaned = cleanWhisperOutput(rawTranscript);
@@ -2949,7 +2909,15 @@ void KityApplet::onCentralizedTranscriptionReady(const QString &rawTranscript)
     }
 
     qInfo() << "Kity: Transcripción recibida exitosamente desde KDictation vía D-Bus:" << rawTranscript;
-    onWhisperTranscriptionReady(rawTranscript);
+
+    const QString cleaned = rawTranscript.trimmed();
+    if (cleaned.isEmpty()) {
+        setState(QStringLiteral("idle"), i18n("No se reconoció ninguna frase."));
+        return;
+    }
+
+    Q_EMIT transcriptionReady(cleaned);
+    sendMessage(cleaned, true);
 }
 
 void KityApplet::onCentralizedTranscriptionFailed(const QString &errorMessage)
@@ -3064,13 +3032,17 @@ QString KityApplet::removeFillerWords(const QString &text, const QString &lang)
 
 void KityApplet::transcribeAndExecuteAudio(const QString &wavPath)
 {
-    const QString engine = resolveSttEngine();
-    const QString apiKey = resolveGeminiApiKey();
-    if (engine == QLatin1String("gemini") && !apiKey.isEmpty()) {
-        runGeminiAudioTranscription(wavPath);
+    QFile file(wavPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        setState(QStringLiteral("idle"), i18n("No se detectó audio de voz."));
         return;
     }
-    runWhisperTranscription(wavPath);
+    const QByteArray audioData = file.readAll();
+    file.close();
+    QFile::remove(wavPath);
+
+    const QByteArray pcm = audioData.size() > 44 ? audioData.mid(44) : audioData;
+    runSpeechTranscription(pcm);
 }
 
 void KityApplet::transcribeAndExecuteAudio(const QByteArray &pcmData)
@@ -3796,20 +3768,6 @@ void KityApplet::checkWakeWordTranscription(const QByteArray &pcmData)
     }
 }
 
-void KityApplet::checkWakeWordTranscription(const QString &wavPath)
-{
-    QFile file(wavPath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        m_wakeWordEvaluating = false;
-        return;
-    }
-    const QByteArray audioData = file.readAll();
-    file.close();
-    QFile::remove(wavPath);
-
-    const QByteArray pcm = audioData.size() > 44 ? audioData.mid(44) : audioData;
-    checkWakeWordTranscription(pcm);
-}
 
 // =========================================================================
 // System Actions & Personal Assistant Capabilities

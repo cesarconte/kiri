@@ -316,7 +316,7 @@ KCMUtils.SimpleKCM {
         }
 
         RowLayout {
-            Kirigami.FormData.label: i18n("Modelo Whisper (.bin):")
+            Kirigami.FormData.label: i18n("Whisper local (Fallback):")
             Layout.fillWidth: true
             Layout.minimumWidth: 0
 
@@ -325,13 +325,13 @@ KCMUtils.SimpleKCM {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
                 Layout.preferredWidth: 0
-                placeholderText: i18n("Detección automática en ~/.local/share/kity/models/")
+                placeholderText: i18n("Respaldo local automático en ~/.local/share/kity/models/")
             }
 
             QQC2.Button {
                 icon.name: "document-open"
                 text: i18n("Examinar…")
-                QQC2.ToolTip.text: i18n("Seleccionar archivo de modelo Whisper GGML (.bin)")
+                QQC2.ToolTip.text: i18n("Seleccionar modelo Whisper GGML (.bin) de respaldo local cuando KDictation esté inactivo")
                 QQC2.ToolTip.visible: hovered
                 onClicked: whisperFileDialog.open()
             }

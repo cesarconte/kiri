@@ -219,13 +219,10 @@ private:
     // Speech & Audio
     QString resolveSttEngine() const;
     void runSpeechTranscription(const QByteArray &pcmData = QByteArray());
-    void runGeminiAudioTranscription(const QString &wavPath);
     void runGeminiAudioTranscription(const QByteArray &pcmData);
-    void runWhisperTranscription(const QString &wavPath = QString());
     void runWhisperTranscription(const QByteArray &pcmData);
     void transcribeAndExecuteAudio(const QString &wavPath);
     void transcribeAndExecuteAudio(const QByteArray &pcmData);
-    void checkWakeWordTranscription(const QString &wavPath);
     void checkWakeWordTranscription(const QByteArray &pcmData);
     void enqueueSentenceForSpeech(const QString &sentence);
     void playNextTtsQueueItem();
@@ -238,7 +235,6 @@ private:
     void stopVad();
     bool isPipeWireEchoCancelAvailable() const;
     QString resolvePreferredCaptureSource(bool *isBluetoothOut = nullptr) const;
-    QString resolveAudioRecordingPath() const;
     QByteArray createWavHeader(int dataSize, int sampleRate, int channels, int bitsPerSample) const;
 
     // Config readers
@@ -382,7 +378,6 @@ private:
 
     QElapsedTimer m_speechSilenceTimer;
     bool m_speechDetected = false;
-    QString m_currentRecordingPath;
     QString m_ttsSpeechBuffer;
     QQueue<QString> m_ttsQueue;
     bool m_isSpeakingSentence = false;
