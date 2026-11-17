@@ -23,6 +23,7 @@
 #include <memory>
 
 #include "pipewirerecorder.h"
+#include "whisperengine.h"
 
 class KityMobileServer;
 
@@ -188,6 +189,8 @@ private Q_SLOTS:
     void checkScheduledReminders();
     void onVoiceAudioChunkReady(const QByteArray &chunk, double level);
     void onWakeWordAudioChunk(const QByteArray &chunk, double level);
+    void onWhisperTranscriptionReady(const QString &rawTranscript);
+    void onWhisperTranscriptionFailed(const QString &errorMessage);
 
 private:
     void setState(const QString &newState, const QString &newStatus = QString());
@@ -343,6 +346,7 @@ private:
     bool m_isToolFollowUpRound = false;
     std::unique_ptr<PipeWireRecorder> m_voiceRecorder;
     std::unique_ptr<PipeWireRecorder> m_wakeWordRecorder;
+    std::unique_ptr<WhisperEngine> m_whisperEngine;
     QByteArray m_recordedPcmBuffer;
     QElapsedTimer m_recordingDurationTimer;
     QProcess *m_ttsProcess = nullptr;

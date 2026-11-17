@@ -70,6 +70,20 @@ KityApplet::KityApplet(QObject *parent, const KPluginMetaData &data, const QVari
 
     m_wakeWordRecorder = std::make_unique<PipeWireRecorder>(this);
     connect(m_wakeWordRecorder.get(), &PipeWireRecorder::audioChunkReady, this, &KityApplet::onWakeWordAudioChunk);
+
+    m_whisperEngine = std::make_unique<WhisperEngine>(this);
+    connect(m_whisperEngine.get(), &WhisperEngine::transcriptionReady, this, &KityApplet::onWhisperTranscriptionReady);
+    connect(m_whisperEngine.get(), &WhisperEngine::transcriptionFailed, this, &KityApplet::onWhisperTranscriptionFailed);
+    connect(m_whisperEngine.get(), &WhisperEngine::modelLoaded, this, [this](const QString &path) {
+        qInfo() << "Kity: Warm Whisper model loaded in RAM:" << path;
+        m_whisperAvailable = true;
+        Q_EMIT readinessChanged();
+    });
+    connect(m_whisperEngine.get(), &WhisperEngine::modelLoadFailed, this, [this](const QString &err) {
+        qWarning() << "Kity: Failed to load Whisper model in RAM:" << err;
+        m_whisperAvailable = false;
+        Q_EMIT readinessChanged();
+    });
 }
 
 KityApplet::~KityApplet()
@@ -106,6 +120,12 @@ void KityApplet::init()
 
     checkReadiness();
     refreshModels();
+
+    // Precargar modelo Whisper en RAM en segundo plano (Warm Model)
+    const QString whisperModel = resolveWhisperModelPath();
+    if (!whisperModel.isEmpty()) {
+        m_whisperEngine->loadModelAsync(whisperModel);
+    }
 
     m_wakeWordEnabled = readConfigBool(QStringLiteral("wakeWordEnabled"), true);
     if (m_wakeWordEnabled) {
@@ -510,11 +530,9 @@ void KityApplet::setEarconsEnabled(bool enabled)
 
 void KityApplet::checkReadiness()
 {
-    // 1. Whisper check
-    const bool hasWhisperCli = !QStandardPaths::findExecutable(QStringLiteral("whisper-cli")).isEmpty() ||
-                               !QStandardPaths::findExecutable(QStringLiteral("whisper")).isEmpty();
-    const bool hasWhisperModel = !resolveWhisperModelPath().isEmpty();
-    const bool newWhisperAvailable = hasWhisperCli && hasWhisperModel;
+    // 1. Whisper check (Warm Native Model in RAM)
+    const bool hasWhisperModel = (m_whisperEngine && m_whisperEngine->isModelLoaded()) || !resolveWhisperModelPath().isEmpty();
+    const bool newWhisperAvailable = hasWhisperModel;
 
     // 2. TTS engine check (Google Cloud, Edge Neural, Kokoro-82M, Piper)
     const bool hasPiperCli = !QStandardPaths::findExecutable(QStringLiteral("piper")).isEmpty();
@@ -2730,73 +2748,66 @@ void KityApplet::runGeminiAudioTranscription(const QByteArray &pcmData)
     });
 }
 
+void KityApplet::runWhisperTranscription(const QByteArray &pcmData)
+{
+    if (pcmData.size() < 1024) {
+        setState(QStringLiteral("idle"), i18n("No se detectó audio de voz."));
+        return;
+    }
+
+    if (!m_whisperEngine) {
+        setState(QStringLiteral("error"), i18n("Motor Whisper no inicializado."));
+        return;
+    }
+
+    if (!m_whisperEngine->isModelLoaded()) {
+        const QString modelPath = resolveWhisperModelPath();
+        if (modelPath.isEmpty() || !m_whisperEngine->loadModel(modelPath)) {
+            setState(QStringLiteral("error"), i18n("Modelo Whisper no disponible."));
+            return;
+        }
+    }
+
+    setState(QStringLiteral("transcribing"), i18n("Transcribiendo voz con Whisper (nativo RAM)…"));
+    m_whisperEngine->transcribeAsync(pcmData, resolveWhisperLanguage());
+}
+
 void KityApplet::runWhisperTranscription(const QString &targetWavPath)
 {
     const QString wavPath = targetWavPath.isEmpty() ? m_currentRecordingPath : targetWavPath;
-    QFileInfo fi(wavPath);
-    if (!fi.exists() || fi.size() < 1024) {
+    QFile file(wavPath);
+    if (!file.open(QIODevice::ReadOnly)) {
         setState(QStringLiteral("idle"), i18n("No se detectó audio de voz."));
-        QFile::remove(wavPath);
         return;
     }
+    const QByteArray audioData = file.readAll();
+    file.close();
+    QFile::remove(wavPath);
 
-    QString whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper-cli"));
-    if (whisperCli.isEmpty()) {
-        whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper"));
-    }
-    const QString modelPath = resolveWhisperModelPath();
-
-    if (whisperCli.isEmpty() || modelPath.isEmpty()) {
-        setState(QStringLiteral("error"), i18n("Whisper.cpp o su modelo no están instalados."));
-        QFile::remove(wavPath);
-        return;
-    }
-
-    setState(QStringLiteral("transcribing"), i18n("Transcribiendo voz con Whisper…"));
-
-    QProcess *whisperProc = new QProcess(this);
-    QStringList args;
-    args << QStringLiteral("-m") << modelPath
-         << QStringLiteral("-f") << wavPath
-         << QStringLiteral("-t") << QStringLiteral("6")
-         << QStringLiteral("--no-timestamps")
-         << QStringLiteral("-l") << resolveWhisperLanguage();
-
-    connect(whisperProc, &QProcess::finished, this, [this, whisperProc, wavPath](int exitCode, QProcess::ExitStatus) {
-        whisperProc->deleteLater();
-        QFile::remove(wavPath);
-
-        if (exitCode != 0) {
-            setState(QStringLiteral("error"), i18n("Error al transcribir el audio con Whisper."));
-            return;
-        }
-
-        QString text = QString::fromUtf8(whisperProc->readAllStandardOutput()).trimmed();
-        // Clean bracketed artifacts like [BLANK_AUDIO] or (música)
-        static const QRegularExpression bracketRegex(QStringLiteral("\\[.*?\\]|\\(.*?\\)"));
-        text.remove(bracketRegex);
-        text = text.trimmed();
-
-        if (text.isEmpty()) {
-            setState(QStringLiteral("idle"), i18n("No se reconoció ninguna frase."));
-            return;
-        }
-
-        Q_EMIT transcriptionReady(text);
-        sendMessage(text, true);
-    });
-
-    whisperProc->start(whisperCli, args);
+    const QByteArray pcm = audioData.size() > 44 ? audioData.mid(44) : audioData;
+    runWhisperTranscription(pcm);
 }
 
-void KityApplet::runWhisperTranscription(const QByteArray &pcmData)
+void KityApplet::onWhisperTranscriptionReady(const QString &rawTranscript)
 {
-    const QString tmpWav = resolveAudioRecordingPath();
-    if (!PipeWireRecorder::savePcmToWavFile(tmpWav, pcmData, 16000, 1)) {
-        setState(QStringLiteral("error"), i18n("Error al preparar buffer de audio para transcripción."));
+    QString text = rawTranscript.trimmed();
+
+    static const QRegularExpression bracketRegex(QStringLiteral("\\[.*?\\]|\\(.*?\\)"));
+    text.remove(bracketRegex);
+    text = text.trimmed();
+
+    if (text.isEmpty()) {
+        setState(QStringLiteral("idle"), i18n("No se reconoció ninguna frase."));
         return;
     }
-    runWhisperTranscription(tmpWav);
+
+    Q_EMIT transcriptionReady(text);
+    sendMessage(text, true);
+}
+
+void KityApplet::onWhisperTranscriptionFailed(const QString &errorMessage)
+{
+    setState(QStringLiteral("idle"), errorMessage);
 }
 
 void KityApplet::transcribeAndExecuteAudio(const QString &wavPath)
@@ -3483,77 +3494,69 @@ void KityApplet::onWakeWordAudioChunk(const QByteArray &chunk, double rms)
 
 void KityApplet::checkWakeWordTranscription(const QByteArray &pcmData)
 {
-    const QString tmpWav = QDir::tempPath() + QStringLiteral("/kity_ww_probe_%1.wav").arg(QDateTime::currentMSecsSinceEpoch());
-    if (!PipeWireRecorder::savePcmToWavFile(tmpWav, pcmData, 16000, 1)) {
+    if (pcmData.size() < 1024 || !m_whisperEngine) {
         m_wakeWordEvaluating = false;
         return;
     }
-    checkWakeWordTranscription(tmpWav);
+
+    if (!m_whisperEngine->isModelLoaded()) {
+        const QString modelPath = resolveWhisperModelPath();
+        if (modelPath.isEmpty() || !m_whisperEngine->loadModel(modelPath)) {
+            m_wakeWordEvaluating = false;
+            return;
+        }
+    }
+
+    // Inferencia rápida memoria-a-memoria en RAM con Warm Model (<60ms)
+    const QString rawTranscript = m_whisperEngine->transcribeSync(
+        pcmData,
+        QStringLiteral("es"),
+        QStringLiteral("Hola Kity, Oye Kity, Hey Kity"));
+
+    m_wakeWordEvaluating = false;
+    m_wakeWordCooldown.start();
+
+    QString cleaned = rawTranscript.trimmed();
+    static const QRegularExpression bracketRegex(QStringLiteral("\\[.*?\\]|\\(.*?\\)"));
+    cleaned.remove(bracketRegex);
+    cleaned = cleaned.trimmed().toLower();
+
+    qInfo() << "Kity: Wake word probe transcription result (Warm Engine):" << cleaned;
+
+    static const QRegularExpression wwRegex(
+        QStringLiteral("(?:hola|oye|hey|ok|quiti|kiti|quity|kitty)?\\s*(?:kity|kitty)|hola\\s*(?:quiti|kiti)"),
+        QRegularExpression::CaseInsensitiveOption);
+
+    if (cleaned.contains(wwRegex) || cleaned.contains(QStringLiteral("kity")) || cleaned.contains(QStringLiteral("kitty")) || cleaned.contains(QStringLiteral("quiti")) || cleaned.contains(QStringLiteral("kiti"))) {
+        qInfo() << "Kity: WAKE WORD ACTIVATED! ('" << cleaned << "')";
+
+        KNotification::event(QStringLiteral("notification"),
+                             i18n("Kity"),
+                             i18n("¡Hola! Te escucho…"));
+
+        stopWakeWordListener();
+        openUI();
+        Q_EMIT wakeWordTriggered();
+
+        QTimer::singleShot(250, this, [this]() {
+            startRecording();
+        });
+    }
 }
 
 void KityApplet::checkWakeWordTranscription(const QString &wavPath)
 {
-    QString whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper-cli"));
-    if (whisperCli.isEmpty()) {
-        whisperCli = QStandardPaths::findExecutable(QStringLiteral("whisper"));
-    }
-    const QString modelPath = resolveWhisperModelPath();
-
-    if (whisperCli.isEmpty() || modelPath.isEmpty()) {
-        QFile::remove(wavPath);
+    QFile file(wavPath);
+    if (!file.open(QIODevice::ReadOnly)) {
         m_wakeWordEvaluating = false;
         return;
     }
+    const QByteArray audioData = file.readAll();
+    file.close();
+    QFile::remove(wavPath);
 
-    QProcess *whisperProc = new QProcess(this);
-    QStringList args;
-    args << QStringLiteral("-m") << modelPath
-         << QStringLiteral("-f") << wavPath
-         << QStringLiteral("-l") << QStringLiteral("es")
-         << QStringLiteral("--prompt") << QStringLiteral("Hola Kity, Oye Kity, Hey Kity")
-         << QStringLiteral("--no-timestamps")
-         << QStringLiteral("-t") << QStringLiteral("6")
-         << QStringLiteral("-np");
-
-    const QString wavToClean = wavPath;
-
-    connect(whisperProc, &QProcess::finished, this, [this, whisperProc, wavToClean](int exitCode, QProcess::ExitStatus) {
-        whisperProc->deleteLater();
-        QFile::remove(wavToClean);
-        m_wakeWordEvaluating = false;
-        m_wakeWordCooldown.start();
-
-        if (exitCode != 0) return;
-
-        QString raw = QString::fromUtf8(whisperProc->readAllStandardOutput()).trimmed();
-        static const QRegularExpression bracketRegex(QStringLiteral("\\[.*?\\]|\\(.*?\\)"));
-        raw.remove(bracketRegex);
-        const QString cleaned = raw.trimmed().toLower();
-
-        qInfo() << "Kity: Wake word probe transcription result:" << cleaned;
-
-        static const QRegularExpression wwRegex(
-            QStringLiteral("(?:hola|oye|hey|ok|quiti|kiti|quity|kitty)?\\s*(?:kity|kitty)|hola\\s*(?:quiti|kiti)"),
-            QRegularExpression::CaseInsensitiveOption);
-
-        if (cleaned.contains(wwRegex) || cleaned.contains(QStringLiteral("kity")) || cleaned.contains(QStringLiteral("kitty")) || cleaned.contains(QStringLiteral("quiti")) || cleaned.contains(QStringLiteral("kiti"))) {
-            qInfo() << "Kity: WAKE WORD ACTIVATED! ('" << cleaned << "')";
-
-            KNotification::event(QStringLiteral("notification"),
-                                 i18n("Kity"),
-                                 i18n("¡Hola! Te escucho…"));
-
-            stopWakeWordListener();
-            openUI();
-            Q_EMIT wakeWordTriggered();
-
-            QTimer::singleShot(250, this, [this]() {
-                startRecording();
-            });
-        }
-    });
-
-    whisperProc->start(whisperCli, args);
+    const QByteArray pcm = audioData.size() > 44 ? audioData.mid(44) : audioData;
+    checkWakeWordTranscription(pcm);
 }
 
 // =========================================================================

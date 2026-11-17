@@ -46,6 +46,7 @@ find_package(PlasmaQuick REQUIRED)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
+pkg_check_modules(WHISPER REQUIRED whisper)
 
 add_subdirectory(src)
 

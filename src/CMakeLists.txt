@@ -15,6 +15,8 @@ plasma_add_applet(org.cesar.kity
         kityapplet.cpp
         pipewirerecorder.cpp
         pipewirerecorder.h
+        whisperengine.cpp
+        whisperengine.h
         mathnotes.cpp
         mathnotes.h
         mobile/mobileserver.cpp
@@ -43,6 +45,7 @@ target_include_directories(org.cesar.kity PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/mobile
     ${PIPEWIRE_INCLUDE_DIRS}
+    ${WHISPER_INCLUDE_DIRS}
 )
 
 target_link_libraries(org.cesar.kity PRIVATE
@@ -60,6 +63,7 @@ target_link_libraries(org.cesar.kity PRIVATE
     Plasma::Plasma
     Plasma::PlasmaQuick
     ${PIPEWIRE_LIBRARIES}
+    ${WHISPER_LIBRARIES}
 )
 
 # Install icons to standard hicolor icon directories
