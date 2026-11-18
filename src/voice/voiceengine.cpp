@@ -459,7 +459,8 @@ void VoiceEngine::runWhisperTranscription(const QByteArray &pcmData)
         }
     }
 
-    m_whisperEngine->transcribeAsync(pcmData, resolveWhisperLanguage());
+    const QString initialPrompt = QStringLiteral("Transcripción en español de España: Kity, Gijón, Oviedo, Avilés, Asturias, Madrid, Barcelona, CachyOS, KDE Plasma, Konsole, Wayland.");
+    m_whisperEngine->transcribeAsync(pcmData, resolveWhisperLanguage(), initialPrompt);
 }
 
 void VoiceEngine::onWhisperTranscriptionReady(const QString &rawTranscript)

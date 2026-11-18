@@ -26,6 +26,11 @@ QJsonObject WeatherTool::parameters() const
     cityProp[QStringLiteral("description")] = QStringLiteral("Nombre de la ciudad o localidad para consultar el tiempo. Si el usuario no menciona ciudad, omitir.");
     props[QStringLiteral("city")] = cityProp;
 
+    QJsonObject periodProp;
+    periodProp[QStringLiteral("type")] = QStringLiteral("string");
+    periodProp[QStringLiteral("description")] = QStringLiteral("Período temporal de la consulta meteorológica (ejemplos: 'mañana', 'pasado mañana', 'hoy'). Si es el tiempo actual, omitir.");
+    props[QStringLiteral("period")] = periodProp;
+
     QJsonObject params;
     params[QStringLiteral("type")] = QStringLiteral("object");
     params[QStringLiteral("properties")] = props;
@@ -36,11 +41,17 @@ QJsonObject WeatherTool::parameters() const
 QJsonObject WeatherTool::execute(const QJsonObject &arguments)
 {
     QString city = arguments.value(QStringLiteral("city")).toString().trimmed();
+    const QString period = arguments.value(QStringLiteral("period")).toString().trimmed();
     if (city.isEmpty()) {
         city = WeatherManager::instance().resolveDefaultLocation();
     }
 
-    const WeatherData data = WeatherManager::instance().fetchWeatherData(city);
+    QString weatherQuery = city;
+    if (!period.isEmpty()) {
+        weatherQuery = QStringLiteral("%1 para %2").arg(city, period);
+    }
+
+    const WeatherData data = WeatherManager::instance().fetchWeatherData(weatherQuery);
     const QString report = WeatherManager::instance().formatWeatherPromptContext(data);
 
     QJsonObject result;

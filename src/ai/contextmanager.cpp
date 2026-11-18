@@ -102,10 +102,11 @@ ContextResult ContextManager::gatherContext(const QString &userQuery)
     }
 
     // 2. Proactive Web Search grounding (only for real-time, current events or explicit web queries)
+    // If weather context was already matched, do not perform web search to avoid conflicting or redundant web links
     static const QRegularExpression webSignalRx(
         QStringLiteral("(202[4-9]|203\\d|noticias?|elecci[oó]n|elecciones|gobierno|precio|cotizaci[oó]n|estreno|actualidad|pr[oó]xim[ao]s?|hoy|ayer|mañana|suceso|falleci[oó]|resultado|partido|campe[oó]n|busca\\s+en|buscar\\s+en|b[uú]squeda\\s+web)"),
         QRegularExpression::CaseInsensitiveOption);
-    if (userQuery.contains(webSignalRx)) {
+    if (weatherCtx.isEmpty() && userQuery.contains(webSignalRx)) {
         const QString webCtx = fetchWebSearchContext(userQuery);
         if (!webCtx.isEmpty()) {
             res.context.append(webCtx + QStringLiteral("\n\n"));

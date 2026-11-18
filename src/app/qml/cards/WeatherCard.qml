@@ -81,10 +81,10 @@ Rectangle {
                 QQC2.Label {
                     id: liveLabel
                     anchors.centerIn: parent
-                    text: i18n("EN VIVO")
+                    text: root.cardData.isForecast ? (root.cardData.forecastPeriod ? root.cardData.forecastPeriod.toUpperCase() : i18n("PREVISIÓN")) : i18n("EN VIVO")
                     font.pixelSize: Math.max(9, Math.round(Kirigami.Theme.smallFont.pixelSize * 0.9))
                     font.weight: Font.Bold
-                    color: "#00e676"
+                    color: root.cardData.isForecast ? "#00bcd4" : "#00e676"
                 }
             }
         }
@@ -125,7 +125,9 @@ Rectangle {
                 }
 
                 QQC2.Label {
-                    text: i18n("Sensación térmica: %1°C", root.cardData.feelsLike !== undefined ? Math.round(Number(root.cardData.feelsLike)) : "--")
+                    text: root.cardData.isForecast
+                        ? i18n("Mín: %1°C · Máx: %2°C", Math.round(Number(root.cardData.tempMin || 0)), Math.round(Number(root.cardData.tempMax || 0)))
+                        : i18n("Sensación térmica: %1°C", root.cardData.feelsLike !== undefined ? Math.round(Number(root.cardData.feelsLike)) : "--")
                     font.pixelSize: Math.max(9, Math.round(Kirigami.Theme.smallFont.pixelSize * 0.9))
                     color: Kirigami.Theme.disabledTextColor
                 }

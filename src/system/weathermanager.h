@@ -24,6 +24,12 @@ struct WeatherData {
     QString iconName;
     bool isValid = false;
 
+    bool isForecast = false;
+    QString forecastPeriod;
+    double tempMax = 0.0;
+    double tempMin = 0.0;
+    int precipProbability = 0;
+
     QVariantMap toMap() const;
 };
 

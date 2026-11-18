@@ -404,7 +404,17 @@ void LlmEngine::sendToOllama(const QString &userPrompt,
                                || modelLower.contains(QStringLiteral("1b"))
                                || modelLower.contains(QStringLiteral("3b"))
                                || modelLower.contains(QStringLiteral("mini"));
-        const QJsonArray tools = ToolRegistry::instance().getToolDefinitions(isLightModel, userPrompt);
+        QJsonArray tools = ToolRegistry::instance().getToolDefinitions(isLightModel, userPrompt);
+        // If weather data is already proactively injected in injectedContext, remove get_weather to avoid redundant tool-call roundtrip
+        if (injectedContext.contains(QStringLiteral("meteorol"), Qt::CaseInsensitive)) {
+            for (auto it = tools.begin(); it != tools.end(); ) {
+                if (it->toObject().value(QStringLiteral("function")).toObject().value(QStringLiteral("name")).toString() == QLatin1String("get_weather")) {
+                    it = tools.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
         if (!tools.isEmpty()) {
             reqPayload[QStringLiteral("tools")] = tools;
         }

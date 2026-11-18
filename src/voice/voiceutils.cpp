@@ -32,7 +32,10 @@ QString VoiceUtils::cleanWhisperOutput(const QString &raw)
             keptLines.append(line);
         }
     }
-    return keptLines.join(QLatin1Char(' ')).simplified();
+    QString res = keptLines.join(QLatin1Char(' ')).simplified();
+    static const QRegularExpression jijonRe(QStringLiteral(R"(\b[Jj]ij[oó]n\b)"));
+    res.replace(jijonRe, QStringLiteral("Gijón"));
+    return res;
 }
 
 QString VoiceUtils::removeFillerWords(const QString &text, const QString &lang)

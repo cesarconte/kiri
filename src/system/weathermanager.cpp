@@ -34,6 +34,11 @@ QVariantMap WeatherData::toMap() const
     data[QStringLiteral("precipitation")] = precipitation;
     data[QStringLiteral("wmoCode")] = wmoCode;
     data[QStringLiteral("iconName")] = iconName;
+    data[QStringLiteral("isForecast")] = isForecast;
+    data[QStringLiteral("forecastPeriod")] = forecastPeriod;
+    data[QStringLiteral("tempMax")] = tempMax;
+    data[QStringLiteral("tempMin")] = tempMin;
+    data[QStringLiteral("precipProbability")] = precipProbability;
     return data;
 }
 
@@ -113,11 +118,21 @@ QString WeatherManager::wmoCodeToIcon(int code)
 
 QString WeatherManager::extractCityFromQuery(const QString &query) const
 {
+    QString q = query;
+    // Normalize Whisper phonetics: Jijón -> Gijón
+    q.replace(QRegularExpression(QStringLiteral(R"(\b[Jj]ij[oó]n\b)")), QStringLiteral("Gijón"));
+
+    // Remove common weather request prefixes so they don't capture "para" or prepositions
+    q.remove(QRegularExpression(QStringLiteral(R"(^(?:dime\s+)?(?:cu[aá]l\s+es\s+la\s+predicci[oó]n\s+(?:del\s+tiempo|meteorol[oó]gica)|predicci[oó]n\s+del\s+tiempo|previsi[oó]n\s+(?:del\s+tiempo|meteorol[oó]gica)|qu[eé]\s+tiempo\s+(?:hace|har[aá])|el\s+tiempo(?:\s+que\s+har[aá])?|temperatura|clima)\s+)"), QRegularExpression::CaseInsensitiveOption));
+
+    // Remove temporal expressions ("para mañana", "mañana", "para hoy", "hoy", etc.)
+    q.remove(QRegularExpression(QStringLiteral(R"(\b(?:para\s+)?(?:hoy|mañana|pasado\s+mañana|ahora(?:\\s+mismo)?|esta\s+tarde|esta\s+noche|el\s+fin\s+de\s+semana)\b)"), QRegularExpression::CaseInsensitiveOption));
+
     static const QRegularExpression cityRegex(
-        QStringLiteral("(?:en|de|para|sobre)\\s+([A-ZÁÉÍÓÚa-záéíóúñÑçÇ\\s\\-\\.]+?)(?:\\s+(?:hoy|ahora(?:\\s+mismo)?|mañana|esta\\s+tarde|esta\\s+noche|el\\s+fin\\s+de\\s+semana|por\\s+favor)|[\\?\\!\\.,;]*$)"),
+        QStringLiteral("(?:en|de|para|sobre)\\s+([A-ZÁÉÍÓÚa-záéíóúñÑçÇ\\s\\-\\.]+?)[\\?\\!\\.,;]*$"),
         QRegularExpression::CaseInsensitiveOption);
 
-    const auto match = cityRegex.match(query);
+    const auto match = cityRegex.match(q);
     if (match.hasMatch()) {
         QString city = match.captured(1).trimmed();
         city.remove(QRegularExpression(QStringLiteral("[\\?\\!\\.,;]+$")));
@@ -125,6 +140,14 @@ QString WeatherManager::extractCityFromQuery(const QString &query) const
             return city.trimmed();
         }
     }
+
+    // Fallback: check if the remaining text itself is a city name
+    q = q.trimmed();
+    q.remove(QRegularExpression(QStringLiteral("^[\\?\\!\\.,;\\s]+|[\\?\\!\\.,;\\s]+$")));
+    if (!q.isEmpty() && q.length() < 35 && !q.contains(QLatin1Char(' '))) {
+        return q;
+    }
+
     return QString();
 }
 
@@ -157,13 +180,11 @@ WeatherData WeatherManager::fetchWeatherData(const QString &query) const
 {
     WeatherData wd;
 
-    QString targetCity = extractCityFromQuery(query);
-    if (targetCity.isEmpty()) {
-        targetCity = query.trimmed();
-    }
-    targetCity.remove(QRegularExpression(QStringLiteral("^(?:tiempo|clima|temperatura)\\s+(?:en|de|para)?\\s*"), QRegularExpression::CaseInsensitiveOption));
-    targetCity = targetCity.trimmed();
+    const bool isTomorrow = query.contains(QRegularExpression(QStringLiteral(R"(\bmañana\b)"), QRegularExpression::CaseInsensitiveOption))
+                         && !query.contains(QRegularExpression(QStringLiteral(R"(\bpasado\s+mañana\b)"), QRegularExpression::CaseInsensitiveOption));
+    const bool isDayAfterTomorrow = query.contains(QRegularExpression(QStringLiteral(R"(\bpasado\s+mañana\b)"), QRegularExpression::CaseInsensitiveOption));
 
+    QString targetCity = extractCityFromQuery(query);
     if (targetCity.isEmpty()) {
         targetCity = resolveDefaultLocation();
     }
@@ -188,7 +209,7 @@ WeatherData WeatherManager::fetchWeatherData(const QString &query) const
     const QString admin = locObj.value(QStringLiteral("admin1")).toString();
     const QString country = locObj.value(QStringLiteral("country")).toString();
 
-    const QUrl weatherUrl(QStringLiteral("https://api.open-meteo.com/v1/forecast?latitude=%1&longitude=%2&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&timezone=auto")
+    const QUrl weatherUrl(QStringLiteral("https://api.open-meteo.com/v1/forecast?latitude=%1&longitude=%2&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max&timezone=auto")
                               .arg(lat, 0, 'f', 4)
                               .arg(lon, 0, 'f', 4));
     const QByteArray weatherResp = httpGetSync(weatherUrl, 2500);
@@ -198,19 +219,47 @@ WeatherData WeatherManager::fetchWeatherData(const QString &query) const
 
     const QJsonDocument wDoc = QJsonDocument::fromJson(weatherResp);
     const QJsonObject current = wDoc.object().value(QStringLiteral("current")).toObject();
-    if (current.isEmpty()) {
+    const QJsonObject daily = wDoc.object().value(QStringLiteral("daily")).toObject();
+
+    if (current.isEmpty() && daily.isEmpty()) {
         return wd;
     }
 
-    wd.temp = current.value(QStringLiteral("temperature_2m")).toDouble();
-    wd.feelsLike = current.value(QStringLiteral("apparent_temperature")).toDouble();
-    wd.wmoCode = current.value(QStringLiteral("weather_code")).toInt();
-    wd.wind = current.value(QStringLiteral("wind_speed_10m")).toDouble();
-    wd.humidity = current.value(QStringLiteral("relative_humidity_2m")).toDouble();
-    wd.precipitation = current.value(QStringLiteral("precipitation")).toDouble();
+    if (isTomorrow || isDayAfterTomorrow) {
+        const int forecastDay = isDayAfterTomorrow ? 2 : 1;
+        const QJsonArray codes = daily.value(QStringLiteral("weather_code")).toArray();
+        const QJsonArray maxTemps = daily.value(QStringLiteral("temperature_2m_max")).toArray();
+        const QJsonArray minTemps = daily.value(QStringLiteral("temperature_2m_min")).toArray();
+        const QJsonArray precips = daily.value(QStringLiteral("precipitation_sum")).toArray();
+        const QJsonArray probs = daily.value(QStringLiteral("precipitation_probability_max")).toArray();
+        const QJsonArray winds = daily.value(QStringLiteral("wind_speed_10m_max")).toArray();
 
-    wd.condition = wmoCodeToSpanish(wd.wmoCode);
-    wd.iconName = wmoCodeToIcon(wd.wmoCode);
+        if (forecastDay < codes.size()) {
+            wd.isForecast = true;
+            wd.forecastPeriod = isDayAfterTomorrow ? QStringLiteral("pasado mañana") : QStringLiteral("mañana");
+            wd.wmoCode = codes.at(forecastDay).toInt();
+            wd.tempMax = maxTemps.at(forecastDay).toDouble();
+            wd.tempMin = minTemps.at(forecastDay).toDouble();
+            wd.temp = wd.tempMax;
+            wd.feelsLike = wd.tempMax;
+            wd.precipitation = precips.at(forecastDay).toDouble();
+            wd.precipProbability = probs.at(forecastDay).toInt();
+            wd.wind = winds.at(forecastDay).toDouble();
+            wd.condition = wmoCodeToSpanish(wd.wmoCode);
+            wd.iconName = wmoCodeToIcon(wd.wmoCode);
+        }
+    }
+
+    if (!wd.isForecast && !current.isEmpty()) {
+        wd.temp = current.value(QStringLiteral("temperature_2m")).toDouble();
+        wd.feelsLike = current.value(QStringLiteral("apparent_temperature")).toDouble();
+        wd.wmoCode = current.value(QStringLiteral("weather_code")).toInt();
+        wd.wind = current.value(QStringLiteral("wind_speed_10m")).toDouble();
+        wd.humidity = current.value(QStringLiteral("relative_humidity_2m")).toDouble();
+        wd.precipitation = current.value(QStringLiteral("precipitation")).toDouble();
+        wd.condition = wmoCodeToSpanish(wd.wmoCode);
+        wd.iconName = wmoCodeToIcon(wd.wmoCode);
+    }
 
     QString fullLoc = resolvedName;
     if (!admin.isEmpty() && admin != resolvedName) {
@@ -237,6 +286,28 @@ QString WeatherManager::formatWeatherPromptContext(const WeatherData &data) cons
         conditionPhrase = QStringLiteral("cielo %1").arg(data.condition);
     } else {
         conditionPhrase = data.condition;
+    }
+
+    if (data.isForecast) {
+        return QStringLiteral(
+            "[Previsión meteorológica oficial para %1 (%2):\n"
+            "- Previsión: %3\n"
+            "- Temperatura máxima: %4 °C\n"
+            "- Temperatura mínima: %5 °C\n"
+            "- Probabilidad de precipitación: %6 %\n"
+            "- Precipitación estimada: %7 mm\n"
+            "- Viento máximo: %8 km/h\n"
+            "INSTRUCCIÓN OBLIGATORIA: Eres Kity, el asistente de voz. Responde claramente a la pregunta del usuario sobre la previsión para %2 en %9: indica que se esperan temperaturas entre %5 °C y %4 °C con %10. Tu respuesta debe ser concisa, directa y natural en una sola frase en español de España optimizada para hablar por voz al estilo Siri. No digas que no tienes acceso a información en tiempo real.]")
+            .arg(data.location)
+            .arg(data.forecastPeriod)
+            .arg(data.condition)
+            .arg(QString::number(data.tempMax, 'f', 1))
+            .arg(QString::number(data.tempMin, 'f', 1))
+            .arg(QString::number(data.precipProbability))
+            .arg(QString::number(data.precipitation, 'f', 1))
+            .arg(QString::number(data.wind, 'f', 1))
+            .arg(data.city)
+            .arg(conditionPhrase);
     }
 
     return QStringLiteral(
