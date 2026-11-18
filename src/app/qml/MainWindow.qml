@@ -14,8 +14,6 @@ import QtQuick.Dialogs as QtDialogs
 import org.kde.kirigami as Kirigami
 import CachyOS.UI
 
-import "cards" as Cards
-
 CachyWindow {
     id: root
 
@@ -63,8 +61,7 @@ CachyWindow {
         interval: 100
         repeat: false
         onTriggered: {
-            let q = spotlightSearchInput.text.trim();
-            // Strict math expression pattern: arithmetic, conversions, roots or standard math functions only
+            let q = spotlightOverlay.spotlightInputText.trim();
             const mathPattern = /^(?:(?:\s*[\d\.,]+\s*[\+\-\*\/\^%]\s*[\d\.,\s\+\-\*\/\^%()=]+)|(?:\s*(?:sqrt|cbrt|sin|cos|tan|log|ln|abs|√|∛)\s*\(?[\d\.,]+\)?\s*=?\s*)|(?:\s*ra[ií]z(?:\s+(?:cuadrada|c[uú]bica))?\s+(?:de\s+)?[\d\.,]+\s*=?\s*)|(?:\s*[\d\.,]+\s*(?:km|m|cm|mm|mi|in|ft|kg|g|lb|oz|l|ml|c|f|celsius|fahrenheit|usd|eur|gbp|jpy|btc|eth|horas?|mins?|minutos?|segs?|segundos?)\s+(?:to|in|a|en)\s+(?:km|m|cm|mm|mi|in|ft|kg|g|lb|oz|l|ml|c|f|celsius|fahrenheit|usd|eur|gbp|jpy|btc|eth|horas?|mins?|minutos?|segs?|segundos?)\s*)|(?:\s*[\d\.,]+\s*%\s*(?:of|de)\s+[\d\.,]+))$/i;
 
             if (q.length >= 3 && mathPattern.test(q)) {
@@ -81,13 +78,15 @@ CachyWindow {
         }
     }
 
+    function restartMathPreviewTimer() {
+        mathPreviewTimer.restart();
+    }
+
     property bool showWritingTools: false
     property bool showVisualIntelligence: false
     property bool showMathNotes: false
     property bool showSearchFilter: false
     property string searchQuery: ""
-    property var mathResults: []
-    property string visualCaptureScope: "region"
     property var selectedConversationIds: []
     property string renamingConversationId: ""
     property string renamingTitleText: ""
@@ -207,9 +206,7 @@ CachyWindow {
                 root.compactAnswerVisible = false;
                 root.compactCategoriesVisible = false;
                 root.selectedCategoryIndex = -1;
-                if (spotlightSearchInput) {
-                    spotlightSearchInput.text = "";
-                }
+                spotlightOverlay.spotlightInputText = "";
                 if (root.visibility === Window.Minimized) {
                     root.showNormal();
                 } else {
@@ -225,9 +222,7 @@ CachyWindow {
             root.compactAnswerVisible = false;
             root.compactCategoriesVisible = false;
             root.selectedCategoryIndex = -1;
-            if (spotlightSearchInput) {
-                spotlightSearchInput.text = "";
-            }
+            spotlightOverlay.spotlightInputText = "";
             if (root.visibility === Window.Minimized) {
                 root.showNormal();
             } else {
@@ -319,14 +314,13 @@ CachyWindow {
     }
 
     // =========================================================================
-    // 1. GOLDEN GATE EDGE-TO-EDGE SIDEBAR ("The Siri app" - 09_the_siri_app_window.png)
+    // 1. GOLDEN GATE EDGE-TO-EDGE SIDEBAR
     // =========================================================================
     sidebarHeaderActions: [
         Row {
             spacing: 6
             anchors.verticalCenter: parent.verticalCenter
 
-            // Multi-select Delete Button (Shown when 1+ conversations are Ctrl-selected)
             CachyToolbarButton {
                 visible: root.selectedConversationIds.length > 0
                 text: "🗑 (" + root.selectedConversationIds.length + ")"
@@ -336,7 +330,6 @@ CachyWindow {
                 }
             }
 
-            // View Mode Toggle (2-column Grid vs 1-column List)
             CachyToolbarButton {
                 text: kityClient.sidebarViewMode === "grid" ? "⊞" : "☰"
                 tooltipText: kityClient.sidebarViewMode === "grid"
@@ -350,341 +343,27 @@ CachyWindow {
     ]
 
     sidebar: [
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 12
-            anchors.rightMargin: 12
-            anchors.bottomMargin: 12
-            spacing: 8
-
-            // Optional Sidebar Search Filter
-            CachyTextField {
-                visible: root.showSearchFilter
-                Layout.fillWidth: true
-                isSearch: true
-                placeholderText: i18n("Filtrar conversaciones...")
-                text: root.searchQuery
-                onTextChanged: root.searchQuery = text
-            }
-
-            // Delete Confirmation Banner (macOS 27 Golden Gate: "Eliminar" -> "Eliminar")
-            Rectangle {
-                visible: root.deletingConversationId !== ""
-                Layout.fillWidth: true
-                implicitHeight: delBannerCol.implicitHeight + 16
-                radius: 12
-                color: Qt.rgba(0.9, 0.25, 0.25, 0.16)
-                border.width: 1
-                border.color: Qt.rgba(0.9, 0.25, 0.25, 0.45)
-
-                ColumnLayout {
-                    id: delBannerCol
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    spacing: 6
-
-                    QQC2.Label {
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        font.pixelSize: 11
-                        font.bold: true
-                        color: CachyTheme.textPrimary
-                        text: root.deletingConversationId === "__MULTI__"
-                            ? i18n("¿Eliminar definitivamente las %1 conversaciones seleccionadas?", root.selectedConversationIds.length)
-                            : i18n("¿Eliminar definitivamente esta conversación?")
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        CachyButton {
-                            Layout.fillWidth: true
-                            text: i18n("Cancelar")
-                            onClicked: root.deletingConversationId = ""
-                        }
-
-                        CachyButton {
-                            Layout.fillWidth: true
-                            destructive: true
-                            text: i18n("Eliminar")
-                            onClicked: {
-                                if (root.deletingConversationId === "__MULTI__") {
-                                    kityClient.deleteConversations(root.selectedConversationIds);
-                                    root.selectedConversationIds = [];
-                                } else {
-                                    kityClient.deleteConversation(root.deletingConversationId);
-                                }
-                                root.deletingConversationId = "";
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Scrollable Conversation History Cards (2-column Grid or List)
-            QQC2.ScrollView {
-                id: sidebarScroll
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                contentWidth: availableWidth
-                QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
-                clip: true
-
-                GridLayout {
-                    width: sidebarScroll.availableWidth
-                    columns: kityClient.sidebarViewMode === "grid" ? 2 : 1
-                    columnSpacing: 10
-                    rowSpacing: 10
-
-                    Repeater {
-                        model: kityClient.conversations
-
-                        Rectangle {
-                            id: convCard
-                            required property var modelData
-                            required property int index
-
-                            readonly property bool isCurrent: modelData.id === kityClient.activeConversationId
-                            readonly property bool isMultiSelected: root.selectedConversationIds.indexOf(modelData.id) !== -1
-                            readonly property bool isRenaming: root.renamingConversationId === modelData.id
-                            readonly property bool matchesSearch: root.searchQuery.trim().length === 0
-                                || (modelData.title && modelData.title.toLowerCase().indexOf(root.searchQuery.toLowerCase()) !== -1)
-                                || (modelData.preview && modelData.preview.toLowerCase().indexOf(root.searchQuery.toLowerCase()) !== -1)
-
-                            visible: matchesSearch
-                            Layout.fillWidth: true
-                            Layout.preferredWidth: kityClient.sidebarViewMode === "grid" ? (sidebarScroll.availableWidth - 10) / 2 : sidebarScroll.availableWidth
-                            implicitHeight: convCardCol.implicitHeight + 22
-                            radius: 16
-
-                            color: (convCard.isCurrent || convCard.isMultiSelected)
-                                ? (CachyTheme.isDark ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.88))
-                                : (convHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.cardBackground)
-
-                            border.width: (convCard.isCurrent || convCard.isMultiSelected) ? 2 : 1
-                            border.color: convCard.isMultiSelected
-                                ? "#FF9F0A"
-                                : (convCard.isCurrent ? "#007AFF" : CachyTheme.specularBorder)
-
-                            Behavior on color { ColorAnimation { duration: 120 } }
-
-                            HoverHandler {
-                                id: convHover
-                                cursorShape: Qt.PointingHandCursor
-                            }
-
-                            // Left click or Ctrl+Left click (Multi-selection per Apple doc q7ny3g54v9lk)
-                            TapHandler {
-                                acceptedButtons: Qt.LeftButton
-                                onTapped: (eventPoint, button) => {
-                                    if (eventPoint.modifiers & Qt.ControlModifier) {
-                                        let arr = root.selectedConversationIds.slice();
-                                        const pos = arr.indexOf(convCard.modelData.id);
-                                        if (pos === -1) {
-                                            arr.push(convCard.modelData.id);
-                                        } else {
-                                            arr.splice(pos, 1);
-                                        }
-                                        root.selectedConversationIds = arr;
-                                    } else {
-                                        root.selectedConversationIds = [];
-                                        kityClient.selectConversation(convCard.modelData.id);
-                                    }
-                                }
-                            }
-
-                            // Right-click Context Menu (Fijar / Desfijar, Renombrar, Eliminar per Apple doc q7ny3g54v9lk)
-                            TapHandler {
-                                acceptedButtons: Qt.RightButton
-                                onTapped: convContextMenu.popup()
-                            }
-
-                            QQC2.Menu {
-                                id: convContextMenu
-
-                                QQC2.MenuItem {
-                                    icon.name: convCard.modelData.pinned ? "window-unpin" : "window-pin"
-                                    text: convCard.modelData.pinned ? i18n("Desfijar") : i18n("Fijar")
-                                    onTriggered: kityClient.togglePinConversation(convCard.modelData.id)
-                                }
-
-                                QQC2.MenuItem {
-                                    icon.name: "edit-rename"
-                                    text: i18n("Renombrar…")
-                                    onTriggered: {
-                                        root.renamingConversationId = convCard.modelData.id;
-                                        root.renamingTitleText = convCard.modelData.title || "";
-                                    }
-                                }
-
-                                QQC2.MenuSeparator {}
-
-                                QQC2.MenuItem {
-                                    icon.name: "edit-delete"
-                                    text: root.selectedConversationIds.length > 1
-                                        ? i18n("Eliminar %1 conversaciones…", root.selectedConversationIds.length)
-                                        : i18n("Eliminar…")
-                                    onTriggered: {
-                                        if (root.selectedConversationIds.length > 1) {
-                                            root.deletingConversationId = "__MULTI__";
-                                        } else {
-                                            root.deletingConversationId = convCard.modelData.id;
-                                        }
-                                    }
-                                }
-                            }
-
-                            ColumnLayout {
-                                id: convCardCol
-                                anchors.fill: parent
-                                anchors.margins: 11
-                                spacing: 4
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 4
-
-                                    QQC2.Label {
-                                        Layout.fillWidth: true
-                                        text: convCard.modelData.timeLabel || "Today"
-                                        font.pixelSize: 10
-                                        color: CachyTheme.textMuted
-                                        elide: Text.ElideRight
-                                    }
-
-                                    Kirigami.Icon {
-                                        visible: convCard.modelData.pinned === true || convHover.hovered
-                                        source: "window-pin"
-                                        Layout.preferredWidth: 13
-                                        Layout.preferredHeight: 13
-                                        isMask: true
-                                        color: CachyTheme.textSecondary
-                                        opacity: convCard.modelData.pinned ? 0.95 : 0.45
-
-                                        TapHandler {
-                                            onTapped: kityClient.togglePinConversation(convCard.modelData.id)
-                                        }
-                                    }
-                                }
-
-                                // Inline Rename Editor when Renombrar is active
-                                RowLayout {
-                                    visible: convCard.isRenaming
-                                    Layout.fillWidth: true
-                                    spacing: 4
-
-                                    QQC2.TextField {
-                                        id: renameField
-                                        Layout.fillWidth: true
-                                        text: root.renamingTitleText
-                                        font.pixelSize: 12
-                                        selectByMouse: true
-                                        onAccepted: {
-                                            if (text.trim().length > 0) {
-                                                kityClient.renameConversation(convCard.modelData.id, text.trim());
-                                            }
-                                            root.renamingConversationId = "";
-                                        }
-                                    }
-
-                                    QQC2.ToolButton {
-                                        text: "✓"
-                                        implicitWidth: 22
-                                        implicitHeight: 22
-                                        onClicked: {
-                                            if (renameField.text.trim().length > 0) {
-                                                kityClient.renameConversation(convCard.modelData.id, renameField.text.trim());
-                                            }
-                                            root.renamingConversationId = "";
-                                        }
-                                    }
-                                }
-
-                                QQC2.Label {
-                                    visible: !convCard.isRenaming
-                                    Layout.fillWidth: true
-                                    text: convCard.modelData.title || i18n("Kity AI")
-                                    font.pixelSize: 13
-                                    font.bold: true
-                                    color: CachyTheme.textPrimary
-                                    wrapMode: Text.WordWrap
-                                    maximumLineCount: 2
-                                    elide: Text.ElideRight
-                                }
-
-                                QQC2.Label {
-                                    Layout.fillWidth: true
-                                    text: convCard.modelData.preview || ""
-                                    font.pixelSize: 11
-                                    color: CachyTheme.textSecondary
-                                    wrapMode: Text.WordWrap
-                                    maximumLineCount: kityClient.previewLines
-                                    elide: Text.ElideRight
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Empty State in Sidebar (when 0 conversations exist)
-            ColumnLayout {
-                visible: kityClient.conversations.length === 0
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.topMargin: 24
-                spacing: 10
-
-                Kirigami.Icon {
-                    source: "chat"
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: 36
-                    Layout.preferredHeight: 36
-                    isMask: true
-                    color: CachyTheme.textMuted
-                    opacity: 0.5
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: i18n("Sin conversaciones guardadas")
-                    font.pixelSize: 12
-                    font.weight: Font.Medium
-                    color: CachyTheme.textMuted
-                }
-
-                CachyButton {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: i18n("Nueva conversación")
-                    onClicked: kityClient.newConversation()
-                }
-
-                Item { Layout.fillHeight: true }
-            }
+        ConversationSidebar {
+            id: conversationSidebar
+            windowRoot: root
         }
     ]
 
     // =========================================================================
-    // 2. HEADER TOOLBAR (Main Conversation Pane - 09_the_siri_app_window.png)
+    // 2. HEADER TOOLBAR
     // =========================================================================
     headerLeading: [
         Row {
             spacing: 6
             anchors.verticalCenter: parent.verticalCenter
 
-            // Golden Gate New Chat Button (Square + Pencil compose glyph)
             CachyToolbarButton {
                 iconName: "document-new-symbolic"
                 text: "✎"
                 tooltipText: i18n("Nueva conversación (Ctrl+N)")
-                onClicked: {
-                    kityClient.newConversation();
-                }
+                onClicked: kityClient.newConversation()
             }
 
-            // Writing Tools Quick Button
             CachyToolbarButton {
                 iconName: "document-edit-symbolic"
                 text: "✦"
@@ -696,14 +375,13 @@ CachyWindow {
                     if (root.showWritingTools) {
                         root.showVisualIntelligence = false;
                         root.showMathNotes = false;
-                        if (promptField.text.trim().length === 0) {
-                            promptField.text = kityClient.readWaylandSelection();
+                        if (inputBar.text.trim().length === 0) {
+                            inputBar.text = kityClient.readWaylandSelection();
                         }
                     }
                 }
             }
 
-            // Visual Intelligence Quick Button
             CachyToolbarButton {
                 iconName: "camera-photo-symbolic"
                 text: "⌖"
@@ -719,7 +397,6 @@ CachyWindow {
                 }
             }
 
-            // Math Notes Quick Button
             CachyToolbarButton {
                 text: "∑"
                 checkable: true
@@ -736,7 +413,6 @@ CachyWindow {
         }
     ]
 
-    // Center: Glowing Iridescent Kity Pill (Aligned on 22px midline)
     headerCenter: [
         Rectangle {
             anchors.centerIn: parent
@@ -806,13 +482,11 @@ CachyWindow {
         }
     ]
 
-    // Trailing Actions: Search, Text Size, Pin, and System Settings (kcm_kity)
     headerActions: [
         Row {
             spacing: 4
             anchors.verticalCenter: parent.verticalCenter
 
-            // Search button (top-right of Golden Gate Siri App)
             QQC2.ToolButton {
                 icon.name: "search"
                 checkable: true
@@ -822,7 +496,6 @@ CachyWindow {
                 onClicked: root.showSearchFilter = !root.showSearchFilter
             }
 
-            // Text Size Zoom Toggle (Golden Gate Siri App feature)
             QQC2.ToolButton {
                 text: "Aa"
                 QQC2.ToolTip.text: i18n("Cambiar tamaño del texto")
@@ -838,7 +511,6 @@ CachyWindow {
                 }
             }
 
-            // Switch to Quick Pill ("Search or Ask") Mode
             QQC2.ToolButton {
                 text: "⤡"
                 QQC2.ToolTip.text: i18n("Cambiar a Cápsula Rápida (Search or Ask)")
@@ -846,7 +518,6 @@ CachyWindow {
                 onClicked: root.compactMode = true
             }
 
-            // Pin Window On Top (Immediately preceding System Settings)
             QQC2.ToolButton {
                 icon.name: root.isPinned ? "window-pin" : "window-unpin"
                 checkable: true
@@ -856,7 +527,6 @@ CachyWindow {
                 onClicked: root.isPinned = !root.isPinned
             }
 
-            // System Settings -> Kity (kcm_kity) — Zero duplication!
             QQC2.ToolButton {
                 icon.name: "configure"
                 QQC2.ToolTip.text: i18n("Abrir Ajustes de Kity en Preferencias del Sistema…")
@@ -895,731 +565,28 @@ CachyWindow {
     // 4. CLIENT CONTENT AREA
     // =========================================================================
     contentData: [
-
-        // =====================================================================
-        // MODEL 1: GOLDEN GATE QUICK OVERLAY (Invoked via Double-Press Meta)
-        // Replicates:
-        //  - 05_siri_working_pill.png ("Looking into it" + ring of glowing dots)
-        //  - 08_spotlight_search_or_ask.png ("Search or Ask" + 4 quick rows)
-        //  - 06_siri_spotlight_window.png (Floating vertical answer card with ✕ & ⤢)
-        // =====================================================================
-        Item {
-            id: goldenGateCompactOverlay
-            anchors.fill: parent
+        SpotlightOverlay {
+            id: spotlightOverlay
             visible: root.compactMode
-
-            DragHandler {
-                target: null
-                onActiveChanged: if (active) root.startSystemMove()
+            windowRoot: root
+            onStartMoveRequested: root.startSystemMove()
+            onExpandToFullRequested: root.compactMode = false
+            onOpenPhotoDialogRequested: photoAttachDialog.open()
+            onOpenFileDialogRequested: fileAttachDialog.open()
+            onOpenWritingToolsRequested: {
+                root.compactMode = false;
+                root.showWritingTools = true;
             }
-
-            // -----------------------------------------------------------------
-            // STATE 1A: "Looking into it" Working Pill (05_siri_working_pill.png)
-            // -----------------------------------------------------------------
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 18
-                anchors.rightMargin: 20
-                spacing: 14
-                visible: root.compactWorking
-
-                // Ring of 8 glowing white dots of varying sizes
-                Item {
-                    Layout.preferredWidth: 32
-                    Layout.preferredHeight: 32
-
-                    Repeater {
-                        model: 8
-
-                        Rectangle {
-                            required property int index
-                            readonly property real angle: (index * Math.PI / 4.0) + (root.animTime * 4.2)
-                            readonly property real dotSize: 2.5 + ((index % 4) * 1.4)
-                            width: dotSize
-                            height: dotSize
-                            radius: dotSize / 2
-                            color: "#FFFFFF"
-                            opacity: 0.45 + 0.55 * Math.sin(angle)
-                            x: 16 + 10.5 * Math.cos(index * Math.PI / 4.0) - width / 2
-                            y: 16 + 10.5 * Math.sin(index * Math.PI / 4.0) - height / 2
-                        }
-                    }
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    text: {
-                        if (kityClient.state === "transcribing") {
-                            return i18n("Transcribiendo audio…");
-                        }
-                        if (kityClient.statusMessage.length > 0) {
-                            return kityClient.statusMessage;
-                        }
-                        return i18n("Looking into it");
-                    }
-                    color: "#FFFFFF"
-                    font.pixelSize: 17
-                    font.weight: Font.Medium
-                    elide: Text.ElideRight
-                }
-
-                TapHandler {
-                    onTapped: {
-                        if (kityClient.state === "thinking") {
-                            kityClient.stopGeneration();
-                        }
-                    }
-                }
+            onOpenVisualIntelligenceRequested: {
+                root.compactMode = false;
+                root.showVisualIntelligence = true;
             }
-
-            // -----------------------------------------------------------------
-            // STATE 1B: "Search or Ask" + Quick Categories (08_spotlight_search_or_ask.png)
-            // -----------------------------------------------------------------
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: root.compactCategoriesVisible ? 12 : 5
-                spacing: root.compactCategoriesVisible ? 10 : 0
-                visible: !root.compactWorking && !root.compactAnswerVisible
-
-                // Top Pill: "Search or Ask" + Live Math + Mic
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-                    radius: 24
-                    color: root.compactCategoriesVisible ? Qt.rgba(0.06, 0.07, 0.10, 0.92) : "transparent"
-                    border.width: root.compactCategoriesVisible ? 1 : 0
-                    border.color: Qt.rgba(1, 1, 1, 0.20)
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 18
-                        anchors.rightMargin: 14
-                        spacing: 10
-
-                        QQC2.TextField {
-                            id: spotlightSearchInput
-                            Layout.fillWidth: true
-                            focus: root.compactMode && !root.compactAnswerVisible && !root.compactWorking
-                            placeholderText: i18n("Search or Ask")
-                            placeholderTextColor: Qt.rgba(1, 1, 1, 0.48)
-                            color: "#FFFFFF"
-                            font.pixelSize: 16
-                            background: null
-
-                            Keys.onEscapePressed: {
-                                if (root.compactAnswerVisible) {
-                                    root.compactAnswerVisible = false;
-                                    root.compactCategoriesVisible = false;
-                                } else if (root.compactCategoriesVisible) {
-                                    root.compactCategoriesVisible = false;
-                                    root.selectedCategoryIndex = -1;
-                                } else {
-                                    root.hide();
-                                }
-                            }
-
-                            Keys.onDownPressed: {
-                                if (!root.compactCategoriesVisible) {
-                                    root.compactCategoriesVisible = true;
-                                    root.selectedCategoryIndex = 0;
-                                } else {
-                                    root.selectedCategoryIndex = (root.selectedCategoryIndex + 1) % root.spotlightCategories.length;
-                                }
-                            }
-                            Keys.onUpPressed: {
-                                if (root.selectedCategoryIndex > 0) {
-                                    root.selectedCategoryIndex--;
-                                } else {
-                                    root.selectedCategoryIndex = -1;
-                                    root.compactCategoriesVisible = false;
-                                }
-                            }
-                            Keys.onTabPressed: {
-                                if (!root.compactCategoriesVisible) {
-                                    root.compactCategoriesVisible = true;
-                                    root.selectedCategoryIndex = 0;
-                                } else {
-                                    root.selectedCategoryIndex = (root.selectedCategoryIndex + 1) % root.spotlightCategories.length;
-                                }
-                            }
-                            Keys.onBacktabPressed: {
-                                if (root.selectedCategoryIndex > 0) {
-                                    root.selectedCategoryIndex--;
-                                } else {
-                                    root.selectedCategoryIndex = -1;
-                                    root.compactCategoriesVisible = false;
-                                }
-                            }
-                            Keys.onReturnPressed: event => handleAccept(event)
-                            Keys.onEnterPressed: event => handleAccept(event)
-
-                            function handleAccept(event) {
-                                if (root.selectedCategoryIndex >= 0 && root.selectedCategoryIndex < root.spotlightCategories.length) {
-                                    let cat = root.spotlightCategories[root.selectedCategoryIndex].category;
-                                    if (cat === "actions" || cat === "clipboard") {
-                                        root.compactAnswerVisible = true;
-                                    }
-                                    kityClient.launchSpotlightCategory(cat);
-                                    root.selectedCategoryIndex = -1;
-                                    event.accepted = true;
-                                    return;
-                                }
-                                if (root.liveMathPreview.length > 0) {
-                                    kityClient.copyToClipboard(root.liveMathPreview);
-                                }
-                                if (text.trim().length > 0) {
-                                    root.compactAnswerVisible = true;
-                                    kityClient.sendMessage(text.trim(), false);
-                                    text = "";
-                                    event.accepted = true;
-                                }
-                            }
-
-                            onTextChanged: {
-                                mathPreviewTimer.restart();
-                                if (text.length > 0) {
-                                    root.selectedCategoryIndex = -1;
-                                }
-                            }
-                        }
-
-                        // Live Math Preview Pill (macOS Spotlight Instant Calc)
-                        Rectangle {
-                            visible: root.liveMathPreview.length > 0
-                            height: 26
-                            radius: 13
-                            color: Qt.rgba(0.0, 0.88, 0.55, 0.22)
-                            border.width: 1
-                            border.color: Qt.rgba(0.0, 0.88, 0.55, 0.50)
-                            Layout.preferredWidth: mathLabel.implicitWidth + 16
-
-                            HoverHandler { id: mathPillHover; cursorShape: Qt.PointingHandCursor }
-
-                            Text {
-                                id: mathLabel
-                                anchors.centerIn: parent
-                                text: "= " + root.liveMathPreview
-                                color: "#FFFFFF"
-                                font.pixelSize: 12
-                                font.weight: Font.DemiBold
-                            }
-
-                            TapHandler {
-                                onTapped: {
-                                    kityClient.copyToClipboard(root.liveMathPreview);
-                                }
-                            }
-                        }
-
-                        // Microphone icon
-                        Rectangle {
-                            width: 30
-                            height: 30
-                            radius: 15
-                            color: kityClient.isRecording ? "#FF375F" : "transparent"
-
-                            Kirigami.Icon {
-                                anchors.centerIn: parent
-                                width: 16
-                                height: 16
-                                source: "audio-input-microphone-symbolic"
-                                isMask: true
-                                color: Qt.rgba(1, 1, 1, 0.82)
-                            }
-
-                            TapHandler {
-                                onTapped: kityClient.toggleRecording()
-                            }
-                        }
-
-                        // Expand to Full Kity App (⤢) button
-                        Rectangle {
-                            width: 28
-                            height: 28
-                            radius: 14
-                            color: expandPillHover.hovered ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.12)
-
-                            HoverHandler { id: expandPillHover; cursorShape: Qt.PointingHandCursor }
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "⤢"
-                                color: "#FFFFFF"
-                                font.pixelSize: 13
-                                font.bold: true
-                            }
-
-                            TapHandler {
-                                onTapped: {
-                                    root.compactCategoriesVisible = false;
-                                    root.compactMode = false;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Bottom Card: Applications ⌘1, Files ⌘2, Actions ⌘3, Clipboard ⌘4
-                Rectangle {
-                    visible: root.compactCategoriesVisible
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    radius: 18
-                    color: Qt.rgba(0.10, 0.11, 0.15, 0.90)
-                    border.width: 1
-                    border.color: Qt.rgba(1, 1, 1, 0.16)
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        spacing: 2
-
-                        Repeater {
-                            model: root.spotlightCategories
-
-                            Rectangle {
-                                id: spotRow
-                                required property var modelData
-                                required property int index
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                radius: 10
-                                color: (spotRow.index === root.selectedCategoryIndex || spotRowHover.hovered)
-                                    ? Qt.rgba(1, 1, 1, 0.14)
-                                    : "transparent"
-                                border.width: spotRow.index === root.selectedCategoryIndex ? 1 : 0
-                                border.color: Qt.rgba(1, 1, 1, 0.25)
-
-                                HoverHandler {
-                                    id: spotRowHover
-                                    cursorShape: Qt.PointingHandCursor
-                                    onHoveredChanged: {
-                                        if (hovered) {
-                                            root.selectedCategoryIndex = spotRow.index;
-                                        }
-                                    }
-                                }
-                                TapHandler {
-                                    onTapped: {
-                                        if (spotRow.modelData.category === "actions" || spotRow.modelData.category === "clipboard") {
-                                            root.compactAnswerVisible = true;
-                                        }
-                                        kityClient.launchSpotlightCategory(spotRow.modelData.category);
-                                    }
-                                }
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 12
-                                    anchors.rightMargin: 12
-                                    spacing: 12
-
-                                    Kirigami.Icon {
-                                        source: spotRow.modelData.icon
-                                        Layout.preferredWidth: 16
-                                        Layout.preferredHeight: 16
-                                        isMask: true
-                                        color: "#FFFFFF"
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: spotRow.modelData.label
-                                        color: "#FFFFFF"
-                                        font.pixelSize: 14
-                                        font.weight: Font.Medium
-                                    }
-
-                                    Text {
-                                        text: spotRow.modelData.shortcut
-                                        color: Qt.rgba(1, 1, 1, 0.42)
-                                        font.pixelSize: 13
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // -----------------------------------------------------------------
-            // STATE 1C: Spotlight Answer Card (06_siri_spotlight_window.png)
-            // -----------------------------------------------------------------
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 16
-                spacing: 12
-                visible: !root.compactWorking && root.compactAnswerVisible
-
-                // Top Header: Circular ✕ (left), Prompt Pill (center-right), Circular Expand ⤢ (right)
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    Rectangle {
-                        width: 28
-                        height: 28
-                        radius: 14
-                        color: Qt.rgba(1, 1, 1, 0.14)
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "✕"
-                            color: "#FFFFFF"
-                            font.pixelSize: 12
-                            font.bold: true
-                        }
-
-                        TapHandler {
-                            onTapped: {
-                                root.compactAnswerVisible = false;
-                                root.hide();
-                            }
-                        }
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    // Prompt Pill
-                    Rectangle {
-                        Layout.maximumWidth: 240
-                        height: 26
-                        width: Math.min(240, spotPromptLabel.implicitWidth + 20)
-                        radius: 13
-                        color: Qt.rgba(1, 1, 1, 0.08)
-
-                        Text {
-                            id: spotPromptLabel
-                            anchors.centerIn: parent
-                            width: parent.width - 16
-                            elide: Text.ElideRight
-                            color: Qt.rgba(1, 1, 1, 0.72)
-                            font.pixelSize: 12
-                            text: {
-                                for (let i = kityClient.messages.length - 1; i >= 0; --i) {
-                                    if (kityClient.messages[i].role === "user") {
-                                        return kityClient.messages[i].content;
-                                    }
-                                }
-                                return i18n("Tell me what's new with Kity...");
-                            }
-                        }
-                    }
-
-                    // Expand ⤢ Button (Transitions to Full Siri App Window!)
-                    Rectangle {
-                        width: 28
-                        height: 28
-                        radius: 14
-                        color: Qt.rgba(1, 1, 1, 0.14)
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "⤢"
-                            color: "#FFFFFF"
-                            font.pixelSize: 13
-                            font.bold: true
-                        }
-
-                        TapHandler {
-                            onTapped: root.compactMode = false
-                        }
-                    }
-                }
-
-                // Scrollable Answer Content (Strictly vertical, zero horizontal overflow)
-                Flickable {
-                    id: spotAnswerFlickable
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    contentWidth: width
-                    contentHeight: spotAnswerCol.implicitHeight + 8
-                    flickableDirection: Flickable.VerticalFlick
-                    boundsBehavior: Flickable.StopAtBounds
-                    clip: true
-
-                    QQC2.ScrollBar.vertical: QQC2.ScrollBar {
-                        policy: QQC2.ScrollBar.AsNeeded
-                    }
-
-                    ColumnLayout {
-                        id: spotAnswerCol
-                        width: Math.max(100, spotAnswerFlickable.width - 16)
-                        spacing: 10
-
-                        TextEdit {
-                            id: spotAnswerText
-                            Layout.fillWidth: true
-                            readOnly: true
-                            selectByMouse: true
-                            cursorVisible: false
-                            activeFocusOnPress: false
-                            wrapMode: TextEdit.Wrap
-                            color: "#FFFFFF"
-                            font.pixelSize: 13
-                            textFormat: TextEdit.RichText
-                            onLinkActivated: link => Qt.openUrlExternally(link)
-                            text: {
-                                if (kityClient.streamingText.length > 0) {
-                                    return kityClient.renderMarkdown(kityClient.streamingText);
-                                }
-                                for (let i = kityClient.messages.length - 1; i >= 0; --i) {
-                                    if (kityClient.messages[i].role === "assistant") {
-                                        return kityClient.renderMarkdown(kityClient.messages[i].content);
-                                    }
-                                }
-                                return kityClient.renderMarkdown("### Kity AI\nAsk anything or click **⤢** to open the full Kity conversation app.");
-                            }
-                        }
-
-                        // Generative Adaptive Cards inside Compact Spotlight Mode
-                        Cards.WeatherCard {
-                            visible: root.lastAssistantMessage && root.lastAssistantMessage.cardType === "weather" && root.lastAssistantMessage.cardData !== undefined
-                            Layout.fillWidth: true
-                            cardData: (root.lastAssistantMessage && root.lastAssistantMessage.cardData) || ({})
-                        }
-
-                        Cards.MediaCard {
-                            visible: root.lastAssistantMessage && root.lastAssistantMessage.cardType === "media" && root.lastAssistantMessage.cardData !== undefined
-                            Layout.fillWidth: true
-                            cardData: (root.lastAssistantMessage && root.lastAssistantMessage.cardData) || ({})
-                            onMediaActionTriggered: action => kityClient.controlMedia(action)
-                        }
-
-                        Cards.EventCard {
-                            visible: root.lastAssistantMessage && root.lastAssistantMessage.cardType === "event" && root.lastAssistantMessage.cardData !== undefined
-                            Layout.fillWidth: true
-                            cardData: (root.lastAssistantMessage && root.lastAssistantMessage.cardData) || ({})
-                            onOpenCalendarRequested: kityClient.openKOrganizer()
-                        }
-
-                        Cards.EmailCard {
-                            visible: root.lastAssistantMessage && root.lastAssistantMessage.cardType === "email" && root.lastAssistantMessage.cardData !== undefined
-                            Layout.fillWidth: true
-                            cardData: (root.lastAssistantMessage && root.lastAssistantMessage.cardData) || ({})
-                            onSendRequested: kityClient.sendPendingEmail()
-                            onOpenProtonRequested: kityClient.openPendingEmailInProton()
-                            onDiscardRequested: kityClient.discardPendingEmail()
-                        }
-                    }
-                }
-
-                // Quick Action Chips: [Copiar] [Escuchar]
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    visible: !root.compactWorking && root.compactAnswerVisible
-
-                    Rectangle {
-                        height: 24
-                        radius: 12
-                        color: copyHover.hovered ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(1, 1, 1, 0.10)
-                        border.width: 1
-                        border.color: Qt.rgba(1, 1, 1, 0.14)
-                        Layout.preferredWidth: copyRow.implicitWidth + 16
-
-                        HoverHandler { id: copyHover; cursorShape: Qt.PointingHandCursor }
-                        TapHandler {
-                            onTapped: {
-                                for (let i = kityClient.messages.length - 1; i >= 0; --i) {
-                                    if (kityClient.messages[i].role === "assistant") {
-                                        kityClient.copyToClipboard(kityClient.messages[i].content);
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        RowLayout {
-                            id: copyRow
-                            anchors.centerIn: parent
-                            spacing: 6
-                            Kirigami.Icon {
-                                source: "edit-copy-symbolic"
-                                Layout.preferredWidth: 12
-                                Layout.preferredHeight: 12
-                                isMask: true
-                                color: "#FFFFFF"
-                            }
-                            Text {
-                                text: i18n("Copiar")
-                                color: "#FFFFFF"
-                                font.pixelSize: 11
-                                font.weight: Font.Medium
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        height: 24
-                        radius: 12
-                        color: speakHover.hovered ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(1, 1, 1, 0.10)
-                        border.width: 1
-                        border.color: Qt.rgba(1, 1, 1, 0.14)
-                        Layout.preferredWidth: speakRow.implicitWidth + 16
-
-                        HoverHandler { id: speakHover; cursorShape: Qt.PointingHandCursor }
-                        TapHandler {
-                            onTapped: {
-                                if (kityClient.isSpeaking) {
-                                    kityClient.stopSpeaking();
-                                } else {
-                                    for (let i = kityClient.messages.length - 1; i >= 0; --i) {
-                                        if (kityClient.messages[i].role === "assistant") {
-                                            kityClient.speakText(kityClient.messages[i].content);
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        RowLayout {
-                            id: speakRow
-                            anchors.centerIn: parent
-                            spacing: 6
-                            Kirigami.Icon {
-                                source: kityClient.isSpeaking ? "media-playback-stop-symbolic" : "audio-volume-high-symbolic"
-                                Layout.preferredWidth: 12
-                                Layout.preferredHeight: 12
-                                isMask: true
-                                color: kityClient.isSpeaking ? "#FF375F" : "#FFFFFF"
-                            }
-                            Text {
-                                text: kityClient.isSpeaking ? i18n("Detener voz") : i18n("Escuchar")
-                                color: "#FFFFFF"
-                                font.pixelSize: 11
-                                font.weight: Font.Medium
-                            }
-                        }
-                    }
-
-                    Item { Layout.fillWidth: true }
-                }
-
-                // Bottom Bar: Circular + (left), "Ask Siri/Kity" Pill (center), Circular Mic (right)
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    Rectangle {
-                        width: 30
-                        height: 30
-                        radius: 15
-                        color: compactPlusHover.hovered ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.14)
-
-                        HoverHandler { id: compactPlusHover; cursorShape: Qt.PointingHandCursor }
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "+"
-                            color: "#FFFFFF"
-                            font.pixelSize: 16
-                        }
-
-                        TapHandler {
-                            onTapped: compactPlusMenu.popup()
-                        }
-
-                        QQC2.Menu {
-                            id: compactPlusMenu
-
-                            QQC2.MenuItem {
-                                icon.name: "image-x-generic"
-                                text: i18n("Fotos…")
-                                onTriggered: photoAttachDialog.open()
-                            }
-
-                            QQC2.MenuItem {
-                                icon.name: "document-open"
-                                text: i18n("Archivos…")
-                                onTriggered: fileAttachDialog.open()
-                            }
-
-                            QQC2.MenuSeparator {}
-
-                            QQC2.MenuItem {
-                                icon.name: "document-edit-symbolic"
-                                text: i18n("Herramientas de Escritura")
-                                onTriggered: {
-                                    root.compactMode = false;
-                                    root.showWritingTools = true;
-                                }
-                            }
-
-                            QQC2.MenuItem {
-                                icon.name: "camera-photo-symbolic"
-                                text: i18n("Inteligencia Visual (Capturar pantalla)")
-                                onTriggered: {
-                                    root.compactMode = false;
-                                    root.showVisualIntelligence = true;
-                                }
-                            }
-
-                            QQC2.MenuItem {
-                                icon.name: "accessories-calculator"
-                                text: i18n("Notas Matemáticas")
-                                onTriggered: {
-                                    root.compactMode = false;
-                                    root.showMathNotes = true;
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 32
-                        radius: 16
-                        color: Qt.rgba(1, 1, 1, 0.12)
-                        border.width: 1
-                        border.color: Qt.rgba(1, 1, 1, 0.18)
-
-                        QQC2.TextField {
-                            anchors.fill: parent
-                            anchors.leftMargin: 12
-                            anchors.rightMargin: 12
-                            placeholderText: i18n("Ask Kity")
-                            placeholderTextColor: Qt.rgba(1, 1, 1, 0.55)
-                            color: "#FFFFFF"
-                            font.pixelSize: 13
-                            background: null
-                            onAccepted: {
-                                if (text.trim().length > 0) {
-                                    kityClient.sendMessage(text.trim(), false);
-                                    text = "";
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        width: 30
-                        height: 30
-                        radius: 15
-                        color: kityClient.isRecording ? "#FF375F" : Qt.rgba(1, 1, 1, 0.14)
-
-                        Kirigami.Icon {
-                            anchors.centerIn: parent
-                            width: 15
-                            height: 15
-                            source: "audio-input-microphone-symbolic"
-                            isMask: true
-                            color: "#FFFFFF"
-                        }
-
-                        TapHandler {
-                            onTapped: kityClient.toggleRecording()
-                        }
-                    }
-                }
+            onOpenMathNotesRequested: {
+                root.compactMode = false;
+                root.showMathNotes = true;
             }
         },
 
-        // =====================================================================
-        // MODEL 2: GOLDEN GATE "THE SIRI APP" MAIN CONVERSATION PANE
-        // Replicates 09_the_siri_app_window.png & Apple Guide q7ny3g54v9lk
-        // =====================================================================
         ColumnLayout {
             id: mainContentColumn
             anchors.fill: parent
@@ -1630,1041 +597,49 @@ CachyWindow {
             spacing: 12
             visible: !root.compactMode
 
-            // -----------------------------------------------------------------
-            // Writing Tools Drawer
-            // -----------------------------------------------------------------
-            Rectangle {
-                Layout.fillWidth: true
+            WritingToolsDrawer {
+                id: writingToolsDrawer
                 visible: root.showWritingTools
-                implicitHeight: wtCol.implicitHeight + 16
-                radius: CachyTheme.radiusMedium
-                color: CachyTheme.cardBackground
-                border.width: 1
-                border.color: CachyTheme.specularBorder
-
-                ColumnLayout {
-                    id: wtCol
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    spacing: 8
-
-                    QQC2.Label {
-                        Layout.fillWidth: true
-                        font.bold: true
-                        font.pixelSize: 12
-                        color: CachyTheme.textPrimary
-                        text: i18n("✍️ Writing Tools (Apple Intelligence / Golden Gate)")
-                    }
-
-                    GridLayout {
-                        Layout.fillWidth: true
-                        columns: 5
-                        columnSpacing: 6
-                        rowSpacing: 6
-
-                        Repeater {
-                            model: [
-                                { label: i18n("✓ Corregir"), action: "proofread" },
-                                { label: i18n("↻ Reescribir"), action: "rewrite" },
-                                { label: i18n("💼 Profesional"), action: "professional" },
-                                { label: i18n("😊 Amigable"), action: "friendly" },
-                                { label: i18n("⚡ Conciso"), action: "concise" },
-                                { label: i18n("📝 Resumen"), action: "summary" },
-                                { label: i18n("• Puntos clave"), action: "keypoints" },
-                                { label: i18n("📊 Tabla"), action: "table" },
-                                { label: i18n("🌐 A Español"), action: "translate:es" },
-                                { label: i18n("🌐 A Inglés"), action: "translate:en" }
-                            ]
-
-                            CachyButton {
-                                required property var modelData
-                                Layout.fillWidth: true
-                                text: modelData.label
-                                onClicked: {
-                                    kityClient.applyWritingTool(modelData.action, promptField.text);
-                                    root.showWritingTools = false;
-                                }
-                            }
-                        }
-                    }
-                }
+                targetText: inputBar.text
+                onRequestClose: root.showWritingTools = false
             }
 
-            // -----------------------------------------------------------------
-            // Visual Intelligence Drawer
-            // -----------------------------------------------------------------
-            // Visual Intelligence & Live Text Drawer (Apple Intelligence)
-            // -----------------------------------------------------------------
-            Rectangle {
-                Layout.fillWidth: true
+            VisualIntelligenceDrawer {
+                id: visualIntelligenceDrawer
                 visible: root.showVisualIntelligence
-                implicitHeight: viCol.implicitHeight + 16
-                radius: CachyTheme.radiusMedium
-                color: CachyTheme.cardBackground
-                border.width: 1
-                border.color: CachyTheme.specularBorder
-
-                ColumnLayout {
-                    id: viCol
-                    anchors.fill: parent
-                    anchors.margins: 10
-                    spacing: 8
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Kirigami.Icon {
-                            source: "camera-photo-symbolic"
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
-                            color: CachyTheme.accentColor
-                        }
-
-                        QQC2.Label {
-                            text: i18n("Inteligencia Visual & Live Text:")
-                            font.bold: true
-                            font.pixelSize: 12
-                            color: CachyTheme.textPrimary
-                        }
-
-                        Item { Layout.fillWidth: true }
-
-                        // Scope selector
-                        Repeater {
-                            model: [
-                                { scope: "region", label: i18n("📐 Región") },
-                                { scope: "activewindow", label: i18n("🪟 Ventana activa") },
-                                { scope: "fullscreen", label: i18n("🖥️ Pantalla") }
-                            ]
-
-                            Rectangle {
-                                required property var modelData
-                                height: 26
-                                implicitWidth: scopeText.implicitWidth + 16
-                                radius: 13
-                                color: root.visualCaptureScope === modelData.scope
-                                    ? CachyTheme.withAlpha(CachyTheme.accentColor, 0.28)
-                                    : (scopeHover.hovered ? CachyTheme.cardBackgroundHover : "transparent")
-                                border.width: 1
-                                border.color: root.visualCaptureScope === modelData.scope
-                                    ? CachyTheme.withAlpha(CachyTheme.accentColor, 0.6)
-                                    : CachyTheme.specularBorder
-
-                                HoverHandler { id: scopeHover; cursorShape: Qt.PointingHandCursor }
-                                TapHandler {
-                                    onTapped: root.visualCaptureScope = modelData.scope
-                                }
-
-                                Text {
-                                    id: scopeText
-                                    anchors.centerIn: parent
-                                    text: modelData.label
-                                    font.pixelSize: 11
-                                    font.weight: root.visualCaptureScope === modelData.scope ? Font.DemiBold : Font.Normal
-                                    color: root.visualCaptureScope === modelData.scope ? CachyTheme.textPrimary : CachyTheme.textSecondary
-                                }
-                            }
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        CachyButton {
-                            text: i18n("📋 Extraer texto (Live Text)")
-                            onClicked: {
-                                const customQ = promptField.text.trim();
-                                if (root.visualCaptureScope === "activewindow") {
-                                    root.hide();
-                                }
-                                kityClient.runVisualIntelligence(root.visualCaptureScope, "ocr", customQ);
-                                root.showVisualIntelligence = false;
-                            }
-                        }
-
-                        CachyButton {
-                            text: i18n("🌐 Traducir captura")
-                            onClicked: {
-                                const customQ = promptField.text.trim();
-                                if (root.visualCaptureScope === "activewindow") {
-                                    root.hide();
-                                }
-                                kityClient.runVisualIntelligence(root.visualCaptureScope, "translate", customQ);
-                                root.showVisualIntelligence = false;
-                            }
-                        }
-
-                        CachyButton {
-                            text: i18n("🔍 Explicar / Analizar")
-                            primary: true
-                            onClicked: {
-                                const customQ = promptField.text.trim();
-                                if (root.visualCaptureScope === "activewindow") {
-                                    root.hide();
-                                }
-                                kityClient.runVisualIntelligence(root.visualCaptureScope, "explain", customQ);
-                                root.showVisualIntelligence = false;
-                                if (customQ.length > 0) {
-                                    promptField.text = "";
-                                }
-                            }
-                        }
-                    }
-                }
+                targetQuery: inputBar.text
+                onRequestClose: root.showVisualIntelligence = false
+                onRequestHideWindow: root.hide()
+                onQueryConsumed: inputBar.text = ""
             }
 
-            // -----------------------------------------------------------------
-            // Math Notes Drawer (Apple Intelligence Sequoia/Tahoe style)
-            // -----------------------------------------------------------------
-            Rectangle {
-                Layout.fillWidth: true
+            MathNotesDrawer {
+                id: mathNotesDrawer
                 visible: root.showMathNotes
-                implicitHeight: 220
-                radius: CachyTheme.radiusMedium
-                color: CachyTheme.cardBackground
-                border.width: 1
-                border.color: CachyTheme.specularBorder
-
-                Timer {
-                    id: mathDebounce
-                    interval: 250
-                    onTriggered: {
-                        if (mathTextArea.text.trim().length > 0) {
-                            root.mathResults = kityClient.evaluateMathNotes(mathTextArea.text);
-                        } else {
-                            root.mathResults = [];
-                        }
-                    }
-                }
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 10
-                    spacing: 8
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Kirigami.Icon {
-                            source: "view-time-schedule-calculus-symbolic"
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
-                            color: CachyTheme.accentColor
-                        }
-
-                        Text {
-                            text: i18n("Notas Matemáticas & Scratchpad:")
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                            color: CachyTheme.textPrimary
-                        }
-
-                        Text {
-                            text: i18n("(evaluación reactiva, variables persistentes, unidades y divisas)")
-                            font.pixelSize: 11
-                            color: CachyTheme.textSecondary
-                        }
-
-                        Item { Layout.fillWidth: true }
-
-                        // Action Buttons: Copy Results & Clear
-                        Rectangle {
-                            height: 24
-                            implicitWidth: copyMathRow.implicitWidth + 14
-                            radius: 12
-                            color: copyMathHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
-                            border.width: 1
-                            border.color: CachyTheme.specularBorder
-
-                            HoverHandler { id: copyMathHover; cursorShape: Qt.PointingHandCursor }
-                            TapHandler {
-                                onTapped: {
-                                    var lines = mathTextArea.text.split("\n");
-                                    var combined = [];
-                                    for (var i = 0; i < lines.length; ++i) {
-                                        var r = (root.mathResults && i < root.mathResults.length) ? root.mathResults[i] : "";
-                                        if (r && r.length > 0) {
-                                            combined.push(lines[i] + " = " + r);
-                                        } else {
-                                            combined.push(lines[i]);
-                                        }
-                                    }
-                                    kityClient.copyToClipboard(combined.join("\n"));
-                                }
-                            }
-
-                            RowLayout {
-                                id: copyMathRow
-                                anchors.centerIn: parent
-                                spacing: 4
-
-                                Kirigami.Icon {
-                                    source: "edit-copy-symbolic"
-                                    Layout.preferredWidth: 12
-                                    Layout.preferredHeight: 12
-                                    color: CachyTheme.textSecondary
-                                }
-
-                                Text {
-                                    text: i18n("Copiar cálculos")
-                                    font.pixelSize: 11
-                                    color: CachyTheme.textPrimary
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            height: 24
-                            implicitWidth: clearMathRow.implicitWidth + 14
-                            radius: 12
-                            color: clearMathHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
-                            border.width: 1
-                            border.color: CachyTheme.specularBorder
-
-                            HoverHandler { id: clearMathHover; cursorShape: Qt.PointingHandCursor }
-                            TapHandler {
-                                onTapped: {
-                                    mathTextArea.text = "";
-                                    root.mathResults = [];
-                                }
-                            }
-
-                            RowLayout {
-                                id: clearMathRow
-                                anchors.centerIn: parent
-                                spacing: 4
-
-                                Kirigami.Icon {
-                                    source: "edit-clear-all-symbolic"
-                                    Layout.preferredWidth: 12
-                                    Layout.preferredHeight: 12
-                                    color: CachyTheme.textSecondary
-                                }
-
-                                Text {
-                                    text: i18n("Limpiar")
-                                    font.pixelSize: 11
-                                    color: CachyTheme.textPrimary
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        radius: 8
-                        color: CachyTheme.surfacePill
-                        border.width: 1
-                        border.color: CachyTheme.specularBorder
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 6
-                            spacing: 8
-
-                            // Left: Editor
-                            QQC2.ScrollView {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                Layout.preferredWidth: parent.width * 0.62
-
-                                QQC2.TextArea {
-                                    id: mathTextArea
-                                    font.family: "monospace"
-                                    font.pixelSize: 12
-                                    wrapMode: TextEdit.NoWrap
-                                    color: CachyTheme.textPrimary
-                                    placeholderTextColor: CachyTheme.textMuted
-                                    placeholderText: i18n("precio = 12,5\ncantidad = 8\ntotal = precio * cantidad\n15% de total\n100 dolares a euros\n5 km a millas\n25 celsius a fahrenheit")
-                                    onTextChanged: mathDebounce.restart()
-                                    background: null
-                                }
-                            }
-
-                            Rectangle {
-                                Layout.preferredWidth: 1
-                                Layout.fillHeight: true
-                                color: CachyTheme.specularBorder
-                            }
-
-                            // Right: Results Column
-                            QQC2.ScrollView {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                Layout.preferredWidth: parent.width * 0.38
-
-                                ColumnLayout {
-                                    width: parent.width
-                                    spacing: 0
-
-                                    Repeater {
-                                        model: root.mathResults
-
-                                        Item {
-                                            required property var modelData
-                                            required property int index
-                                            Layout.fillWidth: true
-                                            height: mathTextArea.font.pixelSize > 0 ? Math.round(mathTextArea.font.pixelSize * 1.55) : 19
-
-                                            Text {
-                                                anchors.fill: parent
-                                                anchors.rightMargin: 8
-                                                verticalAlignment: Text.AlignVCenter
-                                                horizontalAlignment: Text.AlignRight
-                                                elide: Text.ElideRight
-                                                font.family: "monospace"
-                                                font.pixelSize: 12
-                                                font.weight: Font.DemiBold
-                                                color: CachyTheme.accentColor
-                                                text: (modelData && modelData.length > 0) ? ("= " + modelData) : ""
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
             }
 
-            // -----------------------------------------------------------------
-            // Main Document-Style Conversation Area (09_the_siri_app_window.png)
-            // -----------------------------------------------------------------
-            Item {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-
-                // Empty State (Apple Intelligence suggestions)
-                ColumnLayout {
-                    anchors.centerIn: parent
-                    width: Math.min(parent.width * 0.9, 480)
-                    visible: kityClient.messages.length === 0
-                    spacing: 14
-
-                    SiriOrbAnimation {
-                        Layout.alignment: Qt.AlignHCenter
-                        Layout.preferredWidth: 64
-                        Layout.preferredHeight: 64
-                        assistantState: kityClient.state
-                        audioLevel: kityClient.audioLevel
-                        customVoiceIndex: kityClient.voiceIndex
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        horizontalAlignment: Text.AlignHCenter
-                        wrapMode: Text.WordWrap
-                        text: i18n("¿En qué te puedo ayudar hoy?")
-                        font.pixelSize: 22
-                        font.weight: Font.Bold
-                        color: CachyTheme.textPrimary
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        horizontalAlignment: Text.AlignHCenter
-                        wrapMode: Text.WordWrap
-                        text: i18n("Pulsa Meta + K para la píldora flotante rápida o selecciona una sugerencia inteligente:")
-                        font.pixelSize: 13
-                        color: CachyTheme.textSecondary
-                    }
-
-                    Flow {
-                        Layout.fillWidth: true
-                        Layout.topMargin: 8
-                        spacing: 8
-
-                        Repeater {
-                            model: [
-                                { label: i18n("📋 Resumir portapapeles"), prompt: "Resume lo que he copiado en el portapapeles", isWritingTool: false, isMathNotes: false },
-                                { label: i18n("🔔 Resumen de notificaciones"), prompt: "Resume mis notificaciones del sistema", isWritingTool: false, isMathNotes: false },
-                                { label: i18n("🖥️ Analizar pantalla"), prompt: "Analiza qué hay en mi pantalla", isWritingTool: false, isMathNotes: false },
-                                { label: i18n("⚡ Estado del sistema"), prompt: "Estado del sistema", isWritingTool: false, isMathNotes: false },
-                                { label: i18n("✍️ Herramientas de escritura"), prompt: "", isWritingTool: true, isMathNotes: false },
-                                { label: i18n("∑ Notas matemáticas"), prompt: "", isWritingTool: false, isMathNotes: true }
-                            ]
-
-                            Rectangle {
-                                required property var modelData
-                                height: 32
-                                implicitWidth: chipText.implicitWidth + 24
-                                radius: 16
-                                color: chipHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
-                                border.width: 1
-                                border.color: CachyTheme.specularBorder
-
-                                HoverHandler { id: chipHover; cursorShape: Qt.PointingHandCursor }
-                                TapHandler {
-                                    onTapped: {
-                                        if (modelData.isWritingTool) {
-                                            root.showWritingTools = true;
-                                        } else if (modelData.isMathNotes) {
-                                            root.showMathNotes = true;
-                                        } else {
-                                            kityClient.sendMessage(modelData.prompt);
-                                        }
-                                    }
-                                }
-
-                                Text {
-                                    id: chipText
-                                    anchors.centerIn: parent
-                                    text: modelData.label
-                                    font.pixelSize: 12
-                                    font.weight: Font.Medium
-                                    color: CachyTheme.textPrimary
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Message List (Clean Golden Gate Document Presentation - strictly vertical)
-                ListView {
-                    id: chatListView
-                    anchors.fill: parent
-                    visible: kityClient.messages.length > 0
-                    spacing: 16
-                    clip: true
-                    flickableDirection: Flickable.VerticalFlick
-                    boundsBehavior: Flickable.StopAtBounds
-                    model: kityClient.messages
-
-                    QQC2.ScrollBar.vertical: QQC2.ScrollBar {
-                        policy: QQC2.ScrollBar.AsNeeded
-                    }
-
-                    onCountChanged: Qt.callLater(() => chatListView.positionViewAtEnd())
-
-                    Connections {
-                        target: kityClient
-                        function onStreamingTextChanged() {
-                            chatListView.positionViewAtEnd();
-                        }
-                    }
-
-                    footer: Item {
-                        width: chatListView.width
-                        visible: kityClient.streamingText.length > 0
-                        height: visible ? streamText.implicitHeight + 24 : 0
-
-                        TextEdit {
-                            id: streamText
-                            width: Math.max(100, parent.width - 18)
-                            readOnly: true
-                            selectByMouse: true
-                            cursorVisible: false
-                            activeFocusOnPress: false
-                            wrapMode: TextEdit.Wrap
-                            color: CachyTheme.textPrimary
-                            font.pixelSize: Math.round(14 * kityClient.textScale)
-                            textFormat: TextEdit.RichText
-                            text: kityClient.renderMarkdown(kityClient.streamingText)
-                        }
-                    }
-
-                    delegate: Item {
-                        id: msgDelegate
-                        required property var modelData
-                        required property int index
-
-                        width: chatListView.width
-                        implicitHeight: msgCol.implicitHeight + 12
-
-                        readonly property bool isUser: modelData.role === "user"
-                        readonly property var detectedCmds: !isUser
-                            ? kityClient.extractTerminalCommands(modelData.content)
-                            : []
-
-                        ColumnLayout {
-                            id: msgCol
-                            width: Math.max(100, parent.width - 16)
-                            spacing: 8
-
-                            // User Prompt Chip
-                            Rectangle {
-                                visible: msgDelegate.isUser
-                                Layout.alignment: Qt.AlignRight
-                                Layout.maximumWidth: msgCol.width * 0.82
-                                implicitWidth: Math.min(msgCol.width * 0.82, userPromptText.implicitWidth + 24)
-                                implicitHeight: userPromptText.implicitHeight + 14
-                                radius: 16
-                                color: CachyTheme.withAlpha(CachyTheme.accentColor, 0.18)
-                                border.width: 1
-                                border.color: CachyTheme.withAlpha(CachyTheme.accentColor, 0.45)
-
-                                Text {
-                                    id: userPromptText
-                                    anchors.centerIn: parent
-                                    width: Math.min(implicitWidth, msgCol.width * 0.82 - 24)
-                                    wrapMode: Text.WordWrap
-                                    color: CachyTheme.textPrimary
-                                    font.pixelSize: Math.round(13 * kityClient.textScale)
-                                    font.weight: Font.Medium
-                                    text: msgDelegate.modelData.content || ""
-                                }
-                            }
-
-                            // Assistant Document-Style Response (09_the_siri_app_window.png)
-                            TextEdit {
-                                visible: !msgDelegate.isUser
-                                Layout.fillWidth: true
-                                Layout.maximumWidth: msgCol.width
-                                readOnly: true
-                                selectByMouse: true
-                                cursorVisible: false
-                                activeFocusOnPress: false
-                                wrapMode: TextEdit.Wrap
-                                color: CachyTheme.textPrimary
-                                font.pixelSize: Math.round(14 * kityClient.textScale)
-                                textFormat: TextEdit.RichText
-                                onLinkActivated: link => Qt.openUrlExternally(link)
-                                text: kityClient.renderMarkdown(msgDelegate.modelData.content || "")
-                            }
-
-                            // Source Citation Pills (Matching "Apple Newsroom +2" / "TechCrunch +2" in 09_the_siri_app_window.png)
-                            Flow {
-                                visible: !msgDelegate.isUser && msgDelegate.modelData.sources !== undefined && msgDelegate.modelData.sources.length > 0
-                                Layout.fillWidth: true
-                                spacing: 6
-
-                                Repeater {
-                                    model: msgDelegate.modelData.sources || []
-
-                                    Rectangle {
-                                        required property var modelData
-                                        height: 22
-                                        width: srcLabel.implicitWidth + 16
-                                        radius: 11
-                                        color: CachyTheme.surfacePill
-                                        border.width: 1
-                                        border.color: CachyTheme.specularBorder
-
-                                        Text {
-                                            id: srcLabel
-                                            anchors.centerIn: parent
-                                            text: modelData.title || i18n("Source +1")
-                                            font.pixelSize: 11
-                                            color: CachyTheme.textSecondary
-                                        }
-
-                                        TapHandler {
-                                            onTapped: if (modelData.url) Qt.openUrlExternally(modelData.url)
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Generative Cards
-                            Cards.WeatherCard {
-                                visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "weather" && msgDelegate.modelData.cardData !== undefined
-                                Layout.fillWidth: true
-                                cardData: msgDelegate.modelData.cardData || ({})
-                            }
-
-                            Cards.MediaCard {
-                                visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "media" && msgDelegate.modelData.cardData !== undefined
-                                Layout.fillWidth: true
-                                cardData: msgDelegate.modelData.cardData || ({})
-                                onMediaActionTriggered: action => kityClient.controlMedia(action)
-                            }
-
-                            Cards.EventCard {
-                                visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "event" && msgDelegate.modelData.cardData !== undefined
-                                Layout.fillWidth: true
-                                cardData: msgDelegate.modelData.cardData || ({})
-                                onOpenCalendarRequested: kityClient.openKOrganizer()
-                            }
-
-                            Cards.EmailCard {
-                                visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "email" && msgDelegate.modelData.cardData !== undefined
-                                Layout.fillWidth: true
-                                cardData: msgDelegate.modelData.cardData || ({})
-                                onSendRequested: kityClient.sendPendingEmail()
-                                onOpenProtonRequested: kityClient.openPendingEmailInProton()
-                                onDiscardRequested: kityClient.discardPendingEmail()
-                            }
-
-                            // Writing Tools & Response Action Toolbar (Apple Intelligence Golden Gate)
-                            Rectangle {
-                                visible: !msgDelegate.isUser && (msgDelegate.modelData.content || "").length > 0
-                                Layout.fillWidth: true
-                                implicitHeight: 34
-                                radius: 10
-                                color: msgDelegate.modelData.isWritingTool ? Qt.rgba(0.12, 0.14, 0.20, 0.75) : "transparent"
-                                border.width: msgDelegate.modelData.isWritingTool ? 1 : 0
-                                border.color: CachyTheme.specularBorder
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: msgDelegate.modelData.isWritingTool ? 8 : 0
-                                    anchors.rightMargin: msgDelegate.modelData.isWritingTool ? 8 : 0
-                                    spacing: 8
-
-                                    // Replace Original Text (Signature Apple Intelligence Action)
-                                    Rectangle {
-                                        visible: msgDelegate.modelData.isWritingTool === true
-                                        height: 26
-                                        implicitWidth: replaceRow.implicitWidth + 16
-                                        radius: 13
-                                        color: replaceHover.hovered ? CachyTheme.withAlpha(CachyTheme.accentColor, 0.35) : CachyTheme.withAlpha(CachyTheme.accentColor, 0.22)
-                                        border.width: 1
-                                        border.color: CachyTheme.withAlpha(CachyTheme.accentColor, 0.55)
-
-                                        HoverHandler { id: replaceHover; cursorShape: Qt.PointingHandCursor }
-                                        TapHandler {
-                                            onTapped: {
-                                                kityClient.replaceText(msgDelegate.modelData.content);
-                                                root.hide();
-                                            }
-                                        }
-
-                                        RowLayout {
-                                            id: replaceRow
-                                            anchors.centerIn: parent
-                                            spacing: 6
-
-                                            Kirigami.Icon {
-                                                source: "edit-paste-symbolic"
-                                                Layout.preferredWidth: 14
-                                                Layout.preferredHeight: 14
-                                                color: CachyTheme.accentColor
-                                            }
-
-                                            Text {
-                                                text: i18n("Reemplazar original")
-                                                font.pixelSize: 11
-                                                font.weight: Font.DemiBold
-                                                color: CachyTheme.textPrimary
-                                            }
-                                        }
-                                    }
-
-                                    // Copy to clipboard
-                                    Rectangle {
-                                        height: 26
-                                        implicitWidth: copyRow.implicitWidth + 14
-                                        radius: 13
-                                        color: copyHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
-                                        border.width: 1
-                                        border.color: CachyTheme.specularBorder
-
-                                        HoverHandler { id: copyHover; cursorShape: Qt.PointingHandCursor }
-                                        TapHandler {
-                                            onTapped: kityClient.copyToClipboard(msgDelegate.modelData.content)
-                                        }
-
-                                        RowLayout {
-                                            id: copyRow
-                                            anchors.centerIn: parent
-                                            spacing: 5
-
-                                            Kirigami.Icon {
-                                                source: "edit-copy-symbolic"
-                                                Layout.preferredWidth: 13
-                                                Layout.preferredHeight: 13
-                                                color: CachyTheme.textSecondary
-                                            }
-
-                                            Text {
-                                                text: i18n("Copiar")
-                                                font.pixelSize: 11
-                                                color: CachyTheme.textPrimary
-                                            }
-                                        }
-                                    }
-
-                                    // Speak Aloud
-                                    Rectangle {
-                                        height: 26
-                                        implicitWidth: speakRow.implicitWidth + 14
-                                        radius: 13
-                                        color: speakHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
-                                        border.width: 1
-                                        border.color: CachyTheme.specularBorder
-
-                                        HoverHandler { id: speakHover; cursorShape: Qt.PointingHandCursor }
-                                        TapHandler {
-                                            onTapped: kityClient.speakText(msgDelegate.modelData.content)
-                                        }
-
-                                        RowLayout {
-                                            id: speakRow
-                                            anchors.centerIn: parent
-                                            spacing: 5
-
-                                            Kirigami.Icon {
-                                                source: "audio-volume-high-symbolic"
-                                                Layout.preferredWidth: 13
-                                                Layout.preferredHeight: 13
-                                                color: CachyTheme.textSecondary
-                                            }
-
-                                            Text {
-                                                text: i18n("Escuchar")
-                                                font.pixelSize: 11
-                                                color: CachyTheme.textPrimary
-                                            }
-                                        }
-                                    }
-
-                                    // Execute in Konsole (when shell commands were detected in response)
-                                    Rectangle {
-                                        visible: msgDelegate.detectedCmds.length > 0
-                                        height: 26
-                                        implicitWidth: runRow.implicitWidth + 14
-                                        radius: 13
-                                        color: runHover.hovered ? CachyTheme.withAlpha("#00e5ff", 0.30) : CachyTheme.withAlpha("#00e5ff", 0.16)
-                                        border.width: 1
-                                        border.color: CachyTheme.withAlpha("#00e5ff", 0.45)
-
-                                        HoverHandler { id: runHover; cursorShape: Qt.PointingHandCursor }
-                                        TapHandler {
-                                            onTapped: {
-                                                if (msgDelegate.detectedCmds.length > 0) {
-                                                    kityClient.executeCommandInKonsole(msgDelegate.detectedCmds[0]);
-                                                }
-                                            }
-                                        }
-
-                                        RowLayout {
-                                            id: runRow
-                                            anchors.centerIn: parent
-                                            spacing: 5
-
-                                            Kirigami.Icon {
-                                                source: "utilities-terminal-symbolic"
-                                                Layout.preferredWidth: 13
-                                                Layout.preferredHeight: 13
-                                                color: "#00e5ff"
-                                            }
-
-                                            Text {
-                                                text: i18n("Ejecutar en Konsole")
-                                                font.pixelSize: 11
-                                                font.weight: Font.DemiBold
-                                                color: CachyTheme.textPrimary
-                                            }
-                                        }
-                                    }
-
-                                    Item { Layout.fillWidth: true }
-
-                                    // Quick Tone Switcher (when this was a writing tool)
-                                    Rectangle {
-                                        visible: msgDelegate.modelData.isWritingTool === true
-                                        height: 26
-                                        implicitWidth: toneRow.implicitWidth + 14
-                                        radius: 13
-                                        color: toneHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
-                                        border.width: 1
-                                        border.color: CachyTheme.specularBorder
-
-                                        HoverHandler { id: toneHover; cursorShape: Qt.PointingHandCursor }
-                                        TapHandler {
-                                            onTapped: toneMenu.popup()
-                                        }
-
-                                        RowLayout {
-                                            id: toneRow
-                                            anchors.centerIn: parent
-                                            spacing: 5
-
-                                            Kirigami.Icon {
-                                                source: "document-edit-symbolic"
-                                                Layout.preferredWidth: 13
-                                                Layout.preferredHeight: 13
-                                                color: CachyTheme.textSecondary
-                                            }
-
-                                            Text {
-                                                text: i18n("Cambiar tono…")
-                                                font.pixelSize: 11
-                                                color: CachyTheme.textSecondary
-                                            }
-                                        }
-
-                                        QQC2.Menu {
-                                            id: toneMenu
-                                            QQC2.MenuItem {
-                                                text: i18n("💼 Profesional")
-                                                onTriggered: kityClient.applyWritingTool("professional", msgDelegate.modelData.sourceText || "")
-                                            }
-                                            QQC2.MenuItem {
-                                                text: i18n("😊 Amigable")
-                                                onTriggered: kityClient.applyWritingTool("friendly", msgDelegate.modelData.sourceText || "")
-                                            }
-                                            QQC2.MenuItem {
-                                                text: i18n("⚡ Conciso")
-                                                onTriggered: kityClient.applyWritingTool("concise", msgDelegate.modelData.sourceText || "")
-                                            }
-                                            QQC2.MenuItem {
-                                                text: i18n("↻ Reescribir")
-                                                onTriggered: kityClient.applyWritingTool("rewrite", msgDelegate.modelData.sourceText || "")
-                                            }
-                                            QQC2.MenuItem {
-                                                text: i18n("📝 Resumen")
-                                                onTriggered: kityClient.applyWritingTool("summary", msgDelegate.modelData.sourceText || "")
-                                            }
-                                            QQC2.MenuItem {
-                                                text: i18n("• Puntos clave")
-                                                onTriggered: kityClient.applyWritingTool("keypoints", msgDelegate.modelData.sourceText || "")
-                                            }
-                                            QQC2.MenuItem {
-                                                text: i18n("📊 Tabla")
-                                                onTriggered: kityClient.applyWritingTool("table", msgDelegate.modelData.sourceText || "")
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            ConversationView {
+                id: conversationView
+                onOpenWritingToolsRequested: root.showWritingTools = true
+                onOpenMathNotesRequested: root.showMathNotes = true
+                onHideWindowRequested: root.hide()
             }
 
-            // -----------------------------------------------------------------
-            // Bottom Input Bar: Circular [+] | "Ask Siri / Kity" Pill | Circular [🎙]
-            // Exact match to 09_the_siri_app_window.png
-            // -----------------------------------------------------------------
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-
-                // Left: Circular [+] Button (Apple Guide q7ny3g54v9lk: Fotos, Archivos, Herramientas)
-                Rectangle {
-                    width: 34
-                    height: 34
-                    radius: 17
-                    color: plusHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill
-                    border.width: 1
-                    border.color: CachyTheme.specularBorder
-
-                    HoverHandler { id: plusHover; cursorShape: Qt.PointingHandCursor }
-                    TapHandler {
-                        onTapped: plusMenu.popup()
-                    }
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "+"
-                        font.pixelSize: 18
-                        color: CachyTheme.textPrimary
-                    }
-
-                    QQC2.Menu {
-                        id: plusMenu
-
-                        QQC2.MenuItem {
-                            icon.name: "image-x-generic"
-                            text: i18n("Fotos…")
-                            onTriggered: photoAttachDialog.open()
-                        }
-
-                        QQC2.MenuItem {
-                            icon.name: "document-open"
-                            text: i18n("Archivos…")
-                            onTriggered: fileAttachDialog.open()
-                        }
-
-                        QQC2.MenuSeparator {}
-
-                        QQC2.MenuItem {
-                            icon.name: "document-edit-symbolic"
-                            text: i18n("Herramientas de Escritura")
-                            onTriggered: {
-                                root.compactMode = false;
-                                root.showWritingTools = !root.showWritingTools;
-                            }
-                        }
-
-                        QQC2.MenuItem {
-                            icon.name: "camera-photo-symbolic"
-                            text: i18n("Inteligencia Visual (Capturar pantalla)")
-                            onTriggered: {
-                                root.compactMode = false;
-                                root.showVisualIntelligence = !root.showVisualIntelligence;
-                            }
-                        }
-
-                        QQC2.MenuItem {
-                            icon.name: "accessories-calculator"
-                            text: i18n("Notas Matemáticas")
-                            onTriggered: {
-                                root.compactMode = false;
-                                root.showMathNotes = !root.showMathNotes;
-                            }
-                        }
-                    }
+            ConversationInputBar {
+                id: inputBar
+                onOpenPhotoDialogRequested: photoAttachDialog.open()
+                onOpenFileDialogRequested: fileAttachDialog.open()
+                onToggleWritingToolsRequested: {
+                    root.compactMode = false;
+                    root.showWritingTools = !root.showWritingTools;
                 }
-
-                // Center: "Ask Kity" Pill Input Field
-                Rectangle {
-                    Layout.fillWidth: true
-                    height: 36
-                    radius: 18
-                    color: CachyTheme.surfacePill
-                    border.width: promptField.activeFocus ? 1.5 : 1
-                    border.color: promptField.activeFocus ? CachyTheme.accentColor : CachyTheme.specularBorder
-
-                    QQC2.TextField {
-                        id: promptField
-                        anchors.fill: parent
-                        anchors.leftMargin: 14
-                        anchors.rightMargin: 14
-                        focus: true
-                        color: CachyTheme.textPrimary
-                        placeholderTextColor: CachyTheme.textMuted
-                        font.pixelSize: 13
-                        background: null
-                        placeholderText: kityClient.isRecording
-                            ? i18n("Listening...")
-                            : i18n("Ask Kity")
-                        onAccepted: {
-                            if (text.trim().length > 0) {
-                                kityClient.sendMessage(text.trim(), false);
-                                text = "";
-                            }
-                        }
-                    }
+                onToggleVisualIntelligenceRequested: {
+                    root.compactMode = false;
+                    root.showVisualIntelligence = !root.showVisualIntelligence;
                 }
-
-                // Right: Circular Microphone Button
-                Rectangle {
-                    width: 34
-                    height: 34
-                    radius: 17
-                    color: kityClient.isRecording
-                        ? "#FF375F"
-                        : (micHover.hovered ? CachyTheme.cardBackgroundHover : CachyTheme.surfacePill)
-                    border.width: 1
-                    border.color: kityClient.isRecording ? "#FF375F" : CachyTheme.specularBorder
-
-                    HoverHandler { id: micHover; cursorShape: Qt.PointingHandCursor }
-                    TapHandler {
-                        onTapped: {
-                            if (kityClient.isSpeaking) {
-                                kityClient.stopSpeaking();
-                            } else if (kityClient.state === "thinking") {
-                                kityClient.stopGeneration();
-                            } else {
-                                kityClient.toggleRecording();
-                            }
-                        }
-                    }
-
-                    Kirigami.Icon {
-                        anchors.centerIn: parent
-                        width: 16
-                        height: 16
-                        source: "audio-input-microphone-symbolic"
-                        isMask: true
-                        color: kityClient.isRecording ? "#FFFFFF" : CachyTheme.textPrimary
-                    }
+                onToggleMathNotesRequested: {
+                    root.compactMode = false;
+                    root.showMathNotes = !root.showMathNotes;
                 }
             }
         }

@@ -1,6 +1,13 @@
 <RCC>
     <qresource prefix="/qml/app">
         <file>qml/MainWindow.qml</file>
+        <file>qml/ConversationSidebar.qml</file>
+        <file>qml/SpotlightOverlay.qml</file>
+        <file>qml/WritingToolsDrawer.qml</file>
+        <file>qml/VisualIntelligenceDrawer.qml</file>
+        <file>qml/MathNotesDrawer.qml</file>
+        <file>qml/ConversationView.qml</file>
+        <file>qml/ConversationInputBar.qml</file>
         <file>qml/SiriOrbAnimation.qml</file>
         <file>qml/cards/WeatherCard.qml</file>
         <file>qml/cards/MediaCard.qml</file>
