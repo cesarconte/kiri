@@ -145,6 +145,8 @@ void KityApplet::init()
         Kity::VoiceEngine::instance().processStreamingTtsChunk(chunk);
     });
     connect(&Kity::LlmEngine::instance(), &Kity::LlmEngine::responseFinished, this, [this](const Kity::LlmResponse &resp) {
+        m_streamingText.clear();
+        Q_EMIT streamingTextChanged();
         if (!resp.cardType.isEmpty() && !resp.cardData.isEmpty()) {
             m_pendingCardType = resp.cardType;
             m_pendingCardData = resp.cardData;
@@ -153,6 +155,8 @@ void KityApplet::init()
         appendAssistantMessage(resp.text, false);
     });
     connect(&Kity::LlmEngine::instance(), &Kity::LlmEngine::errorOccurred, this, [this](const QString &err) {
+        m_streamingText.clear();
+        Q_EMIT streamingTextChanged();
         setState(QStringLiteral("error"), err);
     });
     connect(&Kity::LlmEngine::instance(), &Kity::LlmEngine::availableModelsChanged, this, [this](const QStringList &models) {

@@ -100,6 +100,7 @@ LlmEngine::LlmEngine(QObject *parent)
                 resp.sources.append(s);
             }
         }
+        Q_EMIT streamingTextChanged(QString());
         Q_EMIT responseFinished(resp);
     });
     connect(m_ollamaClient.get(), &OllamaClient::errorOccurred, this, [this](const QString &errMsg, bool fallbackEligible) {
@@ -168,6 +169,7 @@ LlmEngine::LlmEngine(QObject *parent)
             s[QStringLiteral("url")] = pair.second;
             resp.sources.append(s);
         }
+        Q_EMIT streamingTextChanged(QString());
         Q_EMIT responseFinished(resp);
     });
     connect(m_geminiClient.get(), &GeminiClient::errorOccurred, this, [this](const QString &errMsg, bool fallbackEligible) {

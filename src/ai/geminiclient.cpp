@@ -143,6 +143,7 @@ void GeminiClient::onReplyFinished()
     const QList<QPair<QString, QString>> sources = m_sources;
     m_streamingText.clear();
     m_sources.clear();
+    Q_EMIT streamingTextChanged(QString());
     Q_EMIT finished(finalResponse, sources);
 }
 

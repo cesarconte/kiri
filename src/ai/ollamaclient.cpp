@@ -156,6 +156,7 @@ void OllamaClient::onReplyFinished()
 
     const QString finalResponse = m_streamingText;
     m_streamingText.clear();
+    Q_EMIT streamingTextChanged(QString());
     Q_EMIT finished(finalResponse);
 }
 
