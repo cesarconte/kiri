@@ -122,8 +122,11 @@ QString WeatherManager::extractCityFromQuery(const QString &query) const
     // Normalize Whisper phonetics: Jijón -> Gijón
     q.replace(QRegularExpression(QStringLiteral(R"(\b[Jj]ij[oó]n\b)")), QStringLiteral("Gijón"));
 
+    // Remove leading punctuation
+    q.remove(QRegularExpression(QStringLiteral(R"(^[¿\?¡\!]+)")));
+
     // Remove common weather request prefixes so they don't capture "para" or prepositions
-    q.remove(QRegularExpression(QStringLiteral(R"(^(?:dime\s+)?(?:cu[aá]l\s+es\s+la\s+predicci[oó]n\s+(?:del\s+tiempo|meteorol[oó]gica)|predicci[oó]n\s+del\s+tiempo|previsi[oó]n\s+(?:del\s+tiempo|meteorol[oó]gica)|qu[eé]\s+tiempo\s+(?:hace|har[aá])|el\s+tiempo(?:\s+que\s+har[aá])?|temperatura|clima)\s+)"), QRegularExpression::CaseInsensitiveOption));
+    q.remove(QRegularExpression(QStringLiteral(R"(^(?:dime\s+)?(?:cu[aá]l\s+es\s+la\s+predicci[oó]n\s+(?:del\s+tiempo|meteorol[oó]gica)|predicci[oó]n\s+del\s+tiempo|previsi[oó]n\s+(?:del\s+tiempo|meteorol[oó]gica)|qu[eé]\s+tiempo\s+(?:hace|har[aá]|haga|va\s+a\s+hacer|espera)|el\s+tiempo(?:\s+que\s+(?:hace|har[aá]|haga))?|temperatura|clima)\s+)"), QRegularExpression::CaseInsensitiveOption));
 
     // Remove temporal expressions ("para mañana", "mañana", "para hoy", "hoy", etc.)
     q.remove(QRegularExpression(QStringLiteral(R"(\b(?:para\s+)?(?:hoy|mañana|pasado\s+mañana|ahora(?:\\s+mismo)?|esta\s+tarde|esta\s+noche|el\s+fin\s+de\s+semana)\b)"), QRegularExpression::CaseInsensitiveOption));
@@ -275,10 +278,73 @@ WeatherData WeatherManager::fetchWeatherData(const QString &query) const
     return wd;
 }
 
+static QString naturalForecastCondition(int code, const QString &condition)
+{
+    switch (code) {
+    case 0: return QStringLiteral("los cielos estarán despejados");
+    case 1: return QStringLiteral("el cielo estará mayormente despejado");
+    case 2: return QStringLiteral("habrá intervalos nubosos");
+    case 3: return QStringLiteral("estará nublado");
+    case 45: case 48: return QStringLiteral("habrá bancos de niebla");
+    case 51: case 53: case 55: return QStringLiteral("se esperan lloviznas");
+    case 61: case 63: case 65: return QStringLiteral("se esperan lluvias");
+    case 66: case 67: return QStringLiteral("se esperan lluvias heladas");
+    case 71: case 73: case 75: return QStringLiteral("se esperan nevadas");
+    case 80: case 81: case 82: return QStringLiteral("se esperan chubascos");
+    case 95: case 96: case 99: return QStringLiteral("se esperan tormentas");
+    default:
+        if (condition.contains(QLatin1String("despejado"), Qt::CaseInsensitive)) {
+            return QStringLiteral("estará despejado");
+        }
+        if (condition.contains(QLatin1String("lluv"), Qt::CaseInsensitive)) {
+            return QStringLiteral("se esperan lluvias");
+        }
+        if (condition.contains(QLatin1String("nub"), Qt::CaseInsensitive)) {
+            return QStringLiteral("estará nublado");
+        }
+        return QStringLiteral("estará %1").arg(condition);
+    }
+}
+
 QString WeatherManager::formatWeatherPromptContext(const WeatherData &data) const
 {
     if (!data.isValid) {
         return QString();
+    }
+
+    if (data.isForecast) {
+        const QString periodCap = data.forecastPeriod.isEmpty()
+            ? QStringLiteral("Mañana")
+            : (data.forecastPeriod.at(0).toUpper() + data.forecastPeriod.mid(1));
+        const QString condText = naturalForecastCondition(data.wmoCode, data.condition);
+        const QString tempMaxStr = QString::number(qRound(data.tempMax));
+        const QString tempMinStr = QString::number(qRound(data.tempMin));
+
+        QString rainExtra;
+        QString rainBullet;
+        if (data.precipProbability >= 30) {
+            rainExtra = QStringLiteral(" y un %1 % de probabilidad de precipitaciones").arg(data.precipProbability);
+            rainBullet = QStringLiteral("\n- Probabilidad de precipitación: %1 %").arg(data.precipProbability);
+        }
+
+        return QStringLiteral(
+            "[Previsión meteorológica oficial para %1 (%2)]:\n"
+            "- Estado del cielo: %3\n"
+            "- Temperatura mínima: %4 °C\n"
+            "- Temperatura máxima: %5 °C%6\n\n"
+            "Responde a la pregunta del usuario indicando obligatoriamente el estado del cielo y ambas temperaturas (mínima y máxima). Ejemplo de respuesta requerida:\n"
+            "\"%7 en %8 %9, con una temperatura mínima de %4 °C y una máxima de %5 °C%10.\"\n"
+            "REGLA ESTRICTA: Menciona siempre tanto la mínima (%4 °C) como la máxima (%5 °C). Responde en una sola frase natural y profesional en español de España.")
+            .arg(data.location)          // %1
+            .arg(data.forecastPeriod)    // %2
+            .arg(data.condition)         // %3
+            .arg(tempMinStr)             // %4
+            .arg(tempMaxStr)             // %5
+            .arg(rainBullet)             // %6
+            .arg(periodCap)              // %7
+            .arg(data.city)              // %8
+            .arg(condText)               // %9
+            .arg(rainExtra);             // %10
     }
 
     QString conditionPhrase;
@@ -288,37 +354,15 @@ QString WeatherManager::formatWeatherPromptContext(const WeatherData &data) cons
         conditionPhrase = data.condition;
     }
 
-    if (data.isForecast) {
-        return QStringLiteral(
-            "[Previsión meteorológica oficial para %1 (%2):\n"
-            "- Previsión: %3\n"
-            "- Temperatura máxima: %4 °C\n"
-            "- Temperatura mínima: %5 °C\n"
-            "- Probabilidad de precipitación: %6 %\n"
-            "- Precipitación estimada: %7 mm\n"
-            "- Viento máximo: %8 km/h\n"
-            "INSTRUCCIÓN OBLIGATORIA: Eres Kity, el asistente de voz. Responde claramente a la pregunta del usuario sobre la previsión para %2 en %9: indica que se esperan temperaturas entre %5 °C y %4 °C con %10. Tu respuesta debe ser concisa, directa y natural en una sola frase en español de España optimizada para hablar por voz al estilo Siri. No digas que no tienes acceso a información en tiempo real.]")
-            .arg(data.location)
-            .arg(data.forecastPeriod)
-            .arg(data.condition)
-            .arg(QString::number(data.tempMax, 'f', 1))
-            .arg(QString::number(data.tempMin, 'f', 1))
-            .arg(QString::number(data.precipProbability))
-            .arg(QString::number(data.precipitation, 'f', 1))
-            .arg(QString::number(data.wind, 'f', 1))
-            .arg(data.city)
-            .arg(conditionPhrase);
-    }
-
     return QStringLiteral(
-        "[Datos meteorológicos oficiales y actualizados en tiempo real para %1:\n"
+        "[Datos meteorológicos oficiales para %1 (actualmente)]:\n"
+        "- Estado del tiempo: %4\n"
         "- Temperatura actual: %2 °C\n"
         "- Sensación térmica: %3 °C\n"
-        "- Estado del tiempo: %4\n"
         "- Humedad relativa: %5 %\n"
         "- Viento: %6 km/h\n"
-        "- Precipitaciones: %7 mm\n"
-        "INSTRUCCIÓN OBLIGATORIA: Eres Kity, el asistente de voz. Responde a la pregunta del usuario indicando claramente que en %8 hace %2 °C con %9 (o usando una expresión natural en español como 'en %8 hace %2 °C y está lloviendo' o 'hace %2 °C con %9'). Tu respuesta debe ser gramaticalmente correcta en castellano, concisa, directa y natural en una sola frase optimizada para hablar por voz al estilo Siri. No digas que no tienes acceso a información en tiempo real.]")
+        "- Precipitaciones: %7 mm\n\n"
+        "Responde a la pregunta del usuario indicando claramente que en %8 hace %2 °C con %9 (o usando una expresión natural en español como 'en %8 hace %2 °C y está lloviendo' o 'hace %2 °C con %9'). Tu respuesta debe ser concisa, directa y natural en una sola frase en español de España.")
         .arg(data.location)
         .arg(QString::number(data.temp, 'f', 1))
         .arg(QString::number(data.feelsLike, 'f', 1))
