@@ -351,6 +351,7 @@ void VoiceEngine::stopRecording()
         playSiriEarcon(false);
 
         if (pcmData.size() < 3200) {
+            Q_EMIT transcriptionFailed(i18n("Audio de voz demasiado breve o silencio."));
             return;
         }
 
@@ -469,6 +470,7 @@ void VoiceEngine::onWhisperTranscriptionReady(const QString &rawTranscript)
     cleaned = VoiceUtils::removeFillerWords(cleaned, resolveWhisperLanguage());
 
     if (cleaned.isEmpty()) {
+        Q_EMIT transcriptionFailed(i18n("No se detectó habla inteligible."));
         return;
     }
 
@@ -496,6 +498,7 @@ void VoiceEngine::onCentralizedTranscriptionReady(const QString &rawTranscript)
 
     const QString cleaned = rawTranscript.trimmed();
     if (cleaned.isEmpty()) {
+        Q_EMIT transcriptionFailed(i18n("No se detectó habla inteligible."));
         return;
     }
 

@@ -43,6 +43,8 @@ Q_SIGNALS:
     void voiceAudioReceived(const QString &wavPath);
     void dictationAudioReceived(const QString &wavPath);
     void dictationTextReceived(const QString &text);
+    void mobileRecordingStarted();
+    void mobileRecordingStopped();
     void serverStarted(quint16 port);
     void serverStopped();
     void clientConnected(const QString &peerAddress);

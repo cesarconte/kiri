@@ -4,8 +4,13 @@
 */
 
 #include "mediamanager.h"
+#include "kdeconnectmanager.h"
 
+#include <QDBusConnection>
+#include <QDBusConnectionInterface>
+#include <QDBusInterface>
 #include <QProcess>
+#include <QStandardPaths>
 #include <QStringList>
 
 namespace Kity {
@@ -112,6 +117,101 @@ bool MediaManager::previous()
 bool MediaManager::stop()
 {
     return QProcess::execute(QStringLiteral("playerctl"), {QStringLiteral("stop")}) == 0;
+}
+
+void MediaManager::startAudioDucking()
+{
+    if (m_isDucked) {
+        return;
+    }
+    m_isDucked = true;
+
+    // 1. Primary: Trigger SmartDucking on connected devices (kdeconnect-extended)
+    const bool smartDucked = KdeConnectManager::instance().triggerSmartDucking(true);
+
+    // 2. Discover all active MPRIS media players and pause those currently Playing
+    m_pausedPlayers.clear();
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (bus.isConnected()) {
+        QDBusConnectionInterface *iface = bus.interface();
+        if (iface) {
+            const QStringList services = iface->registeredServiceNames().value();
+            for (const QString &svc : services) {
+                if (svc.startsWith(QLatin1String("org.mpris.MediaPlayer2.")) && !svc.contains(QLatin1String("kdeconnect"))) {
+                    QDBusInterface playerIface(svc,
+                                               QStringLiteral("/org/mpris/MediaPlayer2"),
+                                               QStringLiteral("org.mpris.MediaPlayer2.Player"),
+                                               bus);
+                    if (playerIface.isValid()) {
+                        const QString status = playerIface.property("PlaybackStatus").toString();
+                        if (status == QLatin1String("Playing")) {
+                            m_pausedPlayers.append(svc);
+                            playerIface.call(QDBus::NoBlock, QStringLiteral("Pause"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: If no specific DBus player was detected, check playerctl
+    if (m_pausedPlayers.isEmpty()) {
+        QProcess p;
+        p.start(QStringLiteral("playerctl"), {QStringLiteral("status")});
+        if (p.waitForFinished(200) && p.exitCode() == 0) {
+            const QString st = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+            if (st.contains(QLatin1String("Playing"), Qt::CaseInsensitive)) {
+                m_pausedPlayers.append(QStringLiteral("__playerctl_all__"));
+                QProcess::execute(QStringLiteral("playerctl"), {QStringLiteral("pause")});
+            }
+        }
+    }
+
+    // 3. Fallback volume ducking via KDuck daemon if SmartDucking wasn't active
+    if (!smartDucked) {
+        static const bool hasKDuck = !QStandardPaths::findExecutable(QStringLiteral("kduck")).isEmpty();
+        if (hasKDuck) {
+            QProcess::startDetached(QStringLiteral("kduck"), {QStringLiteral("duck"), QStringLiteral("15")});
+        }
+    }
+}
+
+void MediaManager::stopAudioDucking()
+{
+    if (!m_isDucked) {
+        return;
+    }
+    m_isDucked = false;
+
+    // 1. Restore SmartDucking via KDE Connect
+    const bool smartRestored = KdeConnectManager::instance().triggerSmartDucking(false);
+
+    // 2. Restore volume via KDuck if SmartDucking was not used
+    if (!smartRestored) {
+        static const bool hasKDuck = !QStandardPaths::findExecutable(QStringLiteral("kduck")).isEmpty();
+        if (hasKDuck) {
+            QProcess::startDetached(QStringLiteral("kduck"), {QStringLiteral("unduck")});
+        }
+    }
+
+    // 3. Resume only players that were actually Playing before ducking was activated
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    for (const QString &svc : m_pausedPlayers) {
+        if (svc == QLatin1String("__playerctl_all__")) {
+            QProcess::execute(QStringLiteral("playerctl"), {QStringLiteral("play")});
+            continue;
+        }
+        if (bus.isConnected()) {
+            QDBusInterface playerIface(svc,
+                                       QStringLiteral("/org/mpris/MediaPlayer2"),
+                                       QStringLiteral("org.mpris.MediaPlayer2.Player"),
+                                       bus);
+            if (playerIface.isValid()) {
+                playerIface.call(QDBus::NoBlock, QStringLiteral("Play"));
+            }
+        }
+    }
+    m_pausedPlayers.clear();
 }
 
 } // namespace Kity

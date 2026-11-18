@@ -40,12 +40,20 @@ public:
     bool previous();
     bool stop();
 
+    // Auto-Ducking and Media Focus management
+    void startAudioDucking();
+    void stopAudioDucking();
+    bool isDucked() const { return m_isDucked; }
+
 private:
     explicit MediaManager(QObject *parent = nullptr);
     ~MediaManager() override = default;
 
     MediaManager(const MediaManager &) = delete;
     MediaManager &operator=(const MediaManager &) = delete;
+
+    bool m_isDucked = false;
+    QStringList m_pausedPlayers;
 };
 
 } // namespace Kity

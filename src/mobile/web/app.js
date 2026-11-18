@@ -414,6 +414,10 @@
       lastFinalTranscript = '';
       currentInterimTranscript = '';
 
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'recording_start' }));
+      }
+
       // 3. Initialize Web Speech API ONLY if webspeech mode is selected
       // (avoids concurrent microphone contention on Android HAL when in PC mode)
       if (sttMode === 'webspeech') {
@@ -478,6 +482,10 @@
     isRecording = false;
     btnMic.classList.remove('recording');
     triggerHaptic([15, 40, 15]);
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'recording_stop' }));
+    }
 
     if (speechSilenceTimer) {
       clearTimeout(speechSilenceTimer);

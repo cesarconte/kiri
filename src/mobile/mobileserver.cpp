@@ -412,6 +412,14 @@ void KityMobileServer::onWebSocketTextMessage(const QString &message)
     const QString type = obj.value(QStringLiteral("type")).toString();
     const QString mode = obj.value(QStringLiteral("mode")).toString();
 
+    if (type == QStringLiteral("recording_start")) {
+        Q_EMIT mobileRecordingStarted();
+        return;
+    } else if (type == QStringLiteral("recording_stop")) {
+        Q_EMIT mobileRecordingStopped();
+        return;
+    }
+
     if (type == QStringLiteral("command")) {
         const QString text = obj.value(QStringLiteral("text")).toString().trimmed();
         const bool fromVoice = obj.value(QStringLiteral("fromVoice")).toBool(true);
