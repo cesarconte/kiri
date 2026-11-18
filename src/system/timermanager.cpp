@@ -137,6 +137,25 @@ QList<ScheduledReminder> TimerManager::allReminders() const
     return m_reminders;
 }
 
+bool TimerManager::removeReminder(const QString &id)
+{
+    const int initialSize = m_reminders.size();
+    m_reminders.removeIf([&id](const ScheduledReminder &r) {
+        return r.id == id;
+    });
+    if (m_reminders.size() != initialSize) {
+        saveReminders();
+        return true;
+    }
+    return false;
+}
+
+void TimerManager::clearAllReminders()
+{
+    m_reminders.clear();
+    saveReminders();
+}
+
 void TimerManager::checkReminders()
 {
     const QDateTime now = QDateTime::currentDateTime();

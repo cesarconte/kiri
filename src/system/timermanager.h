@@ -32,6 +32,9 @@ public:
     QList<ScheduledReminder> listActiveReminders() const;
     QList<ScheduledReminder> allReminders() const;
 
+    bool removeReminder(const QString &id);
+    void clearAllReminders();
+
     void loadReminders();
     void saveReminders();
     void checkReminders();

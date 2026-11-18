@@ -148,13 +148,20 @@ private Q_SLOTS:
 
         const auto active = Kity::TimerManager::instance().listActiveReminders();
         bool found = false;
+        QString testReminderId;
         for (const auto &r : active) {
             if (r.text == QStringLiteral("Test Pasta")) {
                 found = true;
+                testReminderId = r.id;
                 break;
             }
         }
         QVERIFY(found);
+
+        // Clean up test reminder immediately so it does not pollute user storage
+        if (!testReminderId.isEmpty()) {
+            Kity::TimerManager::instance().removeReminder(testReminderId);
+        }
     }
 
     void testWeatherTool()
