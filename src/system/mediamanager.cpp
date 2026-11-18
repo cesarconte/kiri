@@ -4,13 +4,11 @@
 */
 
 #include "mediamanager.h"
-#include "kdeconnectmanager.h"
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusInterface>
 #include <QProcess>
-#include <QStandardPaths>
 #include <QStringList>
 
 namespace Kity {
@@ -119,18 +117,16 @@ bool MediaManager::stop()
     return QProcess::execute(QStringLiteral("playerctl"), {QStringLiteral("stop")}) == 0;
 }
 
-void MediaManager::startAudioDucking()
+void MediaManager::pauseActiveMedia()
 {
-    if (m_isDucked) {
+    if (m_isMediaPaused) {
         return;
     }
-    m_isDucked = true;
-
-    // 1. Primary: Trigger SmartDucking on connected devices (kdeconnect-extended)
-    const bool smartDucked = KdeConnectManager::instance().triggerSmartDucking(true);
-
-    // 2. Discover all active MPRIS media players and pause those currently Playing
+    m_isMediaPaused = true;
     m_pausedPlayers.clear();
+
+    // Discover all active MPRIS media players and pause those currently Playing
+    // (exact behavior of Android MediaSession / AudioFocus on incoming calls/assistant)
     QDBusConnection bus = QDBusConnection::sessionBus();
     if (bus.isConnected()) {
         QDBusConnectionInterface *iface = bus.interface();
@@ -158,7 +154,7 @@ void MediaManager::startAudioDucking()
     if (m_pausedPlayers.isEmpty()) {
         QProcess p;
         p.start(QStringLiteral("playerctl"), {QStringLiteral("status")});
-        if (p.waitForFinished(200) && p.exitCode() == 0) {
+        if (p.waitForFinished(150) && p.exitCode() == 0) {
             const QString st = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
             if (st.contains(QLatin1String("Playing"), Qt::CaseInsensitive)) {
                 m_pausedPlayers.append(QStringLiteral("__playerctl_all__"));
@@ -166,35 +162,16 @@ void MediaManager::startAudioDucking()
             }
         }
     }
-
-    // 3. Fallback volume ducking via KDuck daemon if SmartDucking wasn't active
-    if (!smartDucked) {
-        static const bool hasKDuck = !QStandardPaths::findExecutable(QStringLiteral("kduck")).isEmpty();
-        if (hasKDuck) {
-            QProcess::startDetached(QStringLiteral("kduck"), {QStringLiteral("duck"), QStringLiteral("15")});
-        }
-    }
 }
 
-void MediaManager::stopAudioDucking()
+void MediaManager::resumePausedMedia()
 {
-    if (!m_isDucked) {
+    if (!m_isMediaPaused) {
         return;
     }
-    m_isDucked = false;
+    m_isMediaPaused = false;
 
-    // 1. Restore SmartDucking via KDE Connect
-    const bool smartRestored = KdeConnectManager::instance().triggerSmartDucking(false);
-
-    // 2. Restore volume via KDuck if SmartDucking was not used
-    if (!smartRestored) {
-        static const bool hasKDuck = !QStandardPaths::findExecutable(QStringLiteral("kduck")).isEmpty();
-        if (hasKDuck) {
-            QProcess::startDetached(QStringLiteral("kduck"), {QStringLiteral("unduck")});
-        }
-    }
-
-    // 3. Resume only players that were actually Playing before ducking was activated
+    // Resume only the players that were actually Playing before Kity paused them
     QDBusConnection bus = QDBusConnection::sessionBus();
     for (const QString &svc : m_pausedPlayers) {
         if (svc == QLatin1String("__playerctl_all__")) {

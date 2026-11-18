@@ -40,10 +40,16 @@ public:
     bool previous();
     bool stop();
 
-    // Auto-Ducking and Media Focus management
-    void startAudioDucking();
-    void stopAudioDucking();
-    bool isDucked() const { return m_isDucked; }
+    // Transient Media Focus (Android MediaSession / AudioFocus style):
+    // Pauses currently playing media during voice interaction without touching master sink volume.
+    void pauseActiveMedia();
+    void resumePausedMedia();
+    bool isMediaPaused() const { return m_isMediaPaused; }
+
+    // Aliases
+    void startAudioDucking() { pauseActiveMedia(); }
+    void stopAudioDucking() { resumePausedMedia(); }
+    bool isDucked() const { return isMediaPaused(); }
 
 private:
     explicit MediaManager(QObject *parent = nullptr);
@@ -52,7 +58,7 @@ private:
     MediaManager(const MediaManager &) = delete;
     MediaManager &operator=(const MediaManager &) = delete;
 
-    bool m_isDucked = false;
+    bool m_isMediaPaused = false;
     QStringList m_pausedPlayers;
 };
 

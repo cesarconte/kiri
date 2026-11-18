@@ -30,7 +30,6 @@ public:
     bool sendSms(const QString &deviceId, const QString &phoneNumber, const QString &message) const;
     bool sendClipboard(const QString &deviceId, const QString &text) const;
     bool initiateCall(const QString &deviceId, const QString &phoneNumber) const;
-    bool triggerSmartDucking(bool duck) const;
 
     static QString normalizePhoneNumber(const QString &raw);
     static QString sanitizePhoneForDial(const QString &raw);

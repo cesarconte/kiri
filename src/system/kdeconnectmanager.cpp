@@ -132,23 +132,6 @@ bool KdeConnectManager::initiateCall(const QString &deviceId, const QString &pho
     return false;
 }
 
-bool KdeConnectManager::triggerSmartDucking(bool duck) const
-{
-    const auto devices = getDevices();
-    bool triggered = false;
-    for (const auto &dev : devices) {
-        QDBusInterface duckIface(QStringLiteral("org.kde.kdeconnect"),
-                                 QStringLiteral("/modules/kdeconnect/devices/") + dev.id + QStringLiteral("/smartducking"),
-                                 QStringLiteral("org.kde.kdeconnect.device.smartducking"),
-                                 QDBusConnection::sessionBus());
-        if (duckIface.isValid()) {
-            duckIface.call(QDBus::NoBlock, QStringLiteral("triggerDucking"), duck);
-            triggered = true;
-        }
-    }
-    return triggered;
-}
-
 QString KdeConnectManager::normalizePhoneNumber(const QString &raw)
 {
     QString res = raw;
