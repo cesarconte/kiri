@@ -71,6 +71,12 @@ plasma_add_applet(org.cesar.kity
         ai/writingtoolsmanager.h
         voice/voiceengine.cpp
         voice/voiceengine.h
+        voice/voiceutils.cpp
+        voice/voiceutils.h
+        voice/geministtclient.cpp
+        voice/geministtclient.h
+        voice/ttsengine.cpp
+        voice/ttsengine.h
         tools/itool.h
         tools/toolregistry.cpp
         tools/toolregistry.h
@@ -237,6 +243,10 @@ add_executable(kity
     app/main.cpp
     app/kityclient.cpp
     app/kityclient.h
+    app/conversationmanager.cpp
+    app/conversationmanager.h
+    app/markdownformatter.cpp
+    app/markdownformatter.h
     app/resources.qrc
 )
 

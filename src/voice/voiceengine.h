@@ -6,12 +6,8 @@
 #pragma once
 
 #include <QElapsedTimer>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
 #include <QObject>
-#include <QPointer>
 #include <QProcess>
-#include <QQueue>
 #include <QString>
 #include <QTimer>
 #include <memory>
@@ -19,6 +15,9 @@
 #include "../pipewirerecorder.h"
 #include "../whisperengine.h"
 #include "../kdictationclient.h"
+#include "geministtclient.h"
+#include "ttsengine.h"
+#include "voiceutils.h"
 
 namespace Kity {
 
@@ -36,7 +35,8 @@ struct VoiceConfig {
 
 /**
  * @brief VoiceEngine manages audio capture, Voice Activity Detection (VAD),
- * Whisper STT, centralized STT fallback, Wake-Word detection, and Piper/Edge TTS.
+ * Whisper STT, centralized STT fallback, Wake-Word detection, and delegates
+ * TTS synthesis to TtsEngine and remote STT to GeminiSttClient.
  */
 class VoiceEngine : public QObject
 {
@@ -60,7 +60,7 @@ public:
     void startWakeWordListener();
     void stopWakeWordListener();
 
-    // Text to Speech
+    // Text to Speech (delegates to TtsEngine)
     bool isSpeaking() const;
     void speakText(const QString &text);
     void stopSpeaking();
@@ -85,10 +85,11 @@ public:
     void startVad();
     void stopVad();
     void playSiriEarcon(bool activating);
-    static QString cleanWhisperOutput(const QString &raw);
-    static QString removeFillerWords(const QString &text, const QString &lang = QStringLiteral("es"));
-    static QString stripMarkdownForSpeech(const QString &markdown);
-    static QByteArray createWavHeader(int dataSize, int sampleRate, int channels, int bitsPerSample);
+
+    static QString cleanWhisperOutput(const QString &raw) { return VoiceUtils::cleanWhisperOutput(raw); }
+    static QString removeFillerWords(const QString &text, const QString &lang = QStringLiteral("es")) { return VoiceUtils::removeFillerWords(text, lang); }
+    static QString stripMarkdownForSpeech(const QString &markdown) { return VoiceUtils::stripMarkdownForSpeech(markdown); }
+    static QByteArray createWavHeader(int dataSize, int sampleRate, int channels, int bitsPerSample) { return VoiceUtils::createWavHeader(dataSize, sampleRate, channels, bitsPerSample); }
 
 Q_SIGNALS:
     void transcriptionReady(const QString &text, bool fromVoice);
@@ -119,11 +120,7 @@ private:
 
     void runSpeechTranscription(const QByteArray &pcmData = QByteArray());
     void runWhisperTranscription(const QByteArray &pcmData);
-    void runGeminiAudioTranscription(const QByteArray &pcmData);
     void checkWakeWordTranscription(const QByteArray &pcmData);
-
-    void playNextTtsQueueItem();
-    void speakSentence(const QString &sentence);
 
     VoiceConfig m_config;
 
@@ -131,6 +128,8 @@ private:
     std::unique_ptr<PipeWireRecorder> m_wakeWordRecorder;
     std::unique_ptr<WhisperEngine> m_whisperEngine;
     std::unique_ptr<KDictationClient> m_kdictationClient;
+    std::unique_ptr<GeminiSttClient> m_geminiSttClient;
+    std::unique_ptr<TtsEngine> m_ttsEngine;
 
     QTimer *m_centralizedFallbackTimer = nullptr;
     bool m_waitingForCentralizedSTT = false;
@@ -140,9 +139,6 @@ private:
     QElapsedTimer m_recordingDurationTimer;
     qreal m_audioLevel = 0.0;
     bool m_isRecording = false;
-
-    QProcess *m_ttsProcess = nullptr;
-    QPointer<QProcess> m_pwPlayProcess;
     int m_bargeInVoiceFrames = 0;
 
     QByteArray m_wakeWordPcmBuffer;
@@ -153,15 +149,7 @@ private:
     QTimer *m_vadTimer = nullptr;
     QElapsedTimer m_speechSilenceTimer;
     bool m_speechDetected = false;
-
-    QString m_ttsSpeechBuffer;
-    QQueue<QString> m_ttsQueue;
-    bool m_isSpeakingSentence = false;
-    bool m_insideThinkingBlock = false;
     bool m_lastQueryWasVoice = false;
-
-    QNetworkAccessManager *m_nam = nullptr;
-    QPointer<QNetworkReply> m_currentTtsReply;
 };
 
 } // namespace Kity

@@ -13,6 +13,10 @@
 #include <QObject>
 #include <QStringList>
 #include <QVariantList>
+#include <memory>
+
+#include "conversationmanager.h"
+#include "markdownformatter.h"
 
 class KityClient;
 
@@ -226,9 +230,9 @@ private Q_SLOTS:
 private:
     void setupDBus();
     void loadLocalHistory();
-    void loadConversations();
-    void saveConversations();
     void syncActiveConversationFromMessages();
+
+    std::unique_ptr<Kity::ConversationManager> m_convManager;
 
     QDBusInterface *m_iface = nullptr;
     QDBusServiceWatcher *m_watcher = nullptr;
