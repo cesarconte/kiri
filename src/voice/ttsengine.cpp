@@ -94,12 +94,8 @@ void TtsEngine::speakText(const QString &text)
     }
 }
 
-void TtsEngine::stopSpeaking()
+void TtsEngine::terminateProcesses()
 {
-    m_queue.clear();
-    m_speechBuffer.clear();
-    m_insideThinkingBlock = false;
-
     if (m_currentReply) {
         m_currentReply->disconnect(this);
         m_currentReply->abort();
@@ -124,6 +120,15 @@ void TtsEngine::stopSpeaking()
         m_ttsProcess->deleteLater();
         m_ttsProcess = nullptr;
     }
+}
+
+void TtsEngine::stopSpeaking()
+{
+    m_queue.clear();
+    m_speechBuffer.clear();
+    m_insideThinkingBlock = false;
+
+    terminateProcesses();
 
     m_isSpeakingSentence = false;
     Q_EMIT speakingStateChanged(false);
@@ -239,6 +244,92 @@ void TtsEngine::playNextItem()
 
     const QString sentence = m_queue.dequeue();
     speakSentence(sentence);
+}
+
+void TtsEngine::startPipedSpeech(const QString &ttsProg, const QStringList &ttsArgs, const QString &stdinText)
+{
+    terminateProcesses();
+
+    const QString pwPlay = QStandardPaths::findExecutable(QStringLiteral("pw-play"));
+    if (pwPlay.isEmpty()) {
+        m_isSpeakingSentence = false;
+        playNextItem();
+        return;
+    }
+
+    m_isSpeakingSentence = true;
+    Q_EMIT speakingStateChanged(true);
+
+    m_ttsProcess = new QProcess(this);
+    m_pwPlayProcess = new QProcess(this);
+    m_ttsProcess->setStandardOutputProcess(m_pwPlayProcess.data());
+
+    QPointer<QProcess> pwProc = m_pwPlayProcess;
+    QPointer<QProcess> ttsProc = m_ttsProcess;
+    auto onFinished = [this, pwProc, ttsProc]() {
+        if (m_pwPlayProcess == pwProc) {
+            m_pwPlayProcess = nullptr;
+        }
+        if (m_ttsProcess == ttsProc) {
+            m_ttsProcess = nullptr;
+        }
+        if (pwProc) {
+            pwProc->deleteLater();
+        }
+        if (ttsProc) {
+            ttsProc->deleteLater();
+        }
+        playNextItem();
+    };
+
+    connect(pwProc.data(), &QProcess::finished, this, [onFinished](int, QProcess::ExitStatus) {
+        onFinished();
+    });
+    connect(pwProc.data(), &QProcess::errorOccurred, this, [onFinished](QProcess::ProcessError) {
+        onFinished();
+    });
+
+    m_ttsProcess->start(ttsProg, ttsArgs);
+    m_pwPlayProcess->start(pwPlay, QStringList() << QStringLiteral("-"));
+
+    if (!stdinText.isEmpty()) {
+        m_ttsProcess->write(stdinText.toUtf8());
+        m_ttsProcess->closeWriteChannel();
+    }
+}
+
+void TtsEngine::playAudioBuffer(const QByteArray &audioBytes)
+{
+    terminateProcesses();
+
+    const QString pwPlay = QStandardPaths::findExecutable(QStringLiteral("pw-play"));
+    if (pwPlay.isEmpty() || audioBytes.isEmpty()) {
+        playNextItem();
+        return;
+    }
+
+    m_pwPlayProcess = new QProcess(this);
+    QPointer<QProcess> pwProc = m_pwPlayProcess;
+    auto onFinished = [this, pwProc]() {
+        if (m_pwPlayProcess == pwProc) {
+            m_pwPlayProcess = nullptr;
+        }
+        if (pwProc) {
+            pwProc->deleteLater();
+        }
+        playNextItem();
+    };
+
+    connect(pwProc.data(), &QProcess::finished, this, [onFinished](int, QProcess::ExitStatus) {
+        onFinished();
+    });
+    connect(pwProc.data(), &QProcess::errorOccurred, this, [onFinished](QProcess::ProcessError) {
+        onFinished();
+    });
+
+    m_pwPlayProcess->start(pwPlay, QStringList() << QStringLiteral("-"));
+    m_pwPlayProcess->write(audioBytes);
+    m_pwPlayProcess->closeWriteChannel();
 }
 
 void TtsEngine::speakSentence(const QString &sentence)
@@ -374,7 +465,7 @@ void TtsEngine::speakSentence(const QString &sentence)
         req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
 
         m_currentReply = m_nam->post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
-        connect(m_currentReply.data(), &QNetworkReply::finished, this, [this, pwPlay, edgeCli, resolveEdgeVoiceForOrb, voiceAccent, voiceIndex, voicePace, voiceExpressivity, sentence]() {
+        connect(m_currentReply.data(), &QNetworkReply::finished, this, [this, edgeCli, resolveEdgeVoiceForOrb, voiceAccent, voiceIndex, voicePace, voiceExpressivity, sentence]() {
             if (!m_currentReply) {
                 return;
             }
@@ -397,54 +488,7 @@ void TtsEngine::speakSentence(const QString &sentence)
                     const QString rateArg = QStringLiteral("--rate=%1%2%").arg(ratePct >= 0 ? QStringLiteral("+") : QString()).arg(ratePct);
                     const QString pitchArg = QStringLiteral("--pitch=%1%2Hz").arg(totalPitchHz >= 0 ? QStringLiteral("+") : QString()).arg(totalPitchHz);
 
-                    if (m_pwPlayProcess) {
-                        m_pwPlayProcess->disconnect(this);
-                        if (m_pwPlayProcess->state() == QProcess::Running) {
-                            m_pwPlayProcess->kill();
-                        }
-                        m_pwPlayProcess->deleteLater();
-                        m_pwPlayProcess = nullptr;
-                    }
-                    if (m_ttsProcess) {
-                        m_ttsProcess->disconnect(this);
-                        if (m_ttsProcess->state() == QProcess::Running) {
-                            m_ttsProcess->kill();
-                        }
-                        m_ttsProcess->deleteLater();
-                        m_ttsProcess = nullptr;
-                    }
-
-                    m_ttsProcess = new QProcess(this);
-                    m_pwPlayProcess = new QProcess(this);
-                    m_ttsProcess->setStandardOutputProcess(m_pwPlayProcess.data());
-
-                    QPointer<QProcess> pwProc = m_pwPlayProcess;
-                    QPointer<QProcess> ttsProc = m_ttsProcess;
-                    auto onFinished = [this, pwProc, ttsProc]() {
-                        if (m_pwPlayProcess == pwProc) {
-                            m_pwPlayProcess = nullptr;
-                        }
-                        if (m_ttsProcess == ttsProc) {
-                            m_ttsProcess = nullptr;
-                        }
-                        if (pwProc) {
-                            pwProc->deleteLater();
-                        }
-                        if (ttsProc) {
-                            ttsProc->deleteLater();
-                        }
-                        playNextItem();
-                    };
-
-                    connect(pwProc.data(), &QProcess::finished, this, [onFinished](int, QProcess::ExitStatus) {
-                        onFinished();
-                    });
-                    connect(pwProc.data(), &QProcess::errorOccurred, this, [onFinished](QProcess::ProcessError) {
-                        onFinished();
-                    });
-
-                    m_ttsProcess->start(edgeCli, {QStringLiteral("--voice"), edgeVoice, rateArg, pitchArg, QStringLiteral("--text"), sentence, QStringLiteral("--write-media"), QStringLiteral("-")});
-                    m_pwPlayProcess->start(pwPlay, {QStringLiteral("-")});
+                    startPipedSpeech(edgeCli, {QStringLiteral("--voice"), edgeVoice, rateArg, pitchArg, QStringLiteral("--text"), sentence, QStringLiteral("--write-media"), QStringLiteral("-")});
                     return;
                 }
                 playNextItem();
@@ -458,47 +502,13 @@ void TtsEngine::speakSentence(const QString &sentence)
                 return;
             }
 
-            const QByteArray audioBytes = QByteArray::fromBase64(b64.toUtf8());
-            if (m_pwPlayProcess) {
-                m_pwPlayProcess->disconnect(this);
-                if (m_pwPlayProcess->state() == QProcess::Running) {
-                    m_pwPlayProcess->kill();
-                }
-                m_pwPlayProcess->deleteLater();
-                m_pwPlayProcess = nullptr;
-            }
-
-            m_pwPlayProcess = new QProcess(this);
-            QPointer<QProcess> pwProc = m_pwPlayProcess;
-            auto onFinished = [this, pwProc]() {
-                if (m_pwPlayProcess == pwProc) {
-                    m_pwPlayProcess = nullptr;
-                }
-                if (pwProc) {
-                    pwProc->deleteLater();
-                }
-                playNextItem();
-            };
-
-            connect(pwProc.data(), &QProcess::finished, this, [onFinished](int, QProcess::ExitStatus) {
-                onFinished();
-            });
-            connect(pwProc.data(), &QProcess::errorOccurred, this, [onFinished](QProcess::ProcessError) {
-                onFinished();
-            });
-
-            m_pwPlayProcess->start(pwPlay, QStringList() << QStringLiteral("-"));
-            m_pwPlayProcess->write(audioBytes);
-            m_pwPlayProcess->closeWriteChannel();
+            playAudioBuffer(QByteArray::fromBase64(b64.toUtf8()));
         });
         return;
     }
 
     // 2. Microsoft Edge Neural TTS
     if ((ttsEngine == QLatin1String("edge") || (ttsEngine == QLatin1String("google") && googleApiKey.isEmpty())) && !edgeCli.isEmpty()) {
-        m_isSpeakingSentence = true;
-        Q_EMIT speakingStateChanged(true);
-
         int orbPitchShift = 0;
         const QString edgeVoice = resolveEdgeVoiceForOrb(voiceAccent, voiceIndex, orbPitchShift);
         const int ratePct = qRound((voicePace - 0.5) * 80.0);
@@ -507,146 +517,40 @@ void TtsEngine::speakSentence(const QString &sentence)
         const QString rateArg = QStringLiteral("--rate=%1%2%").arg(ratePct >= 0 ? QStringLiteral("+") : QString()).arg(ratePct);
         const QString pitchArg = QStringLiteral("--pitch=%1%2Hz").arg(totalPitchHz >= 0 ? QStringLiteral("+") : QString()).arg(totalPitchHz);
 
-        if (m_pwPlayProcess) {
-            m_pwPlayProcess->disconnect(this);
-            if (m_pwPlayProcess->state() == QProcess::Running) {
-                m_pwPlayProcess->kill();
-            }
-            m_pwPlayProcess->deleteLater();
-            m_pwPlayProcess = nullptr;
-        }
-        if (m_ttsProcess) {
-            m_ttsProcess->disconnect(this);
-            if (m_ttsProcess->state() == QProcess::Running) {
-                m_ttsProcess->kill();
-            }
-            m_ttsProcess->deleteLater();
-            m_ttsProcess = nullptr;
-        }
-
-        m_ttsProcess = new QProcess(this);
-        m_pwPlayProcess = new QProcess(this);
-        m_ttsProcess->setStandardOutputProcess(m_pwPlayProcess.data());
-
-        QStringList edgeArgs;
-        edgeArgs << QStringLiteral("--voice") << edgeVoice
-                 << rateArg
-                 << pitchArg
-                 << QStringLiteral("--text") << sentence
-                 << QStringLiteral("--write-media") << QStringLiteral("-");
-
-        QPointer<QProcess> pwProc = m_pwPlayProcess;
-        QPointer<QProcess> ttsProc = m_ttsProcess;
-        auto onFinished = [this, pwProc, ttsProc]() {
-            if (m_pwPlayProcess == pwProc) {
-                m_pwPlayProcess = nullptr;
-            }
-            if (m_ttsProcess == ttsProc) {
-                m_ttsProcess = nullptr;
-            }
-            if (pwProc) {
-                pwProc->deleteLater();
-            }
-            if (ttsProc) {
-                ttsProc->deleteLater();
-            }
-            playNextItem();
-        };
-
-        connect(pwProc.data(), &QProcess::finished, this, [onFinished](int, QProcess::ExitStatus) {
-            onFinished();
+        startPipedSpeech(edgeCli, {
+            QStringLiteral("--voice"), edgeVoice,
+            rateArg, pitchArg,
+            QStringLiteral("--text"), sentence,
+            QStringLiteral("--write-media"), QStringLiteral("-")
         });
-        connect(pwProc.data(), &QProcess::errorOccurred, this, [onFinished](QProcess::ProcessError) {
-            onFinished();
-        });
-
-        m_ttsProcess->start(edgeCli, edgeArgs);
-        m_pwPlayProcess->start(pwPlay, QStringList() << QStringLiteral("-"));
         return;
     }
 
     // 3. Local TTS engines: Kokoro-82M or Piper
-    QString execProg;
-    QStringList execArgs;
-
     if (ttsEngine == QLatin1String("kokoro") && !kokoroCli.isEmpty()) {
-        execProg = kokoroCli;
         const QString kokoroVoice = readConfigString(QStringLiteral("kokoroVoice"), QStringLiteral("ef_dora"));
-        execArgs << QStringLiteral("--voice") << kokoroVoice
-                 << QStringLiteral("--output_file") << QStringLiteral("-");
-    } else if (!piperCli.isEmpty() && !piperVoicePath.isEmpty()) {
-        execProg = piperCli;
+        startPipedSpeech(kokoroCli, {QStringLiteral("--voice"), kokoroVoice, QStringLiteral("--output_file"), QStringLiteral("-")}, sentence);
+        return;
+    }
+    if (!piperCli.isEmpty() && !piperVoicePath.isEmpty()) {
         const double lengthScale = 1.35 - (voicePace * 0.65);
         const double noiseScale = 0.35 + (voiceExpressivity * 0.50);
-        execArgs << QStringLiteral("--model") << piperVoicePath
-                 << QStringLiteral("--length_scale") << QString::number(lengthScale, 'f', 2)
-                 << QStringLiteral("--noise_scale") << QString::number(noiseScale, 'f', 2)
-                 << QStringLiteral("--output_file") << QStringLiteral("-");
-    } else if (!kokoroCli.isEmpty()) {
-        execProg = kokoroCli;
-        execArgs << QStringLiteral("--voice") << QStringLiteral("ef_dora")
-                 << QStringLiteral("--output_file") << QStringLiteral("-");
-    } else {
-        m_isSpeakingSentence = false;
-        Q_EMIT speakingStateChanged(false);
-        playNextItem();
+        startPipedSpeech(piperCli, {
+            QStringLiteral("--model"), piperVoicePath,
+            QStringLiteral("--length_scale"), QString::number(lengthScale, 'f', 2),
+            QStringLiteral("--noise_scale"), QString::number(noiseScale, 'f', 2),
+            QStringLiteral("--output_file"), QStringLiteral("-")
+        }, sentence);
+        return;
+    }
+    if (!kokoroCli.isEmpty()) {
+        startPipedSpeech(kokoroCli, {QStringLiteral("--voice"), QStringLiteral("ef_dora"), QStringLiteral("--output_file"), QStringLiteral("-")}, sentence);
         return;
     }
 
-    m_isSpeakingSentence = true;
-    Q_EMIT speakingStateChanged(true);
-
-    if (m_pwPlayProcess) {
-        m_pwPlayProcess->disconnect(this);
-        if (m_pwPlayProcess->state() == QProcess::Running) {
-            m_pwPlayProcess->kill();
-        }
-        m_pwPlayProcess->deleteLater();
-        m_pwPlayProcess = nullptr;
-    }
-    if (m_ttsProcess) {
-        m_ttsProcess->disconnect(this);
-        if (m_ttsProcess->state() == QProcess::Running) {
-            m_ttsProcess->kill();
-        }
-        m_ttsProcess->deleteLater();
-        m_ttsProcess = nullptr;
-    }
-
-    m_ttsProcess = new QProcess(this);
-    m_pwPlayProcess = new QProcess(this);
-    m_ttsProcess->setStandardOutputProcess(m_pwPlayProcess.data());
-
-    QPointer<QProcess> pwProc = m_pwPlayProcess;
-    QPointer<QProcess> ttsProc = m_ttsProcess;
-    auto onFinished = [this, pwProc, ttsProc]() {
-        if (m_pwPlayProcess == pwProc) {
-            m_pwPlayProcess = nullptr;
-        }
-        if (m_ttsProcess == ttsProc) {
-            m_ttsProcess = nullptr;
-        }
-        if (pwProc) {
-            pwProc->deleteLater();
-        }
-        if (ttsProc) {
-            ttsProc->deleteLater();
-        }
-        playNextItem();
-    };
-
-    connect(pwProc.data(), &QProcess::finished, this, [onFinished](int, QProcess::ExitStatus) {
-        onFinished();
-    });
-    connect(pwProc.data(), &QProcess::errorOccurred, this, [onFinished](QProcess::ProcessError) {
-        onFinished();
-    });
-
-    m_ttsProcess->start(execProg, execArgs);
-    m_pwPlayProcess->start(pwPlay, QStringList() << QStringLiteral("-"));
-
-    m_ttsProcess->write(sentence.toUtf8());
-    m_ttsProcess->closeWriteChannel();
+    m_isSpeakingSentence = false;
+    Q_EMIT speakingStateChanged(false);
+    playNextItem();
 }
 
 void TtsEngine::playSiriEarcon(bool activating, bool earconsEnabled)

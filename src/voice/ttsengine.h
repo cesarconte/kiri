@@ -43,6 +43,9 @@ Q_SIGNALS:
 private:
     void playNextItem();
     void speakSentence(const QString &sentence);
+    void terminateProcesses();
+    void startPipedSpeech(const QString &ttsProg, const QStringList &ttsArgs, const QString &stdinText = QString());
+    void playAudioBuffer(const QByteArray &audioBytes);
 
     QString m_speechBuffer;
     QQueue<QString> m_queue;
