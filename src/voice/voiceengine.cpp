@@ -549,11 +549,43 @@ void VoiceEngine::processStreamingTtsChunk(const QString &newChunk)
     }
 }
 
+void VoiceEngine::flushStreamingTtsChunk()
+{
+    if (m_ttsEngine) {
+        m_ttsEngine->flushStreamingBuffer();
+    }
+}
+
 void VoiceEngine::enqueueSentenceForSpeech(const QString &sentence)
 {
     if (m_ttsEngine) {
         m_ttsEngine->enqueueSentence(sentence);
     }
+}
+
+void VoiceEngine::setLastQueryWasVoice(bool wasVoice)
+{
+    m_lastQueryWasVoice = wasVoice;
+}
+
+bool VoiceEngine::lastQueryWasVoice() const
+{
+    return m_lastQueryWasVoice;
+}
+
+void VoiceEngine::reloadConfig()
+{
+    const KSharedConfig::Ptr kityrc = KSharedConfig::openConfig(QStringLiteral("kityrc"));
+    kityrc->reparseConfiguration();
+    const KConfigGroup cfg = kityrc->group(QStringLiteral("General"));
+    m_config.sttEngine = cfg.readEntry(QStringLiteral("sttEngine"), QStringLiteral("whisper"));
+    m_config.whisperModelPath = cfg.readEntry(QStringLiteral("whisperModelPath"), QString());
+    m_config.whisperLanguage = cfg.readEntry(QStringLiteral("whisperLanguage"), QStringLiteral("es"));
+    m_config.piperVoicePath = cfg.readEntry(QStringLiteral("piperVoicePath"), QString());
+    m_config.speechOutputMode = cfg.readEntry(QStringLiteral("speechOutputMode"), QStringLiteral("always"));
+    m_config.vadEnabled = cfg.readEntry(QStringLiteral("vadEnabled"), true);
+    m_config.earconsEnabled = cfg.readEntry(QStringLiteral("earconsEnabled"), true);
+    m_config.useCentralizedVoice = cfg.readEntry(QStringLiteral("useCentralizedVoice"), false);
 }
 
 void VoiceEngine::transcribePcm(const QByteArray &pcmData)

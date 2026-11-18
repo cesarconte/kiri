@@ -149,7 +149,8 @@ void KityApplet::init()
             m_pendingCardType = resp.cardType;
             m_pendingCardData = resp.cardData;
         }
-        appendAssistantMessage(resp.text);
+        Kity::VoiceEngine::instance().flushStreamingTtsChunk();
+        appendAssistantMessage(resp.text, false);
     });
     connect(&Kity::LlmEngine::instance(), &Kity::LlmEngine::errorOccurred, this, [this](const QString &err) {
         setState(QStringLiteral("error"), err);
@@ -488,7 +489,9 @@ void KityApplet::appendAssistantMessage(const QString &text, bool speakIfAppropr
         }
     }
 
-    setState(QStringLiteral("idle"), QString());
+    if (!Kity::VoiceEngine::instance().isSpeaking()) {
+        setState(QStringLiteral("idle"), QString());
+    }
 }
 
 void KityApplet::sendMessage(const QString &text, bool fromVoice)
@@ -499,7 +502,9 @@ void KityApplet::sendMessage(const QString &text, bool fromVoice)
     }
     if (trimmed.isEmpty()) return;
 
+    stopSpeaking();
     m_lastQueryWasVoice = fromVoice;
+    Kity::VoiceEngine::instance().setLastQueryWasVoice(fromVoice);
 
     QVariantMap userMsg;
     userMsg[QStringLiteral("role")] = QStringLiteral("user");
@@ -637,6 +642,7 @@ void KityApplet::openSettings()
 void KityApplet::reloadConfig()
 {
     Kity::ConfigManager::instance().reload();
+    Kity::VoiceEngine::instance().reloadConfig();
     setWakeWordEnabled(Kity::ConfigManager::instance().wakeWordEnabled());
     Q_EMIT panelIconStyleChanged();
     Q_EMIT speechOutputModeChanged();
@@ -654,7 +660,9 @@ void KityApplet::clearHistory()
     m_messages.clear();
     Q_EMIT messagesChanged();
     QFile::remove(Kity::StorageManager::instance().historyFilePath());
-    setState(QStringLiteral("idle"), QString());
+    if (!Kity::VoiceEngine::instance().isSpeaking()) {
+        setState(QStringLiteral("idle"), QString());
+    }
 }
 
 // =========================================================================

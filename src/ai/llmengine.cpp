@@ -9,7 +9,6 @@
 #include "../system/emailmanager.h"
 #include "../system/calendarmanager.h"
 #include "../tools/toolregistry.h"
-#include "../voice/voiceengine.h"
 
 #include <QDateTime>
 #include <QDebug>
@@ -64,7 +63,6 @@ LlmEngine::LlmEngine(QObject *parent)
     , m_geminiClient(std::make_unique<GeminiClient>(m_nam, this))
 {
     connect(m_ollamaClient.get(), &OllamaClient::chunkReceived, this, [this](const QString &chunk) {
-        VoiceEngine::instance().processStreamingTtsChunk(chunk);
         Q_EMIT streamingChunkReceived(chunk);
     });
     connect(m_ollamaClient.get(), &OllamaClient::streamingTextChanged, this, &LlmEngine::streamingTextChanged);
@@ -130,7 +128,6 @@ LlmEngine::LlmEngine(QObject *parent)
     });
 
     connect(m_geminiClient.get(), &GeminiClient::chunkReceived, this, [this](const QString &chunk) {
-        VoiceEngine::instance().processStreamingTtsChunk(chunk);
         Q_EMIT streamingChunkReceived(chunk);
     });
     connect(m_geminiClient.get(), &GeminiClient::streamingTextChanged, this, &LlmEngine::streamingTextChanged);

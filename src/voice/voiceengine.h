@@ -65,7 +65,11 @@ public:
     void speakText(const QString &text);
     void stopSpeaking();
     void processStreamingTtsChunk(const QString &chunk);
+    void flushStreamingTtsChunk();
     void enqueueSentenceForSpeech(const QString &sentence);
+    void setLastQueryWasVoice(bool wasVoice);
+    bool lastQueryWasVoice() const;
+    void reloadConfig();
 
     // Dictation & Audio File Handling
     void transcribePcm(const QByteArray &pcmData);

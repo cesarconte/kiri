@@ -32,6 +32,7 @@ public:
     void speakText(const QString &text);
     void stopSpeaking();
     void processStreamingChunk(const QString &newChunk, const QString &speechMode, bool lastQueryWasVoice);
+    void flushStreamingBuffer();
     void enqueueSentence(const QString &sentence);
     void playSiriEarcon(bool activating, bool earconsEnabled);
 
