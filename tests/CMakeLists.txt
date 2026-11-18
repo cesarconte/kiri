@@ -45,3 +45,58 @@ target_link_libraries(test_kdictationclient PRIVATE
     Qt6::Test
 )
 add_test(NAME test_kdictationclient COMMAND test_kdictationclient)
+
+add_executable(test_appmanager
+    test_appmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/windowmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/applicationmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/audiomanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/mediamanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/devicemanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/timermanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/toolregistry.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/launchapptool.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/closeapptool.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/mediacontroltool.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/timertool.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/weathermanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/weathertool.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/hardwaremanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/systemvitalstool.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/clipboardmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/clipboardtool.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/terminalmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/terminalcommandtool.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/websearchmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/websearchtool.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/calendarmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/calendareventtool.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/emailmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/emailtool.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/notificationmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/notificationtool.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/kdeconnectmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/storagemanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/system/configmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ai/intentparser.cpp
+    ${CMAKE_SOURCE_DIR}/src/ai/knowledgemanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ai/visionengine.cpp
+    ${CMAKE_SOURCE_DIR}/src/ai/contextmanager.cpp
+)
+target_include_directories(test_appmanager PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/system
+    ${CMAKE_SOURCE_DIR}/src/tools
+    ${CMAKE_SOURCE_DIR}/src/ai
+)
+target_link_libraries(test_appmanager PRIVATE
+    Qt6::Core
+    Qt6::DBus
+    Qt6::Network
+    Qt6::Test
+    KF6::Service
+    KF6::I18n
+    KF6::Notifications
+    KF6::ConfigCore
+)
+add_test(NAME test_appmanager COMMAND test_appmanager)

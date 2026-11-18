@@ -857,6 +857,27 @@ void KityClient::openKOrganizer() const
     }
 }
 
+void KityClient::sendPendingEmail()
+{
+    if (m_iface && m_iface->isValid()) {
+        m_iface->asyncCall(QStringLiteral("sendPendingEmail"));
+    }
+}
+
+void KityClient::openPendingEmailInProton() const
+{
+    if (m_iface && m_iface->isValid()) {
+        m_iface->asyncCall(QStringLiteral("openPendingEmailInProton"));
+    }
+}
+
+void KityClient::discardPendingEmail()
+{
+    if (m_iface && m_iface->isValid()) {
+        m_iface->asyncCall(QStringLiteral("discardPendingEmail"));
+    }
+}
+
 QString KityClient::mobilePairingUrl() const
 {
     if (!m_iface || !m_iface->isValid()) {

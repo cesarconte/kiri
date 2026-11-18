@@ -154,6 +154,9 @@ public:
     Q_INVOKABLE QStringList extractTerminalCommands(const QString &markdown) const;
     Q_INVOKABLE void controlMedia(const QString &action);
     Q_INVOKABLE void openKOrganizer() const;
+    Q_INVOKABLE void sendPendingEmail();
+    Q_INVOKABLE void openPendingEmailInProton() const;
+    Q_INVOKABLE void discardPendingEmail();
     Q_INVOKABLE QString mobilePairingUrl() const;
     Q_INVOKABLE bool shareMobilePairingWithKdeConnect(const QString &deviceId = QString()) const;
 

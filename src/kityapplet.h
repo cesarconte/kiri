@@ -7,23 +7,12 @@
 
 #include <Plasma/Applet>
 #include <QDateTime>
-#include <QElapsedTimer>
-#include <QFile>
-#include <QJsonArray>
-#include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QPointer>
-#include <QProcess>
-#include <QQueue>
-#include <QRegularExpression>
 #include <QTimer>
 #include <QVariantList>
-#include <memory>
 
-#include "pipewirerecorder.h"
-#include "whisperengine.h"
+#include "system/configmanager.h"
 #include "kdictationclient.h"
 
 class KityMobileServer;
@@ -46,13 +35,13 @@ class KityApplet : public Plasma::Applet
     Q_PROPERTY(bool isSpeaking READ isSpeaking NOTIFY stateChanged)
     Q_PROPERTY(qreal audioLevel READ audioLevel NOTIFY audioLevelChanged)
     Q_PROPERTY(bool wakeWordEnabled READ wakeWordEnabled WRITE setWakeWordEnabled NOTIFY wakeWordEnabledChanged)
-    Q_PROPERTY(QString speechOutputMode READ resolveSpeechOutputMode WRITE setSpeechOutputMode NOTIFY speechOutputModeChanged)
+    Q_PROPERTY(QString speechOutputMode READ speechOutputMode WRITE setSpeechOutputMode NOTIFY speechOutputModeChanged)
     Q_PROPERTY(QString panelIconStyle READ panelIconStyle WRITE setPanelIconStyle NOTIFY panelIconStyleChanged)
     Q_PROPERTY(bool vadEnabled READ vadEnabled WRITE setVadEnabled NOTIFY vadEnabledChanged)
     Q_PROPERTY(bool earconsEnabled READ earconsEnabled WRITE setEarconsEnabled NOTIFY earconsEnabledChanged)
     Q_PROPERTY(bool useCentralizedVoice READ useCentralizedVoice WRITE setUseCentralizedVoice NOTIFY useCentralizedVoiceChanged)
     Q_PROPERTY(bool kdictationAvailable READ isKDictationAvailable NOTIFY kdictationAvailableChanged)
-    Q_PROPERTY(QString ollamaModel READ resolveOllamaModel WRITE setOllamaModel NOTIFY ollamaModelChanged)
+    Q_PROPERTY(QString ollamaModel READ ollamaModel WRITE setOllamaModel NOTIFY ollamaModelChanged)
     Q_PROPERTY(QString mobilePairingUrl READ mobilePairingUrl NOTIFY mobilePairingUrlChanged)
 
 public:
@@ -87,6 +76,7 @@ public:
     void init() override;
     void configChanged() override;
 
+    // Property Accessors
     QString state() const;
     QString statusMessage() const;
     QString streamingText() const;
@@ -99,9 +89,10 @@ public:
     bool isBusy() const;
     bool isSpeaking() const;
     qreal audioLevel() const;
+
     bool wakeWordEnabled() const;
     void setWakeWordEnabled(bool enabled);
-    QString resolveSpeechOutputMode() const;
+    QString speechOutputMode() const;
     void setSpeechOutputMode(const QString &mode);
     QString panelIconStyle() const;
     Q_INVOKABLE void setPanelIconStyle(const QString &style);
@@ -113,8 +104,10 @@ public:
     void setUseCentralizedVoice(bool enabled);
     bool isKDictationAvailable() const;
     Q_INVOKABLE bool checkKDictationAvailable();
+    QString ollamaModel() const;
+    Q_INVOKABLE void setOllamaModel(const QString &model);
 
-    // Q_INVOKABLE Methods
+    // Q_INVOKABLE Core Actions
     Q_INVOKABLE void sendMessage(const QString &text, bool fromVoice = false);
     Q_INVOKABLE void startRecording();
     Q_INVOKABLE void stopRecording();
@@ -131,8 +124,8 @@ public:
     Q_INVOKABLE void clearHistory();
     Q_INVOKABLE void refreshModels();
     Q_INVOKABLE void checkReadiness();
-    Q_INVOKABLE void setOllamaModel(const QString &model);
 
+    // Q_INVOKABLE Subsystem Delegations
     Q_INVOKABLE bool launchApplication(const QString &appQuery, QString *launchedNameOut = nullptr);
     Q_INVOKABLE bool closeApplication(const QString &appQuery, QString *closedNameOut = nullptr);
     Q_INVOKABLE QStringList extractTerminalCommands(const QString &markdown) const;
@@ -143,30 +136,31 @@ public:
     Q_INVOKABLE void openKnowledgeFolder() const;
     Q_INVOKABLE int knowledgeDocumentCount() const;
 
-    // Apple Intelligence Writing Tools (Phase 2)
+    // Apple Intelligence Writing Tools
     Q_INVOKABLE QString readWaylandSelectionOrClipboard() const;
     Q_INVOKABLE void applyWritingTool(const QString &action, const QString &customSourceText = QString());
     Q_INVOKABLE static QString buildWritingToolPrompt(const QString &action, const QString &sourceText);
-
-    // System-wide translation of the Wayland selection/clipboard (macOS Translate), callable over D-Bus
     Q_INVOKABLE void translateSelection(const QString &targetLanguage = QStringLiteral("es"));
     Q_INVOKABLE static QString languageDisplayName(const QString &code);
-
-    // macOS Math Notes: live evaluation of a multi-line scratchpad with persistent variables
     Q_INVOKABLE QStringList evaluateMathNotes(const QString &text) const;
 
-    // Visual Intelligence & Live Text (Phase 3 - KDE Spectacle Wayland + Tesseract OCR)
+    // Visual Intelligence & Live Text
     Q_INVOKABLE void runVisualIntelligence(const QString &captureMode, const QString &action = QStringLiteral("ocr"), const QString &customQuestion = QString());
     Q_INVOKABLE static QVariantMap parseLiveTextEntities(const QString &ocrText);
     Q_INVOKABLE QString collectKWinWindowsInfo() const;
 
-    // Generative UI & Interactive Cards (Phase 5)
+    // Generative UI & System Integrations
     Q_INVOKABLE void controlMedia(const QString &action);
     Q_INVOKABLE void openKOrganizer() const;
+    Q_INVOKABLE void sendPendingEmail();
+    Q_INVOKABLE void openPendingEmailInProton() const;
+    Q_INVOKABLE void discardPendingEmail();
     Q_INVOKABLE QVariantMap queryActiveMedia() const;
     Q_INVOKABLE QVariantMap fetchWeatherData(const QString &query) const;
+    Q_INVOKABLE bool createCalendarEvent(const QString &title, const QString &datePrompt);
+    Q_INVOKABLE void composeEmail(const QString &to, const QString &subject, const QString &body, const QString &service = QStringLiteral("proton")) const;
 
-    // Mobile Remote & Voice Portal (Apple Intelligence PWA)
+    // Mobile Remote & Portal
     Q_INVOKABLE QString mobilePairingUrl() const;
     Q_INVOKABLE bool shareMobilePairingWithKdeConnect(const QString &deviceId = QString()) const;
 
@@ -192,147 +186,14 @@ Q_SIGNALS:
     void kdictationAvailableChanged();
     void ollamaModelChanged();
 
-private Q_SLOTS:
-    void handleOllamaStreamChunk();
-    void handleOllamaFinished();
-    void checkScheduledReminders();
-    void onVoiceAudioChunkReady(const QByteArray &chunk, double level);
-    void onWakeWordAudioChunk(const QByteArray &chunk, double level);
-    void onWhisperTranscriptionReady(const QString &rawTranscript);
-    void onWhisperTranscriptionFailed(const QString &errorMessage);
-    void onCentralizedTranscriptionReady(const QString &rawTranscript);
-    void onCentralizedTranscriptionFailed(const QString &errorMessage);
-    void onCentralizedSTTTimeout();
-
 private:
     void setState(const QString &newState, const QString &newStatus = QString());
     void appendAssistantMessage(const QString &text, bool speakIfAppropriate = true);
-    void sendToOllama(const QString &userPrompt, const QString &injectedContext = QString(), const QString &base64Image = QString());
-    QString analyzeImageWithVisionModel(const QString &base64Image) const;
     bool detectAndExecuteSystemAction(const QString &input);
 
-    // Tool Calling Engine (Siri / Gemini Live Architecture)
-    QJsonArray buildAvailableTools(const QString &userPrompt) const;
-    QJsonObject executeToolCall(const QString &toolName, const QJsonObject &arguments);
-    void sendOllamaToolFollowUp(const QJsonArray &messages);
-
-    // Speech & Audio
-    QString resolveSttEngine() const;
-    void runSpeechTranscription(const QByteArray &pcmData = QByteArray());
-    void runGeminiAudioTranscription(const QByteArray &pcmData);
-    void runWhisperTranscription(const QByteArray &pcmData);
-    void transcribeAndExecuteAudio(const QString &wavPath);
-    void transcribeAndExecuteAudio(const QByteArray &pcmData);
-    void checkWakeWordTranscription(const QByteArray &pcmData);
-    void enqueueSentenceForSpeech(const QString &sentence);
-    void playNextTtsQueueItem();
-    void speakSentence(const QString &sentence);
-    void processStreamingTtsChunk(const QString &newChunk);
-    QString stripMarkdownForSpeech(const QString &markdown) const;
-    static QString cleanWhisperOutput(const QString &raw);
-    static QString removeFillerWords(const QString &text, const QString &lang = QStringLiteral("es"));
-    void startVad();
-    void stopVad();
-    bool isPipeWireEchoCancelAvailable() const;
-    QString resolvePreferredCaptureSource(bool *isBluetoothOut = nullptr) const;
-    QByteArray createWavHeader(int dataSize, int sampleRate, int channels, int bitsPerSample) const;
-
-    // Config readers
-    QString readConfigString(const QString &key, const QString &def = QString()) const;
-    int readConfigInt(const QString &key, int def = 0) const;
-    double readConfigDouble(const QString &key, double def = 0.0) const;
-    bool readConfigBool(const QString &key, bool def = false) const;
-
-    QString resolveOllamaUrl() const;
-    QString resolveOllamaModel() const;
-    QString resolveVisionModel() const;
-    QString resolveGeminiApiKey() const;
-    QString resolveGeminiModel() const;
-    QString resolveSystemPrompt() const;
-    QString resolveWhisperModelPath() const;
-    QString resolveWhisperLanguage() const;
-    QString resolvePiperVoicePath() const;
-
-    void sendToGemini(const QString &userPrompt, const QString &injectedContext = QString(), const QString &base64Image = QString());
-    void handleGeminiStreamChunk();
-    void handleGeminiFinished();
-
-    // Context retrievers
-    QString fetchWebSearchContext(const QString &query) const;
-    QString extractCleanArticleText(const QString &html) const;
-    QString fetchDeepWebPageContent(const QUrl &url) const;
-    QString fetchWeatherContext(const QString &query) const;
-    QString extractCityFromQuery(const QString &query) const;
-    QString resolveDefaultLocation() const;
-    static QString wmoCodeToSpanish(int code);
-    QString fetchDynamicLocalContext(const QString &query, const QString &intent) const;
-    QString fetchKnowledgeBaseContext(const QString &query) const;
-    QString collectSystemVitals() const;
-    QString collectRecentNotificationsContext() const;
-    QString extractScreenOcrText(const QString &imagePath) const;
-    QString detectAvailableVisionModel() const;
-    QString captureScreenToPng(const QString &destPath, const QString &captureMode = QStringLiteral("fullscreen")) const;
-    QString encodeImageToBase64(const QString &imagePath, int maxDimension = 1024) const;
-
-    // KDE & System Integrations
-    void playSiriEarcon(bool activating) const;
-    QString getActivePowerProfile() const;
-    QString getActivePowerProfileDescription() const;
-    bool setActivePowerProfile(const QString &profile) const;
-    QString getLocalBatteryInfo() const;
-    bool isDoNotDisturbActive() const;
-    bool setDoNotDisturb(bool active) const;
-    bool adjustScreenBrightness(int deltaPercent, int exactPercent = -1) const;
-    int getScreenBrightnessPercent() const;
-    QString getAudioVolumeStatus() const;
-    QString getMicrophoneStatus() const;
-    QString getNowPlayingMetadata() const;
-    QString getSystemResourceSummary(const QString &aspect) const;
-    QString extractExecBinaryName(const QString &execLine) const;
-
-    // Calendar, Contacts & KDE Connect
-    ParsedCalendarEvent parseCalendarEventPrompt(const QString &prompt, const QDateTime &now) const;
-    int monthNameToNumber(const QString &name) const;
-    Q_INVOKABLE bool createCalendarEvent(const QString &title, const QString &datePrompt);
-    void openCalendarService(const ParsedCalendarEvent &ev) const;
-    QUrl buildGoogleCalendarTemplateUrl(const ParsedCalendarEvent &ev) const;
-    Q_INVOKABLE void composeEmail(const QString &to, const QString &subject, const QString &body, const QString &service = QStringLiteral("proton")) const;
-
-    QList<KdeConnectDevice> getKdeConnectDevices() const;
-    QString getKdeConnectBattery(const QString &deviceId) const;
-    bool ringKdeConnectDevice(const QString &deviceId) const;
-    bool sendTextToKdeConnect(const QString &deviceId, const QString &phoneNumber, const QString &message) const;
-    bool sendClipboardToKdeConnect(const QString &deviceId, const QString &text) const;
-    bool initiatePhoneCall(const QString &deviceId, const QString &phoneNumber) const;
-    QString normalizePhoneNumber(const QString &raw) const;
-    QString sanitizePhoneForDial(const QString &raw) const;
-    bool isRestrictedPhoneNumber(const QString &phone) const;
-
-    // Storage paths & persistence
-    QString historyFilePath() const;
-    QString contactsFilePath() const;
-    QString remindersFilePath() const;
-    QString scheduledRemindersFilePath() const;
-
+    // Storage persistence
     void loadConversationHistory();
     void saveConversationHistory();
-    void loadContacts();
-    void saveContacts();
-    void importContactsFromVcf(const QString &vcfPath);
-    ContactEntry findContactByName(const QString &query) const;
-    QString normalizeForMatch(const QString &text) const;
-
-    void loadReminders();
-    void saveReminders();
-    void loadScheduledReminders();
-    void saveScheduledReminders();
-    void triggerReminderNotification(const ScheduledReminder &reminder);
-    void ensureKnowledgeBaseReady();
-
-    // HTTP Helpers
-    QByteArray httpGetSync(const QUrl &url, int timeoutMs = 4000) const;
-    QByteArray httpPostJsonSync(const QUrl &url, const QJsonObject &payload, int timeoutMs = 8000) const;
-    QByteArray httpPostFormSync(const QUrl &url, const QByteArray &formData, int timeoutMs = 4000) const;
 
     // State members
     QString m_state = QStringLiteral("idle");
@@ -346,62 +207,16 @@ private:
     bool m_piperAvailable = false;
     bool m_wakeWordEnabled = false;
 
-    // Network & Process
+    // Timers & Network
     QNetworkAccessManager *m_nam = nullptr;
-    QNetworkReply *m_currentOllamaReply = nullptr;
-    QNetworkReply *m_currentGeminiReply = nullptr;
-    QList<QPair<QString, QString>> m_geminiSources;
-    QString m_lastOllamaPrompt;
-    QString m_lastOllamaContext;
-    QString m_lastOllamaImage;
-    QJsonArray m_currentChatMessages;
-    QJsonArray m_pendingToolCalls;
-    bool m_isToolFollowUpRound = false;
-    std::unique_ptr<PipeWireRecorder> m_voiceRecorder;
-    std::unique_ptr<PipeWireRecorder> m_wakeWordRecorder;
-    std::unique_ptr<WhisperEngine> m_whisperEngine;
-    std::unique_ptr<KDictationClient> m_kdictationClient;
-    QTimer *m_centralizedFallbackTimer = nullptr;
-    bool m_waitingForCentralizedSTT = false;
-    quint64 m_sttSessionId = 0;
-    QByteArray m_recordedPcmBuffer;
-    QElapsedTimer m_recordingDurationTimer;
-    QProcess *m_ttsProcess = nullptr;
-    QPointer<QProcess> m_pwPlayProcess;
-    int m_bargeInVoiceFrames = 0;
-    QByteArray m_wakeWordPcmBuffer;
-    bool m_wakeWordEvaluating = false;
-    QElapsedTimer m_wakeWordCooldown;
-    QTimer *m_vadTimer = nullptr;
     QTimer *m_reminderTimer = nullptr;
     QTimer *m_readinessTimer = nullptr;
-
-    QElapsedTimer m_speechSilenceTimer;
-    bool m_speechDetected = false;
-    QString m_ttsSpeechBuffer;
-    QQueue<QString> m_ttsQueue;
-    bool m_isSpeakingSentence = false;
     bool m_lastQueryWasVoice = false;
-    bool m_insideThinkingBlock = false;
-    QPointer<QNetworkReply> m_currentTtsReply;
-
-    QList<ContactEntry> m_contacts;
-    QList<ScheduledReminder> m_scheduledReminders;
 
     // Generative UI pending cards
     QString m_pendingCardType;
     QVariantMap m_pendingCardData;
 
-    // Writing Tools & Fallback Context
-    QString m_lastGeminiPrompt;
-    bool m_lastWasWritingTool = false;
-    QString m_lastWritingToolSource;
-    QString m_lastWritingToolAction;
-
-    // Mobile Remote Helpers
-    void handleMobileDictationAudio(const QString &wavPath);
-    void handleMobileDictationText(const QString &text);
-
-    // Mobile Remote Web/WebSocket Server
+    // Mobile Remote Server
     KityMobileServer *m_mobileServer = nullptr;
 };

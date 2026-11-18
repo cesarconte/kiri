@@ -23,6 +23,81 @@ plasma_add_applet(org.cesar.kity
         mathnotes.h
         mobile/mobileserver.cpp
         mobile/mobileserver.h
+        system/windowmanager.cpp
+        system/windowmanager.h
+        system/applicationmanager.cpp
+        system/applicationmanager.h
+        system/audiomanager.cpp
+        system/audiomanager.h
+        system/mediamanager.cpp
+        system/mediamanager.h
+        system/devicemanager.cpp
+        system/devicemanager.h
+        system/timermanager.cpp
+        system/timermanager.h
+        system/weathermanager.cpp
+        system/weathermanager.h
+        system/hardwaremanager.cpp
+        system/hardwaremanager.h
+        system/clipboardmanager.cpp
+        system/clipboardmanager.h
+        system/terminalmanager.cpp
+        system/terminalmanager.h
+        system/websearchmanager.cpp
+        system/websearchmanager.h
+        system/calendarmanager.cpp
+        system/calendarmanager.h
+        system/emailmanager.cpp
+        system/emailmanager.h
+        system/notificationmanager.cpp
+        system/notificationmanager.h
+        system/kdeconnectmanager.cpp
+        system/kdeconnectmanager.h
+        system/storagemanager.cpp
+        system/storagemanager.h
+        system/configmanager.cpp
+        system/configmanager.h
+        ai/contextmanager.cpp
+        ai/contextmanager.h
+        ai/intentparser.cpp
+        ai/intentparser.h
+        ai/knowledgemanager.cpp
+        ai/knowledgemanager.h
+        ai/visionengine.cpp
+        ai/visionengine.h
+        ai/llmengine.cpp
+        ai/llmengine.h
+        ai/writingtoolsmanager.cpp
+        ai/writingtoolsmanager.h
+        voice/voiceengine.cpp
+        voice/voiceengine.h
+        tools/itool.h
+        tools/toolregistry.cpp
+        tools/toolregistry.h
+        tools/launchapptool.cpp
+        tools/launchapptool.h
+        tools/closeapptool.cpp
+        tools/closeapptool.h
+        tools/mediacontroltool.cpp
+        tools/mediacontroltool.h
+        tools/timertool.cpp
+        tools/timertool.h
+        tools/weathertool.cpp
+        tools/weathertool.h
+        tools/systemvitalstool.cpp
+        tools/systemvitalstool.h
+        tools/clipboardtool.cpp
+        tools/clipboardtool.h
+        tools/terminalcommandtool.cpp
+        tools/terminalcommandtool.h
+        tools/websearchtool.cpp
+        tools/websearchtool.h
+        tools/calendareventtool.cpp
+        tools/calendareventtool.h
+        tools/emailtool.cpp
+        tools/emailtool.h
+        tools/notificationtool.cpp
+        tools/notificationtool.h
         ${kity_SRCS}
     QML_SOURCES
         qml/main.qml
@@ -30,6 +105,7 @@ plasma_add_applet(org.cesar.kity
         qml/cards/WeatherCard.qml
         qml/cards/MediaCard.qml
         qml/cards/EventCard.qml
+        qml/cards/EmailCard.qml
     RESOURCES
         res/main.xml
         res/org.cesar.kity.svg
@@ -46,6 +122,8 @@ qt6_add_resources(org.cesar.kity "mobile_resources"
 target_include_directories(org.cesar.kity PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/mobile
+    ${CMAKE_CURRENT_SOURCE_DIR}/system
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools
     ${PIPEWIRE_INCLUDE_DIRS}
     ${WHISPER_INCLUDE_DIRS}
 )

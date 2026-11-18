@@ -837,6 +837,15 @@ Item {
                                     onOpenCalendarRequested: Plasmoid.openKOrganizer()
                                 }
 
+                                Cards.EmailCard {
+                                    visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "email" && msgDelegate.modelData.cardData !== undefined
+                                    Layout.fillWidth: true
+                                    cardData: msgDelegate.modelData.cardData || ({})
+                                    onSendRequested: Plasmoid.sendPendingEmail()
+                                    onOpenProtonRequested: Plasmoid.openPendingEmailInProton()
+                                    onDiscardRequested: Plasmoid.discardPendingEmail()
+                                }
+
                                 // Interactive Source Chips (Phase 3 - Deep Web Research & Citations)
                                 Flow {
                                     visible: !msgDelegate.isUser && msgDelegate.modelData.sources !== undefined && msgDelegate.modelData.sources.length > 0

@@ -1392,6 +1392,15 @@ CachyWindow {
                             cardData: (root.lastAssistantMessage && root.lastAssistantMessage.cardData) || ({})
                             onOpenCalendarRequested: kityClient.openKOrganizer()
                         }
+
+                        Cards.EmailCard {
+                            visible: root.lastAssistantMessage && root.lastAssistantMessage.cardType === "email" && root.lastAssistantMessage.cardData !== undefined
+                            Layout.fillWidth: true
+                            cardData: (root.lastAssistantMessage && root.lastAssistantMessage.cardData) || ({})
+                            onSendRequested: kityClient.sendPendingEmail()
+                            onOpenProtonRequested: kityClient.openPendingEmailInProton()
+                            onDiscardRequested: kityClient.discardPendingEmail()
+                        }
                     }
                 }
 
@@ -2269,6 +2278,15 @@ CachyWindow {
                                 Layout.fillWidth: true
                                 cardData: msgDelegate.modelData.cardData || ({})
                                 onOpenCalendarRequested: kityClient.openKOrganizer()
+                            }
+
+                            Cards.EmailCard {
+                                visible: !msgDelegate.isUser && msgDelegate.modelData.cardType === "email" && msgDelegate.modelData.cardData !== undefined
+                                Layout.fillWidth: true
+                                cardData: msgDelegate.modelData.cardData || ({})
+                                onSendRequested: kityClient.sendPendingEmail()
+                                onOpenProtonRequested: kityClient.openPendingEmailInProton()
+                                onDiscardRequested: kityClient.discardPendingEmail()
                             }
 
                             // Writing Tools & Response Action Toolbar (Apple Intelligence Golden Gate)

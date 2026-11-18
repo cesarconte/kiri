@@ -57,15 +57,26 @@ chmod +x scripts/setup-models.sh
 ```bash
 git clone --recurse-submodules https://github.com/cesarconte/kity.git
 cd kity
-cmake -B build -S . -DCMAKE_INSTALL_PREFIX=$HOME/.local
+cmake -B build -S . -DCMAKE_INSTALL_PREFIX=/usr
 cmake --build build -j$(nproc)
-cmake --install build
+sudo cmake --install build
 ```
+
+> [!IMPORTANT]
+> **Política de instalación**: La instalación de Kity y todos sus componentes asociados se realiza **exclusivamente en `/usr`** para evitar sombreado (*shadowing*) de bibliotecas en Qt6/KDE Plasma y garantizar sincronización total de versiones. Nunca instalar en `~/.local`.
 
 Para recargar el plasmoide en KDE Plasma:
 ```bash
 plasmashell --replace &
 ```
+
+---
+
+## 🏛️ Arquitectura Modular (SRP)
+
+Kity implementa el principio de responsabilidad única (*Single Responsibility Principle* - SRP) dividiendo sus capacidades en gestores de sistema especializados (`src/system/`) y herramientas dinámicas desacopladas (`src/tools/`) registradas en `ToolRegistry`.
+
+Para una descripción detallada de los diagramas, contratos de herramientas, políticas Safe-by-Design y guías para extender el sistema, consulta la [Guía de Arquitectura y Blueprint](docs/ARCHITECTURE.md).
 
 ---
 
@@ -76,23 +87,44 @@ kity/
 ├── CMakeLists.txt              # Configuración CMake principal para Plasma 6
 ├── .gitignore
 ├── README.md
+├── docs/
+│   └── ARCHITECTURE.md         # Blueprint y especificación arquitectónica modular
 ├── scripts/
 │   ├── install-audio-tools.sh  # Script para instalar/compilar Whisper.cpp y Piper TTS
 │   └── setup-models.sh         # Script para descargar modelos STT y TTS
+├── tests/
+│   ├── CMakeLists.txt          # Suite de pruebas unitarias CTest
+│   └── test_appmanager.cpp     # Pruebas de gestores del sistema y herramientas
 └── src/
     ├── CMakeLists.txt          # Configuración del módulo Plasma Applet C++
     ├── metadata.json           # Metadatos del plasmoide Kity (Plasma 6)
-    ├── kityapplet.h            # Cabecera principal del plasmoide
-    ├── kityapplet.cpp          # Lógica backend C++
-    ├── qml/                    # Vistas e interfaz QML Plasma 6 (Kirigami)
+    ├── kityapplet.h            # Orquestador del plasmoide y D-Bus
+    ├── kityapplet.cpp          # Lógica central e integración QML
+    ├── system/                 # Gestores de sistema independientes (SRP)
+    │   ├── applicationmanager.*# Catálogo y lanzamiento Wayland de aplicaciones
+    │   ├── windowmanager.*     # Gestión y cierre de ventanas en KWin
+    │   ├── audiomanager.*      # PipeWire / WirePlumber
+    │   ├── mediamanager.*      # MPRIS2 y playerctl
+    │   ├── devicemanager.*     # Perfiles de energía y hardware
+    │   ├── timermanager.*      # Temporizadores y recordatorios
+    │   ├── weathermanager.*    # Previsión meteorológica Open-Meteo
+    │   ├── hardwaremanager.*   # Diagnósticos y métricas del sistema
+    │   ├── clipboardmanager.*  # Portapapeles Wayland (wl-clipboard)
+    │   ├── terminalmanager.*   # Konsole y cachy-update nativo
+    │   ├── websearchmanager.*  # Búsqueda web contextual en tiempo real
+    │   ├── calendarmanager.*   # KOrganizer y Akonadi (RFC 5545)
+    │   ├── emailmanager.*      # Proton Mail y Proton Mail Bridge (Safe-by-Design)
+    │   └── notificationmanager.*# Resumen de notificaciones Apple Intelligence
+    ├── tools/                  # Herramientas expuestas al LLM (ITool)
+    │   ├── itool.h             # Interfaz base de herramienta
+    │   ├── toolregistry.*      # Registro dinámico y catálogo OpenAI/Ollama
+    │   └── *tool.*             # Implementaciones individuales de herramientas
+    ├── qml/                    # Vistas e interfaz QML Plasma 6 (Kirigami / CachyOS.UI)
     │   ├── main.qml            # Representación compacta y acciones contextuales
     │   ├── ExpandedRepresentation.qml # Interfaz expandida del asistente
     │   ├── SiriOrbAnimation.qml# Orbe animado con visualizador reactivo
-    │   ├── config.qml          # Configuración del plasmoide
-    │   └── ConfigGeneral.qml   # Ajustes de Ollama, Whisper, Piper y atajos
+    │   └── cards/              # Tarjetas Generative UI (EmailCard, MediaCard, etc.)
     └── res/                    # Recursos XML (KConfigXT) e iconos vectoriales SVG
-        ├── main.xml
-        └── *.svg
 ```
 
 ---
