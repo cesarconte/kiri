@@ -433,7 +433,23 @@ private Q_SLOTS:
         QVERIFY(dateRes.handled);
         QVERIFY(dateRes.feedback.contains(QStringLiteral("Hoy es")));
 
-        // 3. Unknown intent
+        // 3. Clipboard queries
+        const QStringList clipQueries = {
+            QStringLiteral("Cuál es el contenido del portapapeles?"),
+            QStringLiteral("¿Cuál es el contenido del portapapeles?"),
+            QStringLiteral("¿Qué hay en el portapapeles?"),
+            QStringLiteral("Dime qué tengo en el portapapeles"),
+            QStringLiteral("Muéstrame el portapapeles"),
+            QStringLiteral("Contenido del portapapeles"),
+            QStringLiteral("¿Qué he copiado?")
+        };
+        for (const QString &q : clipQueries) {
+            const auto clipRes = Kity::IntentParser::instance().execute(q);
+            QVERIFY2(clipRes.handled, qPrintable(QStringLiteral("Failed to handle clipboard query: ") + q));
+            QVERIFY2(clipRes.feedback.contains(QStringLiteral("portapapeles")), qPrintable(q));
+        }
+
+        // 4. Unknown intent
         const auto unknownRes = Kity::IntentParser::instance().execute(QStringLiteral("Escribe un poema sobre las mariposas azules"));
         QVERIFY(!unknownRes.handled);
     }

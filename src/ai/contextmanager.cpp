@@ -131,16 +131,19 @@ ContextResult ContextManager::gatherContext(const QString &userQuery)
     static const QRegularExpression clipRegex(
         QStringLiteral("(portapapeles|clipboard|copiado|he copiado|acabo de copiar|texto copiado|selecci[oó]n|seleccionado|he seleccionado|lo que seleccion[eé])"),
         QRegularExpression::CaseInsensitiveOption);
-    if (userQuery.contains(clipRegex) && !userQuery.contains(QStringLiteral("contenido del portapapeles")) && !userQuery.contains(QStringLiteral("en el portapapeles"))) {
-        const QString clipText = ClipboardManager::instance().readWaylandSelectionOrClipboard();
+    if (userQuery.contains(clipRegex)) {
+        QString clipText = ClipboardManager::instance().getCurrentClipboard();
+        if (clipText.isEmpty()) {
+            clipText = ClipboardManager::instance().readWaylandSelectionOrClipboard();
+        }
         if (!clipText.isEmpty()) {
             res.effectivePrompt = QStringLiteral(
-                "Contenido capturado de la selección activa o portapapeles del sistema:\n\"\"\"\n%1\n\"\"\"\n\n"
+                "Contenido capturado del portapapeles o selección activa del sistema:\n\"\"\"\n%1\n\"\"\"\n\n"
                 "Con base en ese texto seleccionado o copiado, responde en español de España a mi petición: %2")
                 .arg(clipText.left(6000), userQuery);
         } else {
             res.handledEarly = true;
-            res.earlyAssistantResponse = i18n("No hay texto seleccionado ni copiado en el portapapeles en este momento. Selecciona o copia un fragmento de texto primero y vuelve a intentarlo.");
+            res.earlyAssistantResponse = i18n("El portapapeles está vacío y no hay texto seleccionado en este momento. Selecciona o copia un fragmento de texto primero y vuelve a intentarlo.");
             return res;
         }
     }

@@ -369,15 +369,26 @@ IntentExecutionResult IntentParser::execute(const QString &input)
 
     // 24. Instant Clipboard Query
     static const QRegularExpression clipQueryRegex(
-        QStringLiteral("^[¿¡]*(?:qu[eé]\\s+(?:tengo|hay)\\s+en\\s+el\\s+portapapeles|qu[eé]\\s+he\\s+copiado|dime\\s+el\\s+portapapeles|muestra\\s+el\\s+portapapeles|contenido\\s+del\\s+portapapeles)[.!?¿¡]*$"),
+        QStringLiteral(
+            "^[¿¡]*(?:(?:puedes\\s+)?(?:dime|decirme|muestra|mu[eé]strame|mostrar(?:me)?|ens[eé][ñn]a(?:me)?|ense[ñn]ar(?:me)?|ver|leer?)\\s+)?"
+            "(?:"
+            "(?:cu[aá]l\\s+es\\s+(?:el\\s+|mi\\s+)?(?:contenido\\s+del?\\s+)?(?:portapapeles|texto\\s+copiado))"
+            "|(?:(?:el\\s+|mi\\s+)?contenido\\s+del?\\s+portapapeles)"
+            "|(?:qu[eé]\\s+(?:hay|tengo|contiene|dice|pone|est[aá]\\s+copiado|tenemos)\\s+(?:en\\s+(?:el|mi)\\s+portapapeles|el\\s+portapapeles|copiado))"
+            "|(?:qu[eé]\\s+(?:he|tengo|hay|acabo\\s+de)\\s+copiado)"
+            "|(?:(?:el|mi)\\s+)?portapapeles"
+            ")[.!?¿¡]*$"),
         QRegularExpression::CaseInsensitiveOption);
     if (trimmed.contains(clipQueryRegex)) {
         const QString clip = ClipboardManager::instance().getCurrentClipboard();
         result.handled = true;
         if (!clip.isEmpty()) {
-            result.feedback = i18n("📋 **Contenido del portapapeles:**\n\n```\n%1\n```", clip);
+            const QString displayedClip = clip.length() > 4000
+                ? (clip.left(4000) + QStringLiteral("…\n\n*(Texto truncado por longitud)*"))
+                : clip;
+            result.feedback = i18n("En el portapapeles tienes copiado:\n\n%1", displayedClip);
         } else {
-            result.feedback = i18n("El portapapeles del sistema está vacío en este momento.");
+            result.feedback = i18n("El portapapeles está vacío actualmente. No hay ningún texto copiado.");
         }
         return result;
     }

@@ -88,6 +88,24 @@ QString ClipboardManager::getCurrentClipboard() const
         }
     }
 
+    // Try standard Wayland clipboard
+    QProcess process;
+    process.start(QStringLiteral("wl-paste"), {QStringLiteral("--no-newline")});
+    if (process.waitForFinished(800)) {
+        const QString text = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        if (!text.isEmpty()) {
+            return text;
+        }
+    }
+
+    // Fallback to Qt clipboard
+    if (auto cb = QGuiApplication::clipboard()) {
+        const QString text = cb->text(QClipboard::Clipboard).trimmed();
+        if (!text.isEmpty()) {
+            return text;
+        }
+    }
+
     return readWaylandSelectionOrClipboard();
 }
 
