@@ -21,6 +21,7 @@
 #include "ai/intentparser.h"
 #include "ai/knowledgemanager.h"
 #include "ai/visionengine.h"
+#include "ai/visualintelligencecontroller.h"
 #include "ai/writingtoolsmanager.h"
 #include "ai/contextmanager.h"
 #include "ai/llmengine.h"
@@ -739,11 +740,9 @@ void KityApplet::runVisualIntelligence(const QString &captureMode, const QString
 {
     const QString mode = captureMode.isEmpty() ? QStringLiteral("region") : captureMode;
     const bool isDirectFile = mode.startsWith(QStringLiteral("file:"));
-    QString savedPath;
 
     if (isDirectFile) {
-        savedPath = mode.mid(5);
-        setState(QStringLiteral("thinking"), i18n("Analizando archivo de imagen «%1»…", QFileInfo(savedPath).fileName()));
+        setState(QStringLiteral("thinking"), i18n("Analizando archivo de imagen «%1»…", QFileInfo(mode.mid(5)).fileName()));
     } else if (mode == QStringLiteral("region")) {
         setState(QStringLiteral("thinking"), i18n("Selecciona una región en pantalla con el ratón (Spectacle Wayland)…"));
     } else if (mode == QStringLiteral("activewindow")) {
@@ -753,108 +752,33 @@ void KityApplet::runVisualIntelligence(const QString &captureMode, const QString
     }
     QCoreApplication::processEvents();
 
-    if (!isDirectFile) {
-        const QString tmpShot = QDir::tempPath() + QStringLiteral("/kity_livetext_%1.png").arg(QDateTime::currentMSecsSinceEpoch());
-        savedPath = Kity::VisionEngine::instance().captureScreenToPng(tmpShot, mode);
-        if (savedPath.isEmpty()) {
-            setState(QStringLiteral("idle"), i18n("Captura de pantalla cancelada o no disponible."));
-            return;
-        }
-    } else if (!QFileInfo::exists(savedPath)) {
-        setState(QStringLiteral("idle"), i18n("El archivo de imagen no existe: %1", savedPath));
+    const auto res = Kity::VisualIntelligenceController::instance().process(captureMode, action, customQuestion);
+    if (!res.success) {
+        setState(QStringLiteral("idle"), res.errorMessage);
         return;
     }
 
-    setState(QStringLiteral("thinking"), i18n("Extrayendo texto e información…"));
-    QCoreApplication::processEvents();
-
-    const QString ocrText = Kity::VisionEngine::instance().extractScreenOcrText(savedPath);
-    const QString kwinInfo = isDirectFile ? QString() : Kity::ContextManager::instance().collectKWinWindowsInfo();
-    const QString base64Image = Kity::VisionEngine::instance().encodeImageToBase64(savedPath);
-    if (!isDirectFile) QFile::remove(savedPath);
-
-    QString modeLabel = isDirectFile ? QFileInfo(savedPath).fileName()
-                      : (mode == QStringLiteral("region")) ? i18n("Región seleccionada")
-                      : (mode == QStringLiteral("activewindow")) ? i18n("Ventana activa")
-                      : i18n("Pantalla completa");
-
-    if (action == QStringLiteral("ocr")) {
-        if (ocrText.isEmpty()) {
-            appendAssistantMessage(i18n("👁️ **Live Text (%1):** No se detectó texto legible en la zona capturada.", modeLabel));
-            setState(QStringLiteral("idle"), QString());
-            openUI();
-            return;
-        }
-
-        copyToClipboard(ocrText);
-        KNotification::event(QStringLiteral("notification"),
-                             i18n("Live Text (OCR)"),
-                             i18n("Texto copiado al portapapeles con éxito."),
-                             QStringLiteral("org.cesar.kity"));
-
-        const QVariantMap entities = parseLiveTextEntities(ocrText);
-        const QStringList urls = entities.value(QStringLiteral("urls")).toStringList();
-        const QStringList emails = entities.value(QStringLiteral("emails")).toStringList();
-        const QStringList phones = entities.value(QStringLiteral("phones")).toStringList();
-
-        QString msg = i18n("👁️ **Live Text extraído (%1) — Copiado al portapapeles:**\n\n```\n%2\n```", modeLabel, ocrText);
-        if (!urls.isEmpty() || !emails.isEmpty() || !phones.isEmpty()) {
-            msg.append(i18n("\n\n**Datos rápidos detectados:**"));
-            for (const QString &u : urls) msg.append(QStringLiteral("\n- 🔗 [%1](%1)").arg(u));
-            for (const QString &e : emails) msg.append(QStringLiteral("\n- ✉️ [%1](mailto:%1)").arg(e));
-            for (const QString &p : phones) msg.append(QStringLiteral("\n- 📞 `%1`").arg(p));
-        }
-
-        appendAssistantMessage(msg, false);
+    if (res.handledEarly) {
+        appendAssistantMessage(res.assistantFeedback, false);
         setState(QStringLiteral("idle"), QString());
         openUI();
         return;
-    }
-
-    if (ocrText.isEmpty() && kwinInfo.isEmpty() && base64Image.isEmpty()) {
-        appendAssistantMessage(i18n("No se pudo extraer texto ni información de la captura (%1).", modeLabel));
-        setState(QStringLiteral("idle"), QString());
-        openUI();
-        return;
-    }
-
-    QString userLabel;
-    QString aiInstruction;
-    if (action == QStringLiteral("translate")) {
-        userLabel = i18n("👁️ Traducir captura (%1)", modeLabel);
-        aiInstruction = QStringLiteral("Traduce al español de España todo el texto visible extraído de la captura de pantalla.");
-    } else if (action == QStringLiteral("explain")) {
-        userLabel = i18n("👁️ Explicar / Analizar captura (%1)", modeLabel);
-        if (!customQuestion.trimmed().isEmpty()) {
-            aiInstruction = QStringLiteral("Responde en español de España a la siguiente pregunta sobre el contenido capturado: \"%1\"").arg(customQuestion.trimmed());
-        } else {
-            aiInstruction = QStringLiteral("Explica de forma clara y estructurada qué muestra este fragmento de pantalla.");
-        }
-    } else {
-        userLabel = i18n("👁️ Inteligencia Visual (%1)", modeLabel);
-        aiInstruction = QStringLiteral("Analiza y resume en español de España el siguiente contenido capturado en pantalla.");
     }
 
     QVariantMap userMsg;
     userMsg[QStringLiteral("role")] = QStringLiteral("user");
-    userMsg[QStringLiteral("content")] = userLabel;
+    userMsg[QStringLiteral("content")] = res.userMessageLabel;
     userMsg[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
     m_messages.append(userMsg);
     Q_EMIT messagesChanged();
     saveConversationHistory();
 
     m_lastQueryWasVoice = false;
-    const QString fullPrompt = QStringLiteral(
-        "%1\n\n"
-        "Contexto de ventanas KWin Wayland:\n%2\n\n"
-        "Texto extraído mediante OCR (Live Text) de la captura (%3):\n\"\"\"\n%4\n\"\"\"")
-        .arg(aiInstruction, kwinInfo, modeLabel, ocrText);
-
     const QString aiBackend = Kity::ConfigManager::instance().aiBackend();
     const QString geminiApiKey = Kity::ConfigManager::instance().geminiApiKey();
     const bool useGemini = (aiBackend == QLatin1String("gemini") || (aiBackend == QLatin1String("hybrid") && !geminiApiKey.isEmpty()));
 
-    Kity::LlmEngine::instance().query(fullPrompt, QString(), base64Image, m_messages, useGemini);
+    Kity::LlmEngine::instance().query(res.fullPrompt, QString(), res.base64Image, m_messages, useGemini);
 }
 
 // =========================================================================

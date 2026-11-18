@@ -65,6 +65,8 @@ plasma_add_applet(org.cesar.kity
         ai/knowledgemanager.h
         ai/visionengine.cpp
         ai/visionengine.h
+        ai/visualintelligencecontroller.cpp
+        ai/visualintelligencecontroller.h
         ai/llmengine.cpp
         ai/llmengine.h
         ai/writingtoolsmanager.cpp
@@ -107,6 +109,13 @@ plasma_add_applet(org.cesar.kity
         ${kity_SRCS}
     QML_SOURCES
         qml/main.qml
+        qml/ExpandedRepresentation.qml
+        qml/TopControlsBar.qml
+        qml/WritingToolsPanel.qml
+        qml/MathNotesPanel.qml
+        qml/VisualIntelligencePanel.qml
+        qml/ChatView.qml
+        qml/BottomDock.qml
         qml/SiriOrbAnimation.qml
         qml/cards/WeatherCard.qml
         qml/cards/MediaCard.qml
