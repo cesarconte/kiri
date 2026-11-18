@@ -232,15 +232,22 @@ QString WeatherManager::formatWeatherPromptContext(const WeatherData &data) cons
         return QString();
     }
 
+    QString conditionPhrase;
+    if (data.condition.contains(QLatin1String("despejado")) || data.condition.contains(QLatin1String("nub"))) {
+        conditionPhrase = QStringLiteral("cielo %1").arg(data.condition);
+    } else {
+        conditionPhrase = data.condition;
+    }
+
     return QStringLiteral(
         "[Datos meteorológicos oficiales y actualizados en tiempo real para %1:\n"
         "- Temperatura actual: %2 °C\n"
         "- Sensación térmica: %3 °C\n"
-        "- Estado del cielo: %4\n"
+        "- Estado del tiempo: %4\n"
         "- Humedad relativa: %5 %\n"
         "- Viento: %6 km/h\n"
         "- Precipitaciones: %7 mm\n"
-        "INSTRUCCIÓN OBLIGATORIA: Eres Kity, el asistente de voz. Responde a la pregunta del usuario indicando claramente que en %8 hace %2 °C con cielo %4. Tu respuesta debe ser concisa, directa y natural en una sola frase optimizada para hablar por voz al estilo Siri. No digas que no tienes acceso a información en tiempo real.]")
+        "INSTRUCCIÓN OBLIGATORIA: Eres Kity, el asistente de voz. Responde a la pregunta del usuario indicando claramente que en %8 hace %2 °C con %9 (o usando una expresión natural en español como 'en %8 hace %2 °C y está lloviendo' o 'hace %2 °C con %9'). Tu respuesta debe ser gramaticalmente correcta en castellano, concisa, directa y natural en una sola frase optimizada para hablar por voz al estilo Siri. No digas que no tienes acceso a información en tiempo real.]")
         .arg(data.location)
         .arg(QString::number(data.temp, 'f', 1))
         .arg(QString::number(data.feelsLike, 'f', 1))
@@ -248,7 +255,8 @@ QString WeatherManager::formatWeatherPromptContext(const WeatherData &data) cons
         .arg(QString::number(data.humidity, 'f', 0))
         .arg(QString::number(data.wind, 'f', 1))
         .arg(QString::number(data.precipitation, 'f', 1))
-        .arg(data.city);
+        .arg(data.city)
+        .arg(conditionPhrase);
 }
 
 } // namespace Kity
