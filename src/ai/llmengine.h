@@ -8,13 +8,15 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
-#include <QNetworkReply>
 #include <QObject>
-#include <QPointer>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
+#include <memory>
+
+#include "geminiclient.h"
+#include "ollamaclient.h"
 
 namespace Kity {
 
@@ -30,7 +32,7 @@ struct LlmResponse {
 
 /**
  * @brief LlmEngine orchestrates LLM interactions (local Ollama streaming and cloud Google Gemini streaming),
- * tool invocation loops, context grounding, and model discovery following Google engineering standards.
+ * tool invocation loops, context grounding, and model discovery.
  */
 class LlmEngine : public QObject
 {
@@ -49,8 +51,8 @@ public:
     void refreshModels();
 
     QString streamingText() const;
-    QStringList availableModels() const;
-    bool isOllamaReachable() const;
+    QStringList availableModels() const { return m_availableModels; }
+    bool isOllamaReachable() const { return m_ollamaReachable; }
 
     // Configuration resolution helpers
     static QString resolveOllamaUrl();
@@ -77,12 +79,6 @@ Q_SIGNALS:
     void availableModelsChanged(const QStringList &models);
     void ollamaReachabilityChanged(bool reachable);
 
-private Q_SLOTS:
-    void handleOllamaStreamChunk();
-    void handleOllamaFinished();
-    void handleGeminiStreamChunk();
-    void handleGeminiFinished();
-
 private:
     explicit LlmEngine(QObject *parent = nullptr);
     ~LlmEngine() override;
@@ -95,31 +91,25 @@ private:
                       const QString &base64Image,
                       const QVariantList &historyMessages);
 
-    void sendOllamaToolFollowUp(const QJsonArray &messages);
-
     void sendToGemini(const QString &userPrompt,
                       const QString &injectedContext,
                       const QString &base64Image,
                       const QVariantList &historyMessages);
 
     QJsonObject executeToolCall(const QString &toolName, const QJsonObject &arguments);
+    void handleOllamaToolCalls(const QJsonArray &toolCalls);
 
     QNetworkAccessManager *m_nam = nullptr;
-    QPointer<QNetworkReply> m_currentOllamaReply;
-    QPointer<QNetworkReply> m_currentGeminiReply;
+    std::unique_ptr<OllamaClient> m_ollamaClient;
+    std::unique_ptr<GeminiClient> m_geminiClient;
 
-    QString m_streamingText;
     QString m_lastOllamaPrompt;
     QString m_lastOllamaContext;
     QString m_lastOllamaImage;
     QVariantList m_lastHistoryMessages;
 
     QString m_lastGeminiPrompt;
-    QList<QPair<QString, QString>> m_geminiSources;
-
     QJsonArray m_currentChatMessages;
-    QJsonArray m_pendingToolCalls;
-    bool m_isToolFollowUpRound = false;
 
     QStringList m_availableModels;
     bool m_ollamaReachable = false;

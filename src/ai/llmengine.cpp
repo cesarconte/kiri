@@ -4,25 +4,25 @@
 */
 
 #include "llmengine.h"
-
-#include <QCoreApplication>
-#include <QDateTime>
-#include <QDir>
-#include <QEventLoop>
-#include <QJsonDocument>
-#include <QLocale>
-#include <QRegularExpression>
-#include <QStandardPaths>
-#include <QTimer>
-#include <QUrlQuery>
-#include <KConfigGroup>
-#include <KLocalizedContext>
-#include <KSharedConfig>
-
+#include "../system/configmanager.h"
 #include "../system/hardwaremanager.h"
 #include "../system/emailmanager.h"
 #include "../system/calendarmanager.h"
 #include "../tools/toolregistry.h"
+#include "../voice/voiceengine.h"
+
+#include <QDateTime>
+#include <QDebug>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QLocale>
+#include <QRegularExpression>
+#include <QUrl>
+
+#include <KConfigGroup>
+#include <KSharedConfig>
 
 namespace Kity {
 
@@ -60,8 +60,127 @@ LlmEngine &LlmEngine::instance()
 LlmEngine::LlmEngine(QObject *parent)
     : QObject(parent)
     , m_nam(new QNetworkAccessManager(this))
+    , m_ollamaClient(std::make_unique<OllamaClient>(m_nam, this))
+    , m_geminiClient(std::make_unique<GeminiClient>(m_nam, this))
 {
-    refreshModels();
+    connect(m_ollamaClient.get(), &OllamaClient::chunkReceived, this, [this](const QString &chunk) {
+        VoiceEngine::instance().processStreamingTtsChunk(chunk);
+        Q_EMIT streamingChunkReceived(chunk);
+    });
+    connect(m_ollamaClient.get(), &OllamaClient::streamingTextChanged, this, &LlmEngine::streamingTextChanged);
+    connect(m_ollamaClient.get(), &OllamaClient::toolCallsDetected, this, &LlmEngine::handleOllamaToolCalls);
+    connect(m_ollamaClient.get(), &OllamaClient::finished, this, [this](const QString &rawResponse) {
+        QString finalResponse = rawResponse.trimmed();
+        static const QRegularExpression thinkRegex(QStringLiteral("<think>.*?</think>"), QRegularExpression::DotMatchesEverythingOption);
+        finalResponse.remove(thinkRegex);
+        finalResponse = finalResponse.trimmed();
+
+        LlmResponse resp;
+        resp.text = finalResponse;
+        resp.isWritingTool = m_lastWasWritingTool;
+        resp.sourceText = m_lastWritingToolSource;
+        resp.writingToolAction = m_lastWritingToolAction;
+        resp.cardType = m_pendingCardType;
+        resp.cardData = m_pendingCardData;
+
+        m_pendingCardType.clear();
+        m_pendingCardData.clear();
+        m_lastWasWritingTool = false;
+
+        static const QRegularExpression mdLinkRx(QStringLiteral("\\[([^\\]]+)\\]\\((https?://[^\\)]+)\\)"));
+        auto linkIt = mdLinkRx.globalMatch(finalResponse);
+        QStringList seenUrls;
+        while (linkIt.hasNext()) {
+            auto m = linkIt.next();
+            const QString title = m.captured(1).trimmed();
+            const QString url = m.captured(2).trimmed();
+            if (!seenUrls.contains(url)) {
+                seenUrls.append(url);
+                QVariantMap s;
+                s[QStringLiteral("title")] = title;
+                s[QStringLiteral("url")] = url;
+                resp.sources.append(s);
+            }
+        }
+        Q_EMIT responseFinished(resp);
+    });
+    connect(m_ollamaClient.get(), &OllamaClient::errorOccurred, this, [this](const QString &errMsg, bool fallbackEligible) {
+        const QString geminiKey = resolveGeminiApiKey();
+        if (fallbackEligible && !geminiKey.isEmpty() && !m_lastOllamaPrompt.isEmpty()) {
+            qWarning() << "Kity: Ollama unreachable -> Fallback to Google Gemini.";
+            Q_EMIT stateChanged(QStringLiteral("thinking"), QStringLiteral("Ollama no responde. Consultando con Google Gemini…"));
+            sendToGemini(m_lastOllamaPrompt, m_lastOllamaContext, m_lastOllamaImage, m_lastHistoryMessages);
+            return;
+        }
+        Q_EMIT errorOccurred(errMsg);
+    });
+    connect(m_ollamaClient.get(), &OllamaClient::modelsRefreshed, this, [this](const QStringList &models, bool reachable) {
+        bool changed = false;
+        if (m_availableModels != models) {
+            m_availableModels = models;
+            changed = true;
+        }
+        if (m_ollamaReachable != reachable) {
+            m_ollamaReachable = reachable;
+            Q_EMIT ollamaReachabilityChanged(reachable);
+        }
+        if (changed) {
+            Q_EMIT availableModelsChanged(m_availableModels);
+        }
+    });
+
+    connect(m_geminiClient.get(), &GeminiClient::chunkReceived, this, [this](const QString &chunk) {
+        VoiceEngine::instance().processStreamingTtsChunk(chunk);
+        Q_EMIT streamingChunkReceived(chunk);
+    });
+    connect(m_geminiClient.get(), &GeminiClient::streamingTextChanged, this, &LlmEngine::streamingTextChanged);
+    connect(m_geminiClient.get(), &GeminiClient::finished, this, [this](const QString &rawResponse, const QList<QPair<QString, QString>> &sources) {
+        QString finalResponse = rawResponse.trimmed();
+        static const QRegularExpression thinkRegex(QStringLiteral("<think>.*?</think>"), QRegularExpression::DotMatchesEverythingOption);
+        finalResponse.remove(thinkRegex);
+        finalResponse = finalResponse.trimmed();
+
+        if (!sources.isEmpty()) {
+            static const QRegularExpression fuentesSignal(
+                QStringLiteral("(?:fuentes|referencias|enlaces|sources):"),
+                QRegularExpression::CaseInsensitiveOption);
+            if (!finalResponse.contains(fuentesSignal)) {
+                QString sourcesBlock = QStringLiteral("\n\n🌐 **Fuentes consultadas:**\n");
+                for (const auto &pair : sources) {
+                    sourcesBlock.append(QStringLiteral("- [%1](%2)\n").arg(pair.first, pair.second));
+                }
+                finalResponse.append(sourcesBlock.trimmed());
+            }
+        }
+
+        LlmResponse resp;
+        resp.text = finalResponse;
+        resp.isWritingTool = m_lastWasWritingTool;
+        resp.sourceText = m_lastWritingToolSource;
+        resp.writingToolAction = m_lastWritingToolAction;
+        resp.cardType = m_pendingCardType;
+        resp.cardData = m_pendingCardData;
+
+        m_pendingCardType.clear();
+        m_pendingCardData.clear();
+        m_lastWasWritingTool = false;
+
+        for (const auto &pair : sources) {
+            QVariantMap s;
+            s[QStringLiteral("title")] = pair.first;
+            s[QStringLiteral("url")] = pair.second;
+            resp.sources.append(s);
+        }
+        Q_EMIT responseFinished(resp);
+    });
+    connect(m_geminiClient.get(), &GeminiClient::errorOccurred, this, [this](const QString &errMsg, bool fallbackEligible) {
+        if (fallbackEligible && (m_ollamaReachable || readConfigString(QStringLiteral("aiBackend"), QStringLiteral("hybrid")).toLower() == QLatin1String("hybrid"))) {
+            qWarning() << "Kity: Gemini failed -> Fallback to Ollama local";
+            sendToOllama(m_lastGeminiPrompt, m_lastOllamaContext, m_lastOllamaImage, m_lastHistoryMessages);
+            return;
+        }
+        Q_EMIT errorOccurred(errMsg);
+    });
 }
 
 LlmEngine::~LlmEngine()
@@ -69,10 +188,20 @@ LlmEngine::~LlmEngine()
     stop();
 }
 
+QString LlmEngine::streamingText() const
+{
+    if (m_ollamaClient && m_ollamaClient->isBusy()) {
+        return m_ollamaClient->streamingText();
+    }
+    if (m_geminiClient && m_geminiClient->isBusy()) {
+        return m_geminiClient->streamingText();
+    }
+    return QString();
+}
+
 QString LlmEngine::resolveOllamaUrl()
 {
-    const QString url = readConfigString(QStringLiteral("ollamaUrl"), QStringLiteral("http://127.0.0.1:11434"));
-    return url.endsWith(QLatin1Char('/')) ? url.left(url.length() - 1) : url;
+    return readConfigString(QStringLiteral("ollamaUrl"), QStringLiteral("http://127.0.0.1:11434"));
 }
 
 QString LlmEngine::resolveOllamaModel()
@@ -87,24 +216,7 @@ QString LlmEngine::resolveVisionModel()
 
 QString LlmEngine::detectAvailableVisionModel()
 {
-    const QString custom = resolveVisionModel();
-    if (!custom.isEmpty() && custom != QStringLiteral("auto")) {
-        return custom;
-    }
-    const auto &models = instance().m_availableModels;
-    for (const QString &m : models) {
-        if (m.contains(QStringLiteral("vision"), Qt::CaseInsensitive)) {
-            return m;
-        }
-    }
-    for (const QString &m : models) {
-        if (m.contains(QStringLiteral("moondream"), Qt::CaseInsensitive) ||
-            m.contains(QStringLiteral("llava"), Qt::CaseInsensitive) ||
-            m.contains(QStringLiteral("bakllava"), Qt::CaseInsensitive)) {
-            return m;
-        }
-    }
-    return QStringLiteral("llama3.2-vision:11b");
+    return resolveVisionModel();
 }
 
 QString LlmEngine::resolveGeminiApiKey()
@@ -119,31 +231,8 @@ QString LlmEngine::resolveGeminiModel()
 
 QString LlmEngine::resolveSystemPrompt()
 {
-    const QString custom = readConfigString(QStringLiteral("customSystemPrompt"));
-    if (!custom.isEmpty()) {
-        return custom;
-    }
-    return QStringLiteral(
-        "Eres Kity, el asistente de voz e inteligencia artificial nativo para CachyOS Linux con KDE Plasma 6 bajo Wayland. "
-        "Tu diseño combina la elegancia y calidez de Siri y Apple Intelligence con la precisión y potencia de Google Gemini. "
-        "Responde de forma concisa, útil, empática y en un tono completamente natural. "
-        "Tus respuestas deben ser redactadas exclusivamente en español de España (castellano), con gramática y ortografía impecables. "
-        "Cuando el usuario te pregunte cosas cotidianas, responde con claridad ejecutiva y directa.");
-}
-
-QString LlmEngine::streamingText() const
-{
-    return m_streamingText;
-}
-
-QStringList LlmEngine::availableModels() const
-{
-    return m_availableModels;
-}
-
-bool LlmEngine::isOllamaReachable() const
-{
-    return m_ollamaReachable;
+    return readConfigString(QStringLiteral("systemPrompt"),
+        QStringLiteral("Eres Kity, el asistente de voz e inteligencia artificial nativo para CachyOS Linux con KDE Plasma 6 bajo Wayland."));
 }
 
 void LlmEngine::setPendingCard(const QString &cardType, const QVariantMap &cardData)
@@ -161,51 +250,20 @@ void LlmEngine::setWritingToolContext(bool isWritingTool, const QString &sourceT
 
 void LlmEngine::stop()
 {
-    if (m_currentOllamaReply) {
-        m_currentOllamaReply->abort();
-        m_currentOllamaReply->deleteLater();
-        m_currentOllamaReply = nullptr;
+    if (m_ollamaClient) {
+        m_ollamaClient->abort();
     }
-    if (m_currentGeminiReply) {
-        m_currentGeminiReply->abort();
-        m_currentGeminiReply->deleteLater();
-        m_currentGeminiReply = nullptr;
+    if (m_geminiClient) {
+        m_geminiClient->abort();
     }
-    m_streamingText.clear();
-    Q_EMIT streamingTextChanged(m_streamingText);
+    Q_EMIT streamingTextChanged(QString());
 }
 
 void LlmEngine::refreshModels()
 {
-    const QUrl tagsUrl(resolveOllamaUrl() + QStringLiteral("/api/tags"));
-    QNetworkRequest req(tagsUrl);
-    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("Kity/1.0"));
-
-    QNetworkReply *reply = m_nam->get(req);
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        reply->deleteLater();
-        const bool reachable = (reply->error() == QNetworkReply::NoError);
-        if (m_ollamaReachable != reachable) {
-            m_ollamaReachable = reachable;
-            Q_EMIT ollamaReachabilityChanged(reachable);
-        }
-
-        if (reachable) {
-            const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-            const QJsonArray modelsArr = doc.object().value(QStringLiteral("models")).toArray();
-            QStringList models;
-            for (const QJsonValue &v : modelsArr) {
-                const QString mName = v.toObject().value(QStringLiteral("name")).toString();
-                if (!mName.isEmpty()) {
-                    models.append(mName);
-                }
-            }
-            if (models != m_availableModels) {
-                m_availableModels = models;
-                Q_EMIT availableModelsChanged(m_availableModels);
-            }
-        }
-    });
+    if (m_ollamaClient) {
+        m_ollamaClient->refreshModels(QUrl(resolveOllamaUrl() + QStringLiteral("/api/tags")));
+    }
 }
 
 void LlmEngine::query(const QString &userPrompt,
@@ -220,36 +278,42 @@ void LlmEngine::query(const QString &userPrompt,
     m_lastOllamaContext = injectedContext;
     m_lastOllamaImage = base64Image;
     m_lastHistoryMessages = historyMessages;
+    m_lastGeminiPrompt = userPrompt;
 
     const QString aiBackend = readConfigString(QStringLiteral("aiBackend"), QStringLiteral("hybrid")).toLower();
-    bool useGemini = forceGemini;
+    const QString geminiApiKey = resolveGeminiApiKey();
 
-    if (!forceGemini) {
-        const QString geminiApiKey = resolveGeminiApiKey();
-        if (aiBackend == QLatin1String("gemini")) {
-            useGemini = !geminiApiKey.isEmpty();
-        } else if (aiBackend == QLatin1String("hybrid")) {
-            static const QRegularExpression localActionSignal(
-                QStringLiteral("^(?:sube|baja|ajusta|pon|silencia|abre|abrir|ejecuta|cierra|temporizador|alarma|bater[ií]a|brillo|volumen)"),
-                QRegularExpression::CaseInsensitiveOption);
-            const bool isLocalAction = userPrompt.contains(localActionSignal);
-            if (isLocalAction && m_ollamaReachable) {
-                useGemini = false;
-            } else if (!geminiApiKey.isEmpty()) {
-                useGemini = true;
-            } else {
-                useGemini = false;
-            }
-        } else {
-            useGemini = false;
-        }
-    }
-
-    if (useGemini) {
+    if (forceGemini && !geminiApiKey.isEmpty()) {
         sendToGemini(userPrompt, injectedContext, base64Image, historyMessages);
-    } else {
-        sendToOllama(userPrompt, injectedContext, base64Image, historyMessages);
+        return;
     }
+
+    if (aiBackend == QLatin1String("gemini")) {
+        if (!geminiApiKey.isEmpty()) {
+            sendToGemini(userPrompt, injectedContext, base64Image, historyMessages);
+        } else {
+            sendToOllama(userPrompt, injectedContext, base64Image, historyMessages);
+        }
+        return;
+    }
+
+    if (aiBackend == QLatin1String("hybrid")) {
+        static const QRegularExpression localActionSignal(
+            QStringLiteral("^(?:sube|baja|ajusta|pon|silencia|abre|abrir|ejecuta|cierra|temporizador|alarma|bater[ií]a|brillo|volumen)"),
+            QRegularExpression::CaseInsensitiveOption);
+        const bool isLocalAction = userPrompt.contains(localActionSignal);
+
+        if (isLocalAction && m_ollamaReachable) {
+            sendToOllama(userPrompt, injectedContext, base64Image, historyMessages);
+        } else if (!geminiApiKey.isEmpty()) {
+            sendToGemini(userPrompt, injectedContext, base64Image, historyMessages);
+        } else {
+            sendToOllama(userPrompt, injectedContext, base64Image, historyMessages);
+        }
+        return;
+    }
+
+    sendToOllama(userPrompt, injectedContext, base64Image, historyMessages);
 }
 
 void LlmEngine::sendToOllama(const QString &userPrompt,
@@ -258,8 +322,6 @@ void LlmEngine::sendToOllama(const QString &userPrompt,
                              const QVariantList &historyMessages)
 {
     Q_EMIT stateChanged(QStringLiteral("thinking"), QStringLiteral("Generando respuesta…"));
-    m_streamingText.clear();
-    Q_EMIT streamingTextChanged(m_streamingText);
 
     const bool hasVision = !base64Image.isEmpty();
     QString modelToUse = hasVision ? resolveVisionModel() : resolveOllamaModel();
@@ -285,13 +347,6 @@ void LlmEngine::sendToOllama(const QString &userPrompt,
         "- Gestor de actualizaciones oficial: 'cachy-update'. Gestores de paquetes: 'pacman' y 'paru' (AUR).\n"
         "- Terminal predeterminada del sistema: Konsole.\n"
         "- REGLA ESTRICTA DE LINUX: Este sistema NUNCA es Debian ni Ubuntu. NUNCA menciones ni uses 'apt', 'apt-get', 'dnf', 'yum' ni 'zypper'. Para cualquier tarea o recomendación de comandos de terminal, usa SIEMPRE comandos de Arch / CachyOS (cachy-update, pacman, paru, systemctl, etc.). Si el usuario pide actualizar el sistema, ejecutar comandos o abrir la terminal, invoca la herramienta 'run_terminal_command' con el comando 'cachy-update' o recomienda 'cachy-update'. La terminal Konsole se cerrará automáticamente al finalizar la actualización si el proceso concluye con éxito.\n"));
-    fullSysPrompt.append(QStringLiteral(
-        "\n[Acceso a Internet en tiempo real:]\n"
-        "Dispones de acceso directo a Internet mediante búsqueda web ('web_search') y mediante el contexto web provisto en tiempo real. "
-        "Cuando el usuario pregunte por fechas, noticias, acontecimientos actuales o futuros (año 2026 en adelante), "
-        "resultados electorales o deportivos, personas o cualquier dato de actualidad, "
-        "basa tu respuesta en la información de internet provista o invoca la herramienta 'web_search'. "
-        "NUNCA digas que no tienes información actualizada sin antes consultar la búsqueda web."));
 
     const QString vitals = HardwareManager::instance().collectSystemVitals();
     if (!vitals.isEmpty()) {
@@ -303,7 +358,7 @@ void LlmEngine::sendToOllama(const QString &userPrompt,
     sysObj[QStringLiteral("content")] = fullSysPrompt;
     chatMsgs.append(sysObj);
 
-    // 2. Recent history (last 8 messages)
+    // 2. Recent history
     const int startIdx = qMax(0, historyMessages.size() - 8);
     for (int i = startIdx; i < historyMessages.size() - 1; ++i) {
         const QVariantMap vm = historyMessages.at(i).toMap();
@@ -328,15 +383,13 @@ void LlmEngine::sendToOllama(const QString &userPrompt,
     }
     chatMsgs.append(userObj);
 
+    m_currentChatMessages = chatMsgs;
+
     QJsonObject opts;
     opts[QStringLiteral("temperature")] = readConfigDouble(QStringLiteral("ollamaTemperature"), 0.2);
     opts[QStringLiteral("num_ctx")] = readConfigInt(QStringLiteral("ollamaNumCtx"), 4096);
     opts[QStringLiteral("num_thread")] = readConfigInt(QStringLiteral("ollamaNumThread"), 6);
     opts[QStringLiteral("num_predict")] = readConfigInt(QStringLiteral("ollamaNumPredict"), 384);
-
-    m_currentChatMessages = chatMsgs;
-    m_pendingToolCalls = QJsonArray();
-    m_isToolFollowUpRound = false;
 
     QJsonObject reqPayload;
     reqPayload[QStringLiteral("model")] = modelToUse;
@@ -356,181 +409,39 @@ void LlmEngine::sendToOllama(const QString &userPrompt,
     }
 
     const QUrl chatUrl(resolveOllamaUrl() + QStringLiteral("/api/chat"));
-    QNetworkRequest req(chatUrl);
-    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     const int timeoutMs = readConfigInt(QStringLiteral("ollamaTimeoutMs"), 20000);
-    req.setTransferTimeout(timeoutMs);
-
-    if (m_currentOllamaReply) {
-        m_currentOllamaReply->abort();
-        m_currentOllamaReply->deleteLater();
-    }
-
-    m_currentOllamaReply = m_nam->post(req, QJsonDocument(reqPayload).toJson(QJsonDocument::Compact));
-    connect(m_currentOllamaReply, &QNetworkReply::readyRead, this, &LlmEngine::handleOllamaStreamChunk);
-    connect(m_currentOllamaReply, &QNetworkReply::finished, this, &LlmEngine::handleOllamaFinished);
+    m_ollamaClient->sendChat(chatUrl, reqPayload, timeoutMs);
 }
 
-void LlmEngine::handleOllamaStreamChunk()
+void LlmEngine::handleOllamaToolCalls(const QJsonArray &toolCalls)
 {
-    if (!m_currentOllamaReply) return;
+    QJsonObject asstMsg;
+    asstMsg[QStringLiteral("role")] = QStringLiteral("assistant");
+    asstMsg[QStringLiteral("content")] = QStringLiteral("");
+    asstMsg[QStringLiteral("tool_calls")] = toolCalls;
+    m_currentChatMessages.append(asstMsg);
 
-    while (m_currentOllamaReply->canReadLine()) {
-        const QByteArray line = m_currentOllamaReply->readLine().trimmed();
-        if (line.isEmpty()) continue;
+    for (const QJsonValue &tcVal : toolCalls) {
+        const QJsonObject tcObj = tcVal.toObject();
+        const QString callId = tcObj.value(QStringLiteral("id")).toString();
+        const QJsonObject funcObj = tcObj.value(QStringLiteral("function")).toObject();
+        const QString toolName = funcObj.value(QStringLiteral("name")).toString();
+        const QJsonObject toolArgs = funcObj.value(QStringLiteral("arguments")).toObject();
 
-        const QJsonDocument doc = QJsonDocument::fromJson(line);
-        if (!doc.isObject()) continue;
+        Q_EMIT stateChanged(QStringLiteral("thinking"), QStringLiteral("Ejecutando acción del sistema: %1…").arg(toolName));
 
-        const QJsonObject obj = doc.object();
-        if (obj.contains(QStringLiteral("error"))) {
-            const QString err = obj.value(QStringLiteral("error")).toString();
-            Q_EMIT errorOccurred(QStringLiteral("Error de Ollama: %1").arg(err));
-            return;
+        const QJsonObject result = executeToolCall(toolName, toolArgs);
+
+        QJsonObject toolMsg;
+        toolMsg[QStringLiteral("role")] = QStringLiteral("tool");
+        if (!callId.isEmpty()) {
+            toolMsg[QStringLiteral("tool_call_id")] = callId;
         }
-
-        const QJsonObject msgObj = obj.value(QStringLiteral("message")).toObject();
-
-        if (msgObj.contains(QStringLiteral("tool_calls"))) {
-            const QJsonArray tCalls = msgObj.value(QStringLiteral("tool_calls")).toArray();
-            for (const QJsonValue &tcVal : tCalls) {
-                const QJsonObject tc = tcVal.toObject();
-                const QString tcId = tc.value(QStringLiteral("id")).toString();
-                bool exists = false;
-                for (const QJsonValue &existing : std::as_const(m_pendingToolCalls)) {
-                    if (!tcId.isEmpty() && existing.toObject().value(QStringLiteral("id")).toString() == tcId) {
-                        exists = true;
-                        break;
-                    }
-                }
-                if (!exists) {
-                    m_pendingToolCalls.append(tc);
-                }
-            }
-        }
-
-        const QString chunk = msgObj.value(QStringLiteral("content")).toString();
-        if (!chunk.isEmpty()) {
-            m_streamingText.append(chunk);
-            Q_EMIT streamingTextChanged(m_streamingText);
-            Q_EMIT streamingChunkReceived(chunk);
-        }
+        toolMsg[QStringLiteral("content")] = QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
+        m_currentChatMessages.append(toolMsg);
     }
-}
-
-void LlmEngine::handleOllamaFinished()
-{
-    if (!m_currentOllamaReply) return;
-
-    const bool error = (m_currentOllamaReply->error() != QNetworkReply::NoError &&
-                        m_currentOllamaReply->error() != QNetworkReply::OperationCanceledError);
-
-    const QNetworkReply::NetworkError errCode = m_currentOllamaReply->error();
-    const QString httpError = m_currentOllamaReply->errorString();
-    m_currentOllamaReply->deleteLater();
-    m_currentOllamaReply = nullptr;
-
-    if (error) {
-        const QString geminiKey = resolveGeminiApiKey();
-        if (!geminiKey.isEmpty() && !m_lastOllamaPrompt.isEmpty() && m_streamingText.isEmpty()) {
-            qWarning() << "Kity: Ollama unreachable or timed out (" << httpError << "). Fallback to Google Gemini.";
-            Q_EMIT stateChanged(QStringLiteral("thinking"), QStringLiteral("Ollama no responde. Consultando con Google Gemini…"));
-            sendToGemini(m_lastOllamaPrompt, m_lastOllamaContext, m_lastOllamaImage, m_lastHistoryMessages);
-            return;
-        }
-
-        QString friendlyErr;
-        if (errCode == QNetworkReply::ConnectionRefusedError || errCode == QNetworkReply::HostNotFoundError) {
-            friendlyErr = QStringLiteral("Ollama no está en ejecución. Inícialo con 'ollama serve' o revisa la URL.");
-        } else if (errCode == QNetworkReply::TimeoutError) {
-            friendlyErr = QStringLiteral("Tiempo de espera agotado al consultar a Ollama.");
-        } else {
-            friendlyErr = QStringLiteral("Error al comunicarse con Ollama: %1").arg(httpError);
-        }
-        Q_EMIT errorOccurred(friendlyErr);
-        return;
-    }
-
-    if (!m_pendingToolCalls.isEmpty()) {
-        QJsonObject asstMsg;
-        asstMsg[QStringLiteral("role")] = QStringLiteral("assistant");
-        asstMsg[QStringLiteral("content")] = QStringLiteral("");
-        asstMsg[QStringLiteral("tool_calls")] = m_pendingToolCalls;
-        m_currentChatMessages.append(asstMsg);
-
-        for (const QJsonValue &tcVal : m_pendingToolCalls) {
-            const QJsonObject tcObj = tcVal.toObject();
-            const QString callId = tcObj.value(QStringLiteral("id")).toString();
-            const QJsonObject funcObj = tcObj.value(QStringLiteral("function")).toObject();
-            const QString toolName = funcObj.value(QStringLiteral("name")).toString();
-            const QJsonObject toolArgs = funcObj.value(QStringLiteral("arguments")).toObject();
-
-            Q_EMIT stateChanged(QStringLiteral("thinking"), QStringLiteral("Ejecutando acción del sistema: %1…").arg(toolName));
-
-            const QJsonObject result = executeToolCall(toolName, toolArgs);
-
-            QJsonObject toolMsg;
-            toolMsg[QStringLiteral("role")] = QStringLiteral("tool");
-            if (!callId.isEmpty()) {
-                toolMsg[QStringLiteral("tool_call_id")] = callId;
-            }
-            toolMsg[QStringLiteral("content")] = QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
-            m_currentChatMessages.append(toolMsg);
-        }
-
-        m_pendingToolCalls = QJsonArray();
-        m_streamingText.clear();
-        sendOllamaToolFollowUp(m_currentChatMessages);
-        return;
-    }
-
-    QString finalResponse = m_streamingText.trimmed();
-    static const QRegularExpression thinkRegex(QStringLiteral("<think>.*?</think>"), QRegularExpression::DotMatchesEverythingOption);
-    finalResponse.remove(thinkRegex);
-    finalResponse = finalResponse.trimmed();
-
-    LlmResponse resp;
-    resp.text = finalResponse;
-    resp.isWritingTool = m_lastWasWritingTool;
-    resp.sourceText = m_lastWritingToolSource;
-    resp.writingToolAction = m_lastWritingToolAction;
-    resp.cardType = m_pendingCardType;
-    resp.cardData = m_pendingCardData;
-
-    m_pendingCardType.clear();
-    m_pendingCardData.clear();
-    m_lastWasWritingTool = false;
-
-    // Extract Markdown links as structured sources
-    static const QRegularExpression mdLinkRx(QStringLiteral("\\[([^\\]]+)\\]\\((https?://[^\\)]+)\\)"));
-    auto linkIt = mdLinkRx.globalMatch(finalResponse);
-    QStringList seenUrls;
-    while (linkIt.hasNext()) {
-        auto m = linkIt.next();
-        const QString title = m.captured(1).trimmed();
-        const QString url = m.captured(2).trimmed();
-        if (!seenUrls.contains(url)) {
-            seenUrls.append(url);
-            QVariantMap s;
-            s[QStringLiteral("title")] = title;
-            s[QStringLiteral("url")] = url;
-            resp.sources.append(s);
-        }
-    }
-
-    m_streamingText.clear();
-    Q_EMIT streamingTextChanged(m_streamingText);
-    Q_EMIT responseFinished(resp);
-}
-
-void LlmEngine::sendOllamaToolFollowUp(const QJsonArray &messages)
-{
-    Q_EMIT stateChanged(QStringLiteral("thinking"), QStringLiteral("Generando respuesta…"));
-    m_streamingText.clear();
-    Q_EMIT streamingTextChanged(m_streamingText);
 
     const QString modelToUse = resolveOllamaModel();
-
     QJsonObject opts;
     opts[QStringLiteral("temperature")] = readConfigDouble(QStringLiteral("ollamaTemperature"), 0.2);
     opts[QStringLiteral("num_ctx")] = readConfigInt(QStringLiteral("ollamaNumCtx"), 4096);
@@ -539,25 +450,15 @@ void LlmEngine::sendOllamaToolFollowUp(const QJsonArray &messages)
 
     QJsonObject reqPayload;
     reqPayload[QStringLiteral("model")] = modelToUse;
-    reqPayload[QStringLiteral("messages")] = messages;
+    reqPayload[QStringLiteral("messages")] = m_currentChatMessages;
     reqPayload[QStringLiteral("stream")] = true;
     reqPayload[QStringLiteral("options")] = opts;
     const QString keepAlive = readConfigString(QStringLiteral("ollamaKeepAlive"), QStringLiteral("15m"));
     reqPayload[QStringLiteral("keep_alive")] = keepAlive.isEmpty() ? QStringLiteral("15m") : keepAlive;
 
     const QUrl chatUrl(resolveOllamaUrl() + QStringLiteral("/api/chat"));
-    QNetworkRequest req(chatUrl);
-    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    req.setTransferTimeout(readConfigInt(QStringLiteral("ollamaTimeoutMs"), 20000));
-
-    if (m_currentOllamaReply) {
-        m_currentOllamaReply->abort();
-        m_currentOllamaReply->deleteLater();
-    }
-
-    m_currentOllamaReply = m_nam->post(req, QJsonDocument(reqPayload).toJson(QJsonDocument::Compact));
-    connect(m_currentOllamaReply, &QNetworkReply::readyRead, this, &LlmEngine::handleOllamaStreamChunk);
-    connect(m_currentOllamaReply, &QNetworkReply::finished, this, &LlmEngine::handleOllamaFinished);
+    const int timeoutMs = readConfigInt(QStringLiteral("ollamaTimeoutMs"), 20000);
+    m_ollamaClient->sendChat(chatUrl, reqPayload, timeoutMs);
 }
 
 void LlmEngine::sendToGemini(const QString &userPrompt,
@@ -566,9 +467,6 @@ void LlmEngine::sendToGemini(const QString &userPrompt,
                              const QVariantList &historyMessages)
 {
     Q_EMIT stateChanged(QStringLiteral("thinking"), QStringLiteral("Consultando con Google Gemini…"));
-    m_streamingText.clear();
-    m_geminiSources.clear();
-    Q_EMIT streamingTextChanged(m_streamingText);
 
     const QString apiKey = resolveGeminiApiKey();
     if (apiKey.isEmpty()) {
@@ -579,9 +477,7 @@ void LlmEngine::sendToGemini(const QString &userPrompt,
     const QString geminiModel = resolveGeminiModel();
     const QString modelToUse = (geminiModel.isEmpty() ? QStringLiteral("gemini-1.5-flash") : geminiModel);
     const bool hasVision = !base64Image.isEmpty();
-    m_lastGeminiPrompt = userPrompt;
 
-    // 1. System instruction
     QString fullSysPrompt = resolveSystemPrompt();
     if (!fullSysPrompt.contains(QStringLiteral("español"), Qt::CaseInsensitive)) {
         fullSysPrompt.prepend(QStringLiteral("REGLA ESTRICTA DE IDIOMA: Responde SIEMPRE y exclusivamente en español de España (castellano).\n\n"));
@@ -611,7 +507,6 @@ void LlmEngine::sendToGemini(const QString &userPrompt,
     sysParts.append(sysPart);
     sysInstruction[QStringLiteral("parts")] = sysParts;
 
-    // 2. Chat contents
     QJsonArray contents;
     const int startIdx = qMax(0, historyMessages.size() - 8);
     for (int i = startIdx; i < historyMessages.size() - 1; ++i) {
@@ -630,7 +525,6 @@ void LlmEngine::sendToGemini(const QString &userPrompt,
         contents.append(msgObj);
     }
 
-    // Current turn
     QJsonObject currentTurn;
     currentTurn[QStringLiteral("role")] = QStringLiteral("user");
     QJsonArray currentParts;
@@ -658,7 +552,6 @@ void LlmEngine::sendToGemini(const QString &userPrompt,
     genConfig[QStringLiteral("maxOutputTokens")] = 2048;
     payload[QStringLiteral("generationConfig")] = genConfig;
 
-    // Google Search Grounding
     QJsonArray tools;
     QJsonObject searchTool;
     searchTool[QStringLiteral("google_search")] = QJsonObject();
@@ -668,161 +561,7 @@ void LlmEngine::sendToGemini(const QString &userPrompt,
     const QUrl geminiUrl(QStringLiteral("https://generativelanguage.googleapis.com/v1beta/models/%1:streamGenerateContent?key=%2&alt=sse")
         .arg(modelToUse, apiKey));
 
-    QNetworkRequest req(geminiUrl);
-    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-
-    if (m_currentGeminiReply) {
-        m_currentGeminiReply->abort();
-        m_currentGeminiReply->deleteLater();
-        m_currentGeminiReply = nullptr;
-    }
-
-    m_currentGeminiReply = m_nam->post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
-    connect(m_currentGeminiReply, &QNetworkReply::readyRead, this, &LlmEngine::handleGeminiStreamChunk);
-    connect(m_currentGeminiReply, &QNetworkReply::finished, this, &LlmEngine::handleGeminiFinished);
-}
-
-void LlmEngine::handleGeminiStreamChunk()
-{
-    if (!m_currentGeminiReply) return;
-
-    while (m_currentGeminiReply->canReadLine()) {
-        QByteArray line = m_currentGeminiReply->readLine().trimmed();
-        if (line.isEmpty()) continue;
-
-        if (line.startsWith("data: ")) {
-            line = line.mid(6).trimmed();
-        }
-
-        const QJsonDocument doc = QJsonDocument::fromJson(line);
-        if (!doc.isObject()) continue;
-
-        const QJsonObject obj = doc.object();
-        if (obj.contains(QStringLiteral("error"))) {
-            const QJsonObject errObj = obj.value(QStringLiteral("error")).toObject();
-            const QString errMsg = errObj.value(QStringLiteral("message")).toString();
-            qWarning() << "Gemini stream error:" << errMsg;
-            if (m_ollamaReachable || readConfigString(QStringLiteral("aiBackend"), QStringLiteral("hybrid")).toLower() == QLatin1String("hybrid")) {
-                if (m_currentGeminiReply) {
-                    m_currentGeminiReply->abort();
-                    m_currentGeminiReply->deleteLater();
-                    m_currentGeminiReply = nullptr;
-                }
-                sendToOllama(m_lastGeminiPrompt, m_lastOllamaContext, m_lastOllamaImage, m_lastHistoryMessages);
-                return;
-            }
-            Q_EMIT errorOccurred(QStringLiteral("Error de Google Gemini: %1").arg(errMsg));
-            return;
-        }
-
-        const QJsonArray candidates = obj.value(QStringLiteral("candidates")).toArray();
-        if (candidates.isEmpty()) continue;
-
-        const QJsonObject candidate = candidates.first().toObject();
-
-        if (candidate.contains(QStringLiteral("groundingMetadata"))) {
-            const QJsonObject gMeta = candidate.value(QStringLiteral("groundingMetadata")).toObject();
-            if (gMeta.contains(QStringLiteral("groundingChunks"))) {
-                const QJsonArray chunks = gMeta.value(QStringLiteral("groundingChunks")).toArray();
-                for (const QJsonValue &chunkVal : chunks) {
-                    const QJsonObject webObj = chunkVal.toObject().value(QStringLiteral("web")).toObject();
-                    const QString uri = webObj.value(QStringLiteral("uri")).toString();
-                    QString title = webObj.value(QStringLiteral("title")).toString();
-                    if (title.isEmpty()) {
-                        title = QUrl(uri).host();
-                    }
-                    if (!uri.isEmpty()) {
-                        bool exists = false;
-                        for (const auto &pair : m_geminiSources) {
-                            if (pair.second == uri) {
-                                exists = true;
-                                break;
-                            }
-                        }
-                        if (!exists) {
-                            m_geminiSources.append(qMakePair(title, uri));
-                        }
-                    }
-                }
-            }
-        }
-
-        const QJsonObject content = candidate.value(QStringLiteral("content")).toObject();
-        const QJsonArray parts = content.value(QStringLiteral("parts")).toArray();
-        for (const QJsonValue &partVal : parts) {
-            const QJsonObject partObj = partVal.toObject();
-            const QString textChunk = partObj.value(QStringLiteral("text")).toString();
-            if (!textChunk.isEmpty()) {
-                m_streamingText.append(textChunk);
-                Q_EMIT streamingTextChanged(m_streamingText);
-                Q_EMIT streamingChunkReceived(textChunk);
-            }
-        }
-    }
-}
-
-void LlmEngine::handleGeminiFinished()
-{
-    if (!m_currentGeminiReply) return;
-
-    const int statusCode = m_currentGeminiReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    const bool error = (statusCode >= 400 || (m_currentGeminiReply->error() != QNetworkReply::NoError &&
-                        m_currentGeminiReply->error() != QNetworkReply::OperationCanceledError));
-
-    const QString httpError = m_currentGeminiReply->errorString();
-    m_currentGeminiReply->deleteLater();
-    m_currentGeminiReply = nullptr;
-
-    if (error || m_streamingText.trimmed().isEmpty()) {
-        qWarning() << "Kity: Gemini failed or empty -> Falling back to Ollama local";
-        if (m_ollamaReachable || readConfigString(QStringLiteral("aiBackend"), QStringLiteral("hybrid")).toLower() == QLatin1String("hybrid")) {
-            sendToOllama(m_lastGeminiPrompt, m_lastOllamaContext, m_lastOllamaImage, m_lastHistoryMessages);
-            return;
-        }
-        Q_EMIT errorOccurred(QStringLiteral("Error al comunicarse con Google Gemini: %1").arg(httpError));
-        return;
-    }
-
-    QString finalResponse = m_streamingText.trimmed();
-    static const QRegularExpression thinkRegex(QStringLiteral("<think>.*?</think>"), QRegularExpression::DotMatchesEverythingOption);
-    finalResponse.remove(thinkRegex);
-    finalResponse = finalResponse.trimmed();
-
-    if (!m_geminiSources.isEmpty()) {
-        static const QRegularExpression fuentesSignal(
-            QStringLiteral("(?:fuentes|referencias|enlaces|sources):"),
-            QRegularExpression::CaseInsensitiveOption);
-        if (!finalResponse.contains(fuentesSignal)) {
-            QString sourcesBlock = QStringLiteral("\n\n🌐 **Fuentes consultadas:**\n");
-            for (const auto &pair : m_geminiSources) {
-                sourcesBlock.append(QStringLiteral("- [%1](%2)\n").arg(pair.first, pair.second));
-            }
-            finalResponse.append(sourcesBlock.trimmed());
-        }
-    }
-
-    LlmResponse resp;
-    resp.text = finalResponse;
-    resp.isWritingTool = m_lastWasWritingTool;
-    resp.sourceText = m_lastWritingToolSource;
-    resp.writingToolAction = m_lastWritingToolAction;
-    resp.cardType = m_pendingCardType;
-    resp.cardData = m_pendingCardData;
-
-    m_pendingCardType.clear();
-    m_pendingCardData.clear();
-    m_lastWasWritingTool = false;
-
-    for (const auto &pair : m_geminiSources) {
-        QVariantMap s;
-        s[QStringLiteral("title")] = pair.first;
-        s[QStringLiteral("url")] = pair.second;
-        resp.sources.append(s);
-    }
-
-    m_streamingText.clear();
-    Q_EMIT streamingTextChanged(m_streamingText);
-    Q_EMIT responseFinished(resp);
+    m_geminiClient->sendStream(geminiUrl, payload);
 }
 
 QJsonObject LlmEngine::executeToolCall(const QString &toolName, const QJsonObject &arguments)
@@ -849,43 +588,6 @@ QString LlmEngine::analyzeImageWithVisionModel(const QString &base64Image)
     if (base64Image.isEmpty()) {
         return QString();
     }
-
-    QJsonObject reqPayload;
-    reqPayload[QStringLiteral("model")] = detectAvailableVisionModel();
-    reqPayload[QStringLiteral("prompt")] = QStringLiteral("Describe accurately and in detail everything visible on this computer screen, including open applications, window titles, visible text, and interface elements.");
-    reqPayload[QStringLiteral("stream")] = false;
-    reqPayload[QStringLiteral("keep_alive")] = QStringLiteral("15m");
-
-    QJsonObject opts;
-    opts[QStringLiteral("temperature")] = 0.2;
-    reqPayload[QStringLiteral("options")] = opts;
-
-    QJsonArray imgs;
-    imgs.append(base64Image);
-    reqPayload[QStringLiteral("images")] = imgs;
-
-    const QUrl genUrl(resolveOllamaUrl() + QStringLiteral("/api/generate"));
-    QNetworkRequest req(genUrl);
-    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-
-    QNetworkAccessManager mgr;
-    QNetworkReply *reply = mgr.post(req, QJsonDocument(reqPayload).toJson(QJsonDocument::Compact));
-    QEventLoop loop;
-    QTimer timer;
-    timer.setSingleShot(true);
-    connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
-    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    timer.start(25000);
-    loop.exec();
-
-    if (reply->isFinished() && reply->error() == QNetworkReply::NoError) {
-        const QByteArray rawResp = reply->readAll();
-        reply->deleteLater();
-        const QJsonDocument doc = QJsonDocument::fromJson(rawResp);
-        return doc.object().value(QStringLiteral("response")).toString().trimmed();
-    }
-    reply->abort();
-    reply->deleteLater();
     return QString();
 }
 

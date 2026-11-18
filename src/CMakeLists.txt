@@ -69,6 +69,10 @@ plasma_add_applet(org.cesar.kity
         ai/visualintelligencecontroller.h
         ai/llmengine.cpp
         ai/llmengine.h
+        ai/ollamaclient.cpp
+        ai/ollamaclient.h
+        ai/geminiclient.cpp
+        ai/geminiclient.h
         ai/writingtoolsmanager.cpp
         ai/writingtoolsmanager.h
         voice/voiceengine.cpp
