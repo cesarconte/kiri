@@ -105,8 +105,9 @@ void TtsEngine::terminateProcesses()
 
     if (m_pwPlayProcess) {
         m_pwPlayProcess->disconnect(this);
-        if (m_pwPlayProcess->state() == QProcess::Running) {
+        if (m_pwPlayProcess->state() != QProcess::NotRunning) {
             m_pwPlayProcess->kill();
+            m_pwPlayProcess->waitForFinished(50);
         }
         m_pwPlayProcess->deleteLater();
         m_pwPlayProcess = nullptr;
@@ -114,8 +115,9 @@ void TtsEngine::terminateProcesses()
 
     if (m_ttsProcess) {
         m_ttsProcess->disconnect(this);
-        if (m_ttsProcess->state() == QProcess::Running) {
+        if (m_ttsProcess->state() != QProcess::NotRunning) {
             m_ttsProcess->kill();
+            m_ttsProcess->waitForFinished(50);
         }
         m_ttsProcess->deleteLater();
         m_ttsProcess = nullptr;
@@ -274,9 +276,17 @@ void TtsEngine::startPipedSpeech(const QString &ttsProg, const QStringList &ttsA
             m_ttsProcess = nullptr;
         }
         if (pwProc) {
+            if (pwProc->state() != QProcess::NotRunning) {
+                pwProc->kill();
+                pwProc->waitForFinished(50);
+            }
             pwProc->deleteLater();
         }
         if (ttsProc) {
+            if (ttsProc->state() != QProcess::NotRunning) {
+                ttsProc->kill();
+                ttsProc->waitForFinished(50);
+            }
             ttsProc->deleteLater();
         }
         playNextItem();
@@ -315,6 +325,10 @@ void TtsEngine::playAudioBuffer(const QByteArray &audioBytes)
             m_pwPlayProcess = nullptr;
         }
         if (pwProc) {
+            if (pwProc->state() != QProcess::NotRunning) {
+                pwProc->kill();
+                pwProc->waitForFinished(50);
+            }
             pwProc->deleteLater();
         }
         playNextItem();
