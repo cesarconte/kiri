@@ -19,6 +19,7 @@ public:
     QString description() const override {
         return QStringLiteral("Controla la reproducción multimedia activa en el sistema (reproducir, pausar, detener, siguiente pista, pista anterior o consultar qué suena en reproductores como mpv, Spotify, VLC, Elisa, navegadores, etc.).");
     }
+    bool matchesQuery(const QString &query) const override;
     QJsonObject parameters() const override;
     QJsonObject execute(const QJsonObject &arguments) override;
 };

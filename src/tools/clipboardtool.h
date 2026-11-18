@@ -19,6 +19,7 @@ public:
     QString description() const override {
         return QStringLiteral("Accede al gestor del portapapeles de KDE Plasma (Klipper): lee el contenido actual copiado, consulta el historial reciente de copias o busca fragmentos de texto copiados con anterioridad.");
     }
+    bool matchesQuery(const QString &query) const override;
     QJsonObject parameters() const override;
     QJsonObject execute(const QJsonObject &arguments) override;
 };

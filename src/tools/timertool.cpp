@@ -6,8 +6,17 @@
 #include "timertool.h"
 #include "../system/timermanager.h"
 #include <QJsonArray>
+#include <QRegularExpression>
 
 namespace Kity {
+
+bool TimerTool::matchesQuery(const QString &query) const
+{
+    static const QRegularExpression timerSignal(
+        QStringLiteral("(temporizador|alarma|av[ií]same|cuenta\\s+atr[aá]s|recu[eé]rdame|minuto|segundo|recordatorio)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return query.contains(timerSignal);
+}
 
 QJsonObject TimerTool::parameters() const
 {

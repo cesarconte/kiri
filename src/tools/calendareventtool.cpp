@@ -7,9 +7,18 @@
 #include "../system/calendarmanager.h"
 
 #include <QJsonArray>
+#include <QRegularExpression>
 #include <KLocalizedString>
 
 namespace Kity {
+
+bool CalendarEventTool::matchesQuery(const QString &query) const
+{
+    static const QRegularExpression calSignal(
+        QStringLiteral("(calendario|evento|reuni[oó]n|cita|agenda|agendar|korganizer|organizer|compromiso)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return query.contains(calSignal);
+}
 
 QJsonObject CalendarEventTool::parameters() const
 {

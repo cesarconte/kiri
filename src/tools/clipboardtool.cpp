@@ -7,8 +7,17 @@
 #include "../system/clipboardmanager.h"
 
 #include <QJsonArray>
+#include <QRegularExpression>
 
 namespace Kity {
+
+bool ClipboardTool::matchesQuery(const QString &query) const
+{
+    static const QRegularExpression clipSignal(
+        QStringLiteral("(portapapeles|clipboard|copiado|copi[eé]|klipper|historial)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return query.contains(clipSignal);
+}
 
 QJsonObject ClipboardTool::parameters() const
 {

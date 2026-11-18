@@ -19,6 +19,7 @@ public:
     QString description() const override {
         return QStringLiteral("Consulta el estado en tiempo real de los recursos del equipo: memoria RAM libre y total, uso de CPU, almacenamiento en disco, batería y perfil de energía.");
     }
+    bool matchesQuery(const QString &query) const override;
     QJsonObject parameters() const override;
     QJsonObject execute(const QJsonObject &arguments) override;
 };

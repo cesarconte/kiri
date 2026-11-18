@@ -7,9 +7,18 @@
 #include "../system/emailmanager.h"
 
 #include <QJsonArray>
+#include <QRegularExpression>
 #include <KLocalizedString>
 
 namespace Kity {
+
+bool EmailTool::matchesQuery(const QString &query) const
+{
+    static const QRegularExpression mailSignal(
+        QStringLiteral("(correo|email|mail|escribe\\s+a|enviar\\s+correo|mandar\\s+un\\s+correo)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return query.contains(mailSignal);
+}
 
 QJsonObject EmailTool::parameters() const
 {

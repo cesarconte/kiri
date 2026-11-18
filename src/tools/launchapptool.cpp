@@ -6,8 +6,17 @@
 #include "launchapptool.h"
 #include "../system/applicationmanager.h"
 #include <QJsonArray>
+#include <QRegularExpression>
 
 namespace Kity {
+
+bool LaunchAppTool::matchesQuery(const QString &query) const
+{
+    static const QRegularExpression appSignal(
+        QStringLiteral("(abre|abrir|ejecuta|ejecutar|inicia|iniciar|lanza|lanzar|arranca|arrancar)\\s+"),
+        QRegularExpression::CaseInsensitiveOption);
+    return query.contains(appSignal);
+}
 
 QJsonObject LaunchAppTool::parameters() const
 {

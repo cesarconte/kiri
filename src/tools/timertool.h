@@ -19,6 +19,7 @@ public:
     QString description() const override {
         return QStringLiteral("Programa un temporizador o alarma en el sistema para que avise al usuario tras un número de segundos.");
     }
+    bool matchesQuery(const QString &query) const override;
     QJsonObject parameters() const override;
     QJsonObject execute(const QJsonObject &arguments) override;
 };

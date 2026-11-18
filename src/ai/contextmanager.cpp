@@ -101,9 +101,9 @@ ContextResult ContextManager::gatherContext(const QString &userQuery)
         res.context.append(weatherCtx + QStringLiteral("\n\n"));
     }
 
-    // 2. Proactive Web Search grounding
+    // 2. Proactive Web Search grounding (only for real-time, current events or explicit web queries)
     static const QRegularExpression webSignalRx(
-        QStringLiteral("(202[4-9]|203\\d|noticias?|elecci[oó]n|elecciones|gobierno|presidente|gan[oó]|ganador|partido|campe[oó]n|cu[aá]ndo|qui[eé]n|d[oó]nde|cu[aá]l|precio|estreno|actualidad|pr[oó]xim[ao]s?|hoy|ayer|mañana|suceso|falleci[oó]|resultado)"),
+        QStringLiteral("(202[4-9]|203\\d|noticias?|elecci[oó]n|elecciones|gobierno|precio|cotizaci[oó]n|estreno|actualidad|pr[oó]xim[ao]s?|hoy|ayer|mañana|suceso|falleci[oó]|resultado|partido|campe[oó]n|busca\\s+en|buscar\\s+en|b[uú]squeda\\s+web)"),
         QRegularExpression::CaseInsensitiveOption);
     if (userQuery.contains(webSignalRx)) {
         const QString webCtx = fetchWebSearchContext(userQuery);

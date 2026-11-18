@@ -7,9 +7,18 @@
 #include "../system/notificationmanager.h"
 
 #include <QJsonArray>
+#include <QRegularExpression>
 #include <KLocalizedString>
 
 namespace Kity {
+
+bool NotificationTool::matchesQuery(const QString &query) const
+{
+    static const QRegularExpression notifToolSignal(
+        QStringLiteral("(notificaci[oó]n|notificaciones|avisos|alertas|mensajes\\s+pendientes)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return query.contains(notifToolSignal);
+}
 
 QJsonObject NotificationTool::parameters() const
 {

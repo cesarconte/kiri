@@ -7,9 +7,18 @@
 #include "../system/terminalmanager.h"
 
 #include <QJsonArray>
+#include <QRegularExpression>
 #include <KLocalizedString>
 
 namespace Kity {
+
+bool TerminalCommandTool::matchesQuery(const QString &query) const
+{
+    static const QRegularExpression termSignal(
+        QStringLiteral("(terminal|konsole|consola|actualiza|actualizar|actualizaci[oó]n|upgrade|update|pacman|paru|instala|instalar|comando|ejecuta|ejecutar|bash|sh)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return query.contains(termSignal);
+}
 
 QJsonObject TerminalCommandTool::parameters() const
 {

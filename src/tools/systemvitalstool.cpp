@@ -5,8 +5,17 @@
 
 #include "systemvitalstool.h"
 #include "../system/hardwaremanager.h"
+#include <QRegularExpression>
 
 namespace Kity {
+
+bool SystemVitalsTool::matchesQuery(const QString &query) const
+{
+    static const QRegularExpression sysSignal(
+        QStringLiteral("(sistema|bater[ií]a|memoria|ram|cpu|temperatura\\s+del\\s+pc|rendimiento|recursos|hardware)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return query.contains(sysSignal);
+}
 
 QJsonObject SystemVitalsTool::parameters() const
 {

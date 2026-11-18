@@ -19,6 +19,10 @@ public:
     virtual QString description() const = 0;
     virtual QJsonObject parameters() const = 0;
     virtual bool isLightModelCompatible() const { return true; }
+    virtual bool matchesQuery(const QString &query) const {
+        Q_UNUSED(query);
+        return true;
+    }
 
     virtual QJsonObject execute(const QJsonObject &arguments) = 0;
 };

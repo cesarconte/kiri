@@ -6,8 +6,17 @@
 #include "mediacontroltool.h"
 #include "../system/mediamanager.h"
 #include <QJsonArray>
+#include <QRegularExpression>
 
 namespace Kity {
+
+bool MediaControlTool::matchesQuery(const QString &query) const
+{
+    static const QRegularExpression mediaSignal(
+        QStringLiteral("(m[uú]sica|canci[oó]n|cancion|tema|pista|reproduce|reproducir|reproducci[oó]n|reproduciendo|pausa|pausar|det[eé]n|detener|para|parar|stop|mute|silencia|silenciar|volumen|sonido|audio|player|spotify|mpv|vlc|elisa|cantante|album|[aá]lbum|video|v[ií]deo)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return query.contains(mediaSignal);
+}
 
 QJsonObject MediaControlTool::parameters() const
 {

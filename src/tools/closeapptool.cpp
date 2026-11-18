@@ -6,8 +6,17 @@
 #include "closeapptool.h"
 #include "../system/applicationmanager.h"
 #include <QJsonArray>
+#include <QRegularExpression>
 
 namespace Kity {
+
+bool CloseAppTool::matchesQuery(const QString &query) const
+{
+    static const QRegularExpression closeAppSignal(
+        QStringLiteral("(cierra|cerrar|apaga|termina|matar|kill)\\s+"),
+        QRegularExpression::CaseInsensitiveOption);
+    return query.contains(closeAppSignal);
+}
 
 QJsonObject CloseAppTool::parameters() const
 {

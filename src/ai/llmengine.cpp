@@ -398,15 +398,18 @@ void LlmEngine::sendToOllama(const QString &userPrompt,
 
     if (!hasVision) {
         const QString modelLower = modelToUse.toLower();
-        const bool isLlama32 = modelLower.contains(QStringLiteral("llama3.2"));
-        const QJsonArray tools = ToolRegistry::instance().getToolDefinitions(isLlama32, userPrompt);
+        const bool isLightModel = modelLower.contains(QStringLiteral("llama3.2"))
+                               || modelLower.contains(QStringLiteral("1b"))
+                               || modelLower.contains(QStringLiteral("3b"))
+                               || modelLower.contains(QStringLiteral("mini"));
+        const QJsonArray tools = ToolRegistry::instance().getToolDefinitions(isLightModel, userPrompt);
         if (!tools.isEmpty()) {
             reqPayload[QStringLiteral("tools")] = tools;
         }
     }
 
     const QUrl chatUrl(resolveOllamaUrl() + QStringLiteral("/api/chat"));
-    const int timeoutMs = readConfigInt(QStringLiteral("ollamaTimeoutMs"), 20000);
+    const int timeoutMs = readConfigInt(QStringLiteral("ollamaTimeoutMs"), 60000);
     m_ollamaClient->sendChat(chatUrl, reqPayload, timeoutMs);
 }
 
@@ -454,7 +457,7 @@ void LlmEngine::handleOllamaToolCalls(const QJsonArray &toolCalls)
     reqPayload[QStringLiteral("keep_alive")] = keepAlive.isEmpty() ? QStringLiteral("15m") : keepAlive;
 
     const QUrl chatUrl(resolveOllamaUrl() + QStringLiteral("/api/chat"));
-    const int timeoutMs = readConfigInt(QStringLiteral("ollamaTimeoutMs"), 20000);
+    const int timeoutMs = readConfigInt(QStringLiteral("ollamaTimeoutMs"), 60000);
     m_ollamaClient->sendChat(chatUrl, reqPayload, timeoutMs);
 }
 

@@ -60,13 +60,18 @@ std::shared_ptr<ITool> ToolRegistry::findTool(const QString &name) const
 
 QJsonArray ToolRegistry::getToolDefinitions(bool isLightModel, const QString &userQuery) const
 {
-    Q_UNUSED(userQuery);
     QJsonArray toolsArray;
+    const QString q = userQuery.toLower().trimmed();
 
     for (auto it = m_tools.constBegin(); it != m_tools.constEnd(); ++it) {
         const auto &tool = it.value();
-        if (isLightModel && !tool->isLightModelCompatible()) {
-            continue;
+        if (isLightModel) {
+            if (!tool->isLightModelCompatible()) {
+                continue;
+            }
+            if (!q.isEmpty() && !tool->matchesQuery(q)) {
+                continue;
+            }
         }
 
         QJsonObject fn;

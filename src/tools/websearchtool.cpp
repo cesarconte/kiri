@@ -7,8 +7,17 @@
 #include "../system/websearchmanager.h"
 
 #include <QJsonArray>
+#include <QRegularExpression>
 
 namespace Kity {
+
+bool WebSearchTool::matchesQuery(const QString &query) const
+{
+    static const QRegularExpression searchSignal(
+        QStringLiteral("(busca|buscar|b[uú]squeda|google|internet|web|noticias|precio|cotizaci[oó]n|partido|resultado)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return query.contains(searchSignal);
+}
 
 QJsonObject WebSearchTool::parameters() const
 {

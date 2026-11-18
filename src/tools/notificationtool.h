@@ -20,6 +20,7 @@ public:
         return QStringLiteral("Sintetiza, resume y prioriza avisos y notificaciones recientes del sistema (estilo Apple Intelligence), destacando alertas críticas y recordatorios pendientes.");
     }
 
+    bool matchesQuery(const QString &query) const override;
     QJsonObject parameters() const override;
     QJsonObject execute(const QJsonObject &arguments) override;
 };

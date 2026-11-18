@@ -19,6 +19,7 @@ public:
     QString description() const override {
         return QStringLiteral("Abre y ejecuta un comando en la terminal Konsole de KDE Plasma en CachyOS Linux (por ejemplo para actualizar el sistema con 'cachy-update', instalar o buscar paquetes con pacman/paru, o monitorización del sistema).");
     }
+    bool matchesQuery(const QString &query) const override;
     QJsonObject parameters() const override;
     QJsonObject execute(const QJsonObject &arguments) override;
 };

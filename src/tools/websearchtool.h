@@ -19,6 +19,7 @@ public:
     QString description() const override {
         return QStringLiteral("Realiza una búsqueda en la web en tiempo real para obtener información actualizada sobre noticias, eventos, personas, fechas, hechos o datos recientes.");
     }
+    bool matchesQuery(const QString &query) const override;
     QJsonObject parameters() const override;
     QJsonObject execute(const QJsonObject &arguments) override;
 };

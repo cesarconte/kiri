@@ -6,15 +6,24 @@
 #include "weathertool.h"
 #include "../system/weathermanager.h"
 #include <KLocalizedString>
+#include <QRegularExpression>
 
 namespace Kity {
+
+bool WeatherTool::matchesQuery(const QString &query) const
+{
+    static const QRegularExpression weatherSignal(
+        QStringLiteral("(tiempo|clima|temperatura|llueve|llover|lluvia|fr[ií]o|calor|grados|pron[oó]stico|viento|soleado|nublado)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return query.contains(weatherSignal);
+}
 
 QJsonObject WeatherTool::parameters() const
 {
     QJsonObject props;
     QJsonObject cityProp;
     cityProp[QStringLiteral("type")] = QStringLiteral("string");
-    cityProp[QStringLiteral("description")] = QStringLiteral("Nombre de la ciudad o localidad (ej. Gijón, Oviedo, Madrid, París). Si el usuario no menciona ciudad, omitir.");
+    cityProp[QStringLiteral("description")] = QStringLiteral("Nombre de la ciudad o localidad para consultar el tiempo. Si el usuario no menciona ciudad, omitir.");
     props[QStringLiteral("city")] = cityProp;
 
     QJsonObject params;

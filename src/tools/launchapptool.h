@@ -19,6 +19,7 @@ public:
     QString description() const override {
         return QStringLiteral("Abre o ejecuta una aplicación instalada en el sistema KDE Plasma, o trae su ventana al frente si ya está abierta.");
     }
+    bool matchesQuery(const QString &query) const override;
     QJsonObject parameters() const override;
     QJsonObject execute(const QJsonObject &arguments) override;
 };

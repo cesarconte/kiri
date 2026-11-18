@@ -19,6 +19,7 @@ public:
     QString description() const override {
         return QStringLiteral("Obtiene las condiciones meteorológicas y previsión del tiempo actual para una ciudad o localidad.");
     }
+    bool matchesQuery(const QString &query) const override;
     QJsonObject parameters() const override;
     QJsonObject execute(const QJsonObject &arguments) override;
 };
