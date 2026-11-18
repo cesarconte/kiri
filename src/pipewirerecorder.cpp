@@ -180,8 +180,8 @@ bool PipeWireRecorder::startRecording(uint32_t sampleRate,
     pw_properties *props = pw_properties_new(
         PW_KEY_MEDIA_TYPE, "Audio",
         PW_KEY_MEDIA_CATEGORY, "Capture",
-        PW_KEY_MEDIA_ROLE, "Voice",
-        PW_KEY_APP_NAME, "Kity",
+        PW_KEY_MEDIA_ROLE, "Assistant",
+        PW_KEY_APP_NAME, "kity",
         PW_KEY_NODE_DESCRIPTION, desc.constData(),
         nullptr);
 

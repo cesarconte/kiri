@@ -46,11 +46,6 @@ public:
     void resumePausedMedia();
     bool isMediaPaused() const { return m_isMediaPaused; }
 
-    // Aliases
-    void startAudioDucking() { pauseActiveMedia(); }
-    void stopAudioDucking() { resumePausedMedia(); }
-    bool isDucked() const { return isMediaPaused(); }
-
 private:
     explicit MediaManager(QObject *parent = nullptr);
     ~MediaManager() override = default;

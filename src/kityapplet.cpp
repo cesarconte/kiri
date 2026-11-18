@@ -110,7 +110,7 @@ void KityApplet::init()
     connect(&Kity::VoiceEngine::instance(), &Kity::VoiceEngine::recordingStateChanged, this, [this](bool rec) {
         if (rec) {
             m_lastQueryWasVoice = true;
-            Kity::MediaManager::instance().startAudioDucking();
+            Kity::MediaManager::instance().pauseActiveMedia();
             setState(QStringLiteral("listening"), i18n("Escuchando… Habla ahora, Kity detectará cuando termines."));
         } else {
             setState(QStringLiteral("idle"));
@@ -118,7 +118,7 @@ void KityApplet::init()
     });
     connect(&Kity::VoiceEngine::instance(), &Kity::VoiceEngine::speakingStateChanged, this, [this](bool spk) {
         if (spk) {
-            Kity::MediaManager::instance().startAudioDucking();
+            Kity::MediaManager::instance().pauseActiveMedia();
             setState(QStringLiteral("speaking"));
         } else {
             if (m_state == QLatin1String("speaking")) {
@@ -126,20 +126,20 @@ void KityApplet::init()
             }
             if (!isRecording()) {
                 m_lastQueryWasVoice = false;
-                Kity::MediaManager::instance().stopAudioDucking();
+                Kity::MediaManager::instance().resumePausedMedia();
             }
         }
     });
     connect(&Kity::VoiceEngine::instance(), &Kity::VoiceEngine::dictationInjected, this, [this](const QString &text) {
         qInfo() << "Kity: Dictado inyectado remotamente en el PC:" << text;
-        Kity::MediaManager::instance().stopAudioDucking();
+        Kity::MediaManager::instance().resumePausedMedia();
         if (m_mobileServer) {
             m_mobileServer->broadcastState(QStringLiteral("idle"), i18n("✍️ Dictado insertado en el cursor"));
         }
     });
     connect(&Kity::VoiceEngine::instance(), &Kity::VoiceEngine::transcriptionFailed, this, [this](const QString &err) {
         m_lastQueryWasVoice = false;
-        Kity::MediaManager::instance().stopAudioDucking();
+        Kity::MediaManager::instance().resumePausedMedia();
         setState(QStringLiteral("error"), err);
     });
     connect(&Kity::VoiceEngine::instance(), &Kity::VoiceEngine::kdictationAvailabilityChanged, this, &KityApplet::kdictationAvailableChanged);
@@ -170,7 +170,7 @@ void KityApplet::init()
         appendAssistantMessage(resp.text, false);
         if (!Kity::VoiceEngine::instance().isSpeaking()) {
             m_lastQueryWasVoice = false;
-            Kity::MediaManager::instance().stopAudioDucking();
+            Kity::MediaManager::instance().resumePausedMedia();
             if (m_state != QLatin1String("speaking")) {
                 setState(QStringLiteral("idle"));
             }
@@ -180,7 +180,7 @@ void KityApplet::init()
         m_streamingText.clear();
         Q_EMIT streamingTextChanged();
         m_lastQueryWasVoice = false;
-        Kity::MediaManager::instance().stopAudioDucking();
+        Kity::MediaManager::instance().resumePausedMedia();
         setState(QStringLiteral("error"), err);
     });
     connect(&Kity::LlmEngine::instance(), &Kity::LlmEngine::availableModelsChanged, this, [this](const QStringList &models) {
@@ -233,7 +233,7 @@ void KityApplet::init()
     m_mobileServer = new KityMobileServer(1740, this);
     connect(m_mobileServer, &KityMobileServer::mobileRecordingStarted, this, [this]() {
         m_lastQueryWasVoice = true;
-        Kity::MediaManager::instance().startAudioDucking();
+        Kity::MediaManager::instance().pauseActiveMedia();
     });
     connect(m_mobileServer, &KityMobileServer::mobileRecordingStopped, this, []() {
         // Voice query remains in-flight until response finishes or speaking concludes
@@ -241,17 +241,17 @@ void KityApplet::init()
     connect(m_mobileServer, &KityMobileServer::voiceCommandReceived, this, [this](const QString &text, bool fromVoice) {
         if (fromVoice) {
             m_lastQueryWasVoice = true;
-            Kity::MediaManager::instance().startAudioDucking();
+            Kity::MediaManager::instance().pauseActiveMedia();
         }
         sendMessage(text, fromVoice);
     });
     connect(m_mobileServer, &KityMobileServer::voiceAudioReceived, this, [this](const QString &wavPath) {
         m_lastQueryWasVoice = true;
-        Kity::MediaManager::instance().startAudioDucking();
+        Kity::MediaManager::instance().pauseActiveMedia();
         Kity::VoiceEngine::instance().transcribeWavFile(wavPath);
     });
     connect(m_mobileServer, &KityMobileServer::dictationAudioReceived, this, [this](const QString &wavPath) {
-        Kity::MediaManager::instance().startAudioDucking();
+        Kity::MediaManager::instance().pauseActiveMedia();
         QFile file(wavPath);
         if (file.open(QIODevice::ReadOnly)) {
             const QByteArray data = file.readAll();
@@ -266,7 +266,7 @@ void KityApplet::init()
     });
     connect(m_mobileServer, &KityMobileServer::dictationTextReceived, this, [this](const QString &text) {
         if (!text.trimmed().isEmpty()) {
-            Kity::MediaManager::instance().startAudioDucking();
+            Kity::MediaManager::instance().pauseActiveMedia();
             if (m_mobileServer) m_mobileServer->broadcastState(QStringLiteral("thinking"), i18n("✍️ Insertando dictado en PC…"));
             Kity::VoiceEngine::instance().injectDictationText(text);
         }
@@ -639,7 +639,7 @@ void KityApplet::stopGeneration()
     Kity::VoiceEngine::instance().stopRecording();
     stopSpeaking();
     m_lastQueryWasVoice = false;
-    Kity::MediaManager::instance().stopAudioDucking();
+    Kity::MediaManager::instance().resumePausedMedia();
     setState(QStringLiteral("idle"), i18n("Generación cancelada."));
 }
 
@@ -846,7 +846,7 @@ void KityApplet::stopSpeaking()
 {
     Kity::VoiceEngine::instance().stopSpeaking();
     m_lastQueryWasVoice = false;
-    Kity::MediaManager::instance().stopAudioDucking();
+    Kity::MediaManager::instance().resumePausedMedia();
 }
 void KityApplet::startWakeWordListener() { Kity::VoiceEngine::instance().startWakeWordListener(); }
 void KityApplet::stopWakeWordListener() { Kity::VoiceEngine::instance().stopWakeWordListener(); }
