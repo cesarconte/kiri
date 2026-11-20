@@ -11,7 +11,6 @@ import QtQuick.Layouts
 import QtQuick.Window
 import QtQuick.Dialogs as QtDialogs
 
-import org.kde.kirigami as Kirigami
 import CachyOS.UI
 
 CachyWindow {

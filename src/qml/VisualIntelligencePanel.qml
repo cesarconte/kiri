@@ -1,14 +1,13 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kity contributors
-    SPDX-License-Identifier: GPL-3.0-or-later
-*/
+ * SPDX-FileCopyrightText: 2026 Kity contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls as QQC2
 import QtQuick.Layouts
-import org.kde.kirigami as Kirigami
+import CachyOS.UI
 import org.kde.plasma.plasmoid
 
 Rectangle {
@@ -19,32 +18,32 @@ Rectangle {
     signal visualTriggered(string scope, string action, string customQuestion)
 
     Layout.fillWidth: true
-    implicitHeight: viCol.implicitHeight + Kirigami.Units.smallSpacing * 2
-    radius: Kirigami.Units.smallSpacing
-    color: Kirigami.Theme.alternateBackgroundColor
+    implicitHeight: viCol.implicitHeight + CachyTheme.spacingSmall * 2
+    radius: CachyTheme.radiusSmall
+    color: CachyPalette.cardBackground
     border.width: 1
-    border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
+    border.color: CachyPalette.specularBorder
 
     ColumnLayout {
         id: viCol
         anchors.fill: parent
-        anchors.margins: Kirigami.Units.smallSpacing
-        spacing: Kirigami.Units.smallSpacing
+        anchors.margins: CachyTheme.spacingSmall
+        spacing: CachyTheme.spacingSmall
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
+            spacing: CachyTheme.spacingSmall
 
-            Kirigami.Icon {
-                source: "camera-photo-symbolic"
-                implicitWidth: Kirigami.Units.iconSizes.small
-                implicitHeight: Kirigami.Units.iconSizes.small
-                color: Kirigami.Theme.highlightColor
+            CachyIcon {
+                name: "camera-photo-symbolic"
+                size: 16
+                color: CachyTheme.accentColor
             }
 
-            QQC2.Label {
+            Text {
                 font.bold: true
-                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                font.pixelSize: 11
+                color: CachyPalette.text
                 text: i18n("Inteligencia Visual y Live Text:")
             }
 
@@ -52,18 +51,17 @@ Rectangle {
 
             Repeater {
                 model: [
-                    { scope: "region", label: i18n("📐 Región") },
-                    { scope: "activewindow", label: i18n("🪟 Ventana") },
-                    { scope: "fullscreen", label: i18n("🖥️ Pantalla") }
+                    { scope: "region", label: i18n("Región") },
+                    { scope: "activewindow", label: i18n("Ventana") },
+                    { scope: "fullscreen", label: i18n("Pantalla") }
                 ]
 
-                QQC2.ToolButton {
+                CachyToolbarButton {
                     required property var modelData
                     text: modelData.label
-                    font: Kirigami.Theme.smallFont
                     checkable: true
                     checked: root.visualCaptureScope === modelData.scope
-                    onClicked: root.visualCaptureScope = modelData.scope
+                    onToggled: root.visualCaptureScope = modelData.scope
                 }
             }
         }
@@ -71,22 +69,23 @@ Rectangle {
         GridLayout {
             Layout.fillWidth: true
             columns: 3
-            columnSpacing: Kirigami.Units.smallSpacing
-            rowSpacing: Kirigami.Units.smallSpacing
+            columnSpacing: CachyTheme.spacingSmall
+            rowSpacing: CachyTheme.spacingSmall
             uniformCellWidths: true
 
             Repeater {
                 model: [
-                    { action: "ocr", label: i18n("📋 Extraer texto (Live Text)") },
-                    { action: "translate", label: i18n("🌐 Traducir captura") },
-                    { action: "explain", label: i18n("🔍 Explicar / Analizar") }
+                    { action: "ocr", label: i18n("Extraer texto (Live Text)"), icon: "edit-copy" },
+                    { action: "translate", label: i18n("Traducir captura"), icon: "globe" },
+                    { action: "explain", label: i18n("Explicar / Analizar"), icon: "search" }
                 ]
 
-                QQC2.Button {
+                CachyButton {
                     required property var modelData
                     Layout.fillWidth: true
+                    iconName: modelData.icon
                     text: modelData.label
-                    font: Kirigami.Theme.smallFont
+                    font.pixelSize: 11
                     enabled: !Plasmoid.isBusy
                     onClicked: {
                         const customQ = root.promptText.trim();

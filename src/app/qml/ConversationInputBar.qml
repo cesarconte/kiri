@@ -9,7 +9,6 @@ import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 
-import org.kde.kirigami as Kirigami
 import CachyOS.UI
 
 RowLayout {
@@ -138,12 +137,10 @@ RowLayout {
             }
         }
 
-        Kirigami.Icon {
+        CachyIcon {
             anchors.centerIn: parent
-            width: 16
-            height: 16
-            source: "audio-input-microphone-symbolic"
-            isMask: true
+            size: 16
+            name: "audio-input-microphone-symbolic"
             color: kityClient.isRecording ? "#FFFFFF" : CachyTheme.textPrimary
         }
     }

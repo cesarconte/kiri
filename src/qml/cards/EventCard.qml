@@ -1,22 +1,23 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kity contributors
-    SPDX-License-Identifier: GPL-3.0-or-later
-*/
+ * SPDX-FileCopyrightText: 2026 Kity contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
+import CachyOS.UI
 
 Rectangle {
     id: root
     property var cardData: ({})
     signal openCalendarRequested()
 
-    implicitHeight: eventLayout.implicitHeight + Kirigami.Units.gridUnit
-    radius: 16
+    implicitHeight: eventLayout.implicitHeight + 16
+    radius: CachyTheme.radiusMedium
     color: Qt.rgba(0.08, 0.10, 0.14, 0.88)
-    border.color: Qt.rgba(1.0, 1.0, 1.0, 0.18)
+    border.color: CachyPalette.specularBorder
     border.width: 1
 
     // Subtle calendar red/crimson accent tint
@@ -37,26 +38,26 @@ Rectangle {
             left: parent.left
             right: parent.right
             top: parent.top
-            margins: Kirigami.Units.largeSpacing
+            margins: CachyTheme.spacingMedium
         }
-        spacing: Kirigami.Units.smallSpacing
+        spacing: CachyTheme.spacingSmall
 
         // 1. Header (Calendar Source & Badge)
         RowLayout {
             Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
+            spacing: CachyTheme.spacingSmall
 
-            Kirigami.Icon {
-                source: "view-calendar"
-                implicitWidth: Kirigami.Units.iconSizes.small
-                implicitHeight: Kirigami.Units.iconSizes.small
+            CachyIcon {
+                name: "view-calendar"
+                size: 16
                 color: "#ff1744"
             }
 
-            QQC2.Label {
+            Text {
                 text: root.cardData.calendarName || i18n("Google Calendar (KOrganizer)")
                 font.weight: Font.DemiBold
-                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                font.pixelSize: 13
+                color: CachyPalette.text
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
@@ -69,11 +70,11 @@ Rectangle {
                 border.color: "#ff1744"
                 border.width: 1
 
-                QQC2.Label {
+                Text {
                     id: calBadge
                     anchors.centerIn: parent
                     text: i18n("AGENDADO")
-                    font.pixelSize: Math.max(9, Math.round(Kirigami.Theme.smallFont.pixelSize * 0.9))
+                    font.pixelSize: 10
                     font.weight: Font.Bold
                     color: "#ff1744"
                 }
@@ -83,15 +84,15 @@ Rectangle {
         // 2. Main Event Content with Date Badge
         RowLayout {
             Layout.fillWidth: true
-            spacing: Kirigami.Units.largeSpacing
+            spacing: CachyTheme.spacingMedium
 
-            // Date Badge (iOS/macOS/KOrganizer Calendar Pad Style)
+            // Date Badge (Calendar Pad Style)
             Rectangle {
                 implicitWidth: 54
                 implicitHeight: 60
                 radius: 10
-                color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
-                border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.15)
+                color: Qt.rgba(CachyPalette.text.r, CachyPalette.text.g, CachyPalette.text.b, 0.08)
+                border.color: CachyPalette.specularBorder
                 border.width: 1
                 clip: true
 
@@ -105,7 +106,7 @@ Rectangle {
                     height: 18
                     color: "#ff1744"
 
-                    QQC2.Label {
+                    Text {
                         anchors.centerIn: parent
                         text: (root.cardData.monthShort || "NOV").toString().toUpperCase()
                         font.pixelSize: 10
@@ -115,7 +116,7 @@ Rectangle {
                 }
 
                 // Day number
-                QQC2.Label {
+                Text {
                     anchors {
                         bottom: parent.bottom
                         horizontalCenter: parent.horizontalCenter
@@ -124,6 +125,7 @@ Rectangle {
                     text: root.cardData.dayNumber || "1"
                     font.pixelSize: 22
                     font.weight: Font.Bold
+                    color: CachyPalette.text
                 }
             }
 
@@ -131,57 +133,56 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 2
 
-                QQC2.Label {
+                Text {
                     text: root.cardData.title || i18n("Cita agendada")
                     font.weight: Font.Bold
-                    font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                    font.pixelSize: 13
+                    color: CachyPalette.text
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
 
                 RowLayout {
                     spacing: 4
-                    Kirigami.Icon {
-                        source: "preferences-system-time"
-                        implicitWidth: 14
-                        implicitHeight: 14
-                        color: Kirigami.Theme.disabledTextColor
+                    CachyIcon {
+                        name: "time"
+                        size: 12
+                        color: CachyPalette.textSecondary
                     }
-                    QQC2.Label {
+                    Text {
                         text: {
-                            let s = root.cardData.dateFormatted || "";
-                            if (root.cardData.startTime) {
-                                if (s.length > 0) s += " • ";
-                                s += root.cardData.startTime;
-                                if (root.cardData.endTime) s += " – " + root.cardData.endTime;
+                            let tm = root.cardData.timeStart || "";
+                            if (root.cardData.timeEnd && root.cardData.timeEnd !== "") {
+                                if (tm !== "") tm += " – ";
+                                tm += root.cardData.timeEnd;
                             }
-                            return s.length > 0 ? s : i18n("Hora no especificada");
+                            return tm.length > 0 ? tm : i18n("Todo el día");
                         }
-                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                        color: Kirigami.Theme.disabledTextColor
+                        font.pixelSize: 11
+                        color: CachyPalette.textSecondary
                     }
                 }
 
-                QQC2.Label {
-                    text: root.cardData.description || ""
-                    font.pixelSize: Math.max(9, Math.round(Kirigami.Theme.smallFont.pixelSize * 0.9))
-                    color: Kirigami.Theme.disabledTextColor
-                    visible: text.length > 0
+                Text {
+                    visible: root.cardData.location !== undefined && root.cardData.location.length > 0
+                    text: root.cardData.location || ""
+                    font.pixelSize: 10
+                    color: CachyPalette.textSecondary
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
             }
         }
 
-        // 3. Action Footer
+        // 3. Action
         RowLayout {
             Layout.fillWidth: true
-            Layout.topMargin: Kirigami.Units.smallSpacing
+            Layout.topMargin: CachyTheme.spacingSmall
 
             Item { Layout.fillWidth: true }
 
-            QQC2.Button {
-                icon.name: "korganizer"
+            CachyButton {
+                iconName: "view-calendar"
                 text: i18n("Abrir en KOrganizer")
                 onClicked: root.openCalendarRequested()
             }

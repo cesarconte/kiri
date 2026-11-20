@@ -1,14 +1,14 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kity contributors
-    SPDX-License-Identifier: GPL-3.0-or-later
-*/
+ * SPDX-FileCopyrightText: 2026 Kity contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
-import org.kde.kirigami as Kirigami
+import CachyOS.UI
 import org.kde.plasma.plasmoid
 
 import "cards" as Cards
@@ -31,19 +31,19 @@ Rectangle {
 
     Layout.fillWidth: true
     Layout.fillHeight: true
-    radius: Kirigami.Units.smallSpacing
-    color: Kirigami.Theme.alternateBackgroundColor
+    radius: CachyTheme.radiusSmall
+    color: CachyPalette.cardBackground
     border.width: 1
-    border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
+    border.color: CachyPalette.specularBorder
 
     // Welcome placeholder when conversation is empty
     ColumnLayout {
         anchors.centerIn: parent
         width: parent.width * 0.92
         visible: Plasmoid.messages.length === 0
-        spacing: Kirigami.Units.largeSpacing
+        spacing: CachyTheme.spacingLarge
 
-        Kirigami.Heading {
+        CachyHeading {
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
             level: 2
@@ -51,70 +51,40 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        QQC2.Label {
+        Text {
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
             opacity: 0.75
             wrapMode: Text.WordWrap
+            font.pixelSize: 12
+            color: CachyPalette.text
             text: i18n("Pulsa la esfera inferior o di «¡Hola Kity!» para hablar, o elige una acción rápida:")
         }
 
         GridLayout {
             Layout.fillWidth: true
             columns: 2
-            columnSpacing: Kirigami.Units.smallSpacing
-            rowSpacing: Kirigami.Units.smallSpacing
+            columnSpacing: CachyTheme.spacingSmall
+            rowSpacing: CachyTheme.spacingSmall
             uniformCellWidths: true
 
             Repeater {
                 model: [
-                    { label: "🖥️ Analizar pantalla", prompt: "Analiza qué hay en mi pantalla", isWritingTool: false },
-                    { label: "✍️ Herramientas de escritura", prompt: "", isWritingTool: true },
-                    { label: "📋 Resumir copiado", prompt: "Resume lo que he copiado en el portapapeles", isWritingTool: false },
-                    { label: "🔔 Notificaciones", prompt: "Resume mis notificaciones del sistema", isWritingTool: false },
-                    { label: "⚡ Estado del sistema", prompt: "Estado del sistema", isWritingTool: false },
-                    { label: "🎵 ¿Qué canción suena?", prompt: "¿Qué canción está sonando?", isWritingTool: false },
-                    { label: "🌙 Modo oscuro", prompt: "Activa el modo oscuro", isWritingTool: false }
+                    { label: i18n("Analizar pantalla"), icon: "camera-photo-symbolic", prompt: "Analiza qué hay en mi pantalla", isWritingTool: false },
+                    { label: i18n("Herramientas de escritura"), icon: "document-edit-symbolic", prompt: "", isWritingTool: true },
+                    { label: i18n("Resumir copiado"), icon: "edit-copy-symbolic", prompt: "Resume lo que he copiado en el portapapeles", isWritingTool: false },
+                    { label: i18n("Notificaciones"), icon: "preferences-desktop-notification-bell", prompt: "Resume mis notificaciones del sistema", isWritingTool: false },
+                    { label: i18n("Estado del sistema"), icon: "utilities-system-monitor", prompt: "Estado del sistema", isWritingTool: false },
+                    { label: i18n("¿Qué canción suena?"), icon: "emblem-music-symbolic", prompt: "¿Qué canción está sonando?", isWritingTool: false },
+                    { label: i18n("Modo oscuro"), icon: "weather-clear-night", prompt: "Activa el modo oscuro", isWritingTool: false }
                 ]
 
-                QQC2.Button {
-                    id: expActionBtn
+                CachyButton {
                     required property var modelData
                     Layout.fillWidth: true
-                    Layout.minimumHeight: Kirigami.Units.gridUnit * 2.3
+                    iconName: modelData.icon
                     text: modelData.label
-                    font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
-                    hoverEnabled: true
-
-                    contentItem: RowLayout {
-                        spacing: Kirigami.Units.smallSpacing
-                        QQC2.Label {
-                            Layout.fillWidth: true
-                            text: expActionBtn.text
-                            color: expActionBtn.down ? palette.highlight : palette.buttonText
-                            font: expActionBtn.font
-                            elide: Text.ElideRight
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-
-                    background: Rectangle {
-                        radius: 10
-                        color: expActionBtn.down
-                            ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
-                            : (expActionBtn.hovered
-                                ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
-                                : palette.button)
-                        border.width: 1
-                        border.color: expActionBtn.hovered
-                            ? palette.highlight
-                            : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15)
-
-                        Behavior on color { ColorAnimation { duration: 150 } }
-                        Behavior on border.color { ColorAnimation { duration: 150 } }
-                    }
-
+                    font.pixelSize: 11
                     onClicked: root.quickActionTriggered(modelData.prompt, modelData.isWritingTool)
                 }
             }
@@ -123,14 +93,14 @@ Rectangle {
 
     QQC2.ScrollView {
         anchors.fill: parent
-        anchors.margins: Kirigami.Units.smallSpacing
+        anchors.margins: CachyTheme.spacingSmall
         visible: Plasmoid.messages.length > 0
         clip: true
 
         ListView {
             id: chatListView
             anchors.fill: parent
-            spacing: Kirigami.Units.mediumSpacing
+            spacing: CachyTheme.spacingMedium
             model: Plasmoid.messages
 
             onCountChanged: {
@@ -147,32 +117,32 @@ Rectangle {
             footer: Item {
                 width: chatListView.width
                 visible: Plasmoid.streamingText.length > 0
-                height: visible ? streamBubble.height + Kirigami.Units.mediumSpacing : 0
+                height: visible ? streamBubble.height + CachyTheme.spacingMedium : 0
 
                 Rectangle {
                     id: streamBubble
                     width: parent.width * 0.92
-                    height: streamText.implicitHeight + Kirigami.Units.mediumSpacing * 2
+                    height: streamText.implicitHeight + CachyTheme.spacingMedium * 2
                     anchors.left: parent.left
                     anchors.top: parent.top
-                    anchors.topMargin: Kirigami.Units.smallSpacing
-                    radius: Kirigami.Units.smallSpacing
-                    color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.alternateBackgroundColor, 0.6)
+                    anchors.topMargin: CachyTheme.spacingSmall
+                    radius: CachyTheme.radiusSmall
+                    color: CachyPalette.isDark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.05)
                     border.width: 1
-                    border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
+                    border.color: CachyPalette.specularBorder
 
                     TextEdit {
                         id: streamText
-                        x: Kirigami.Units.mediumSpacing
-                        y: Kirigami.Units.mediumSpacing
-                        width: streamBubble.width - Kirigami.Units.mediumSpacing * 2
+                        x: CachyTheme.spacingMedium
+                        y: CachyTheme.spacingMedium
+                        width: streamBubble.width - CachyTheme.spacingMedium * 2
                         readOnly: true
                         selectByMouse: true
                         cursorVisible: false
                         activeFocusOnPress: false
                         wrapMode: TextEdit.Wrap
-                        color: Kirigami.Theme.textColor
-                        font: Kirigami.Theme.defaultFont
+                        color: CachyPalette.text
+                        font.pixelSize: 13
                         textFormat: TextEdit.RichText
                         text: Plasmoid.renderMarkdown(Plasmoid.streamingText)
                     }
@@ -195,26 +165,26 @@ Rectangle {
                 Rectangle {
                     id: bubbleRect
                     width: msgDelegate.isUser
-                        ? Math.min(parent.width * 0.88, Math.max(Kirigami.Units.gridUnit * 6, msgColumn.implicitWidth + Kirigami.Units.mediumSpacing * 2))
+                        ? Math.min(parent.width * 0.88, Math.max(96, msgColumn.implicitWidth + CachyTheme.spacingMedium * 2))
                         : parent.width * 0.92
-                    height: msgColumn.implicitHeight + Kirigami.Units.mediumSpacing * 2
+                    height: msgColumn.implicitHeight + CachyTheme.spacingMedium * 2
                     anchors.right: msgDelegate.isUser ? parent.right : undefined
                     anchors.left: msgDelegate.isUser ? undefined : parent.left
-                    radius: Kirigami.Units.smallSpacing
+                    radius: CachyTheme.radiusSmall
                     color: msgDelegate.isUser
-                        ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.18)
-                        : Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.alternateBackgroundColor, 0.6)
+                        ? Qt.rgba(CachyTheme.accentColor.r, CachyTheme.accentColor.g, CachyTheme.accentColor.b, 0.22)
+                        : (CachyPalette.isDark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.05))
                     border.width: 1
                     border.color: msgDelegate.isUser
-                        ? Kirigami.Theme.highlightColor
-                        : Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
+                        ? CachyTheme.accentColor
+                        : CachyPalette.specularBorder
 
                     ColumnLayout {
                         id: msgColumn
-                        x: Kirigami.Units.mediumSpacing
-                        y: Kirigami.Units.mediumSpacing
-                        width: bubbleRect.width - Kirigami.Units.mediumSpacing * 2
-                        spacing: Kirigami.Units.smallSpacing
+                        x: CachyTheme.spacingMedium
+                        y: CachyTheme.spacingMedium
+                        width: bubbleRect.width - CachyTheme.spacingMedium * 2
+                        spacing: CachyTheme.spacingSmall
 
                         TextEdit {
                             id: msgText
@@ -224,8 +194,8 @@ Rectangle {
                             cursorVisible: false
                             activeFocusOnPress: false
                             wrapMode: TextEdit.Wrap
-                            color: Kirigami.Theme.textColor
-                            font: Kirigami.Theme.defaultFont
+                            color: CachyPalette.text
+                            font.pixelSize: 13
                             textFormat: msgDelegate.isUser ? TextEdit.PlainText : TextEdit.RichText
                             onLinkActivated: link => Qt.openUrlExternally(link)
                             text: msgDelegate.isUser
@@ -239,7 +209,7 @@ Rectangle {
 
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                            spacing: CachyTheme.spacingSmall
                             visible: msgDelegate.detectedCmds.length > 0
 
                             Repeater {
@@ -249,23 +219,22 @@ Rectangle {
                                     id: cmdCard
                                     required property string modelData
                                     Layout.fillWidth: true
-                                    implicitHeight: cmdRow.implicitHeight + Kirigami.Units.smallSpacing * 2
-                                    color: Kirigami.Theme.alternateBackgroundColor
-                                    radius: Kirigami.Units.smallSpacing
+                                    implicitHeight: cmdRow.implicitHeight + CachyTheme.spacingSmall * 2
+                                    color: CachyPalette.isDark ? Qt.rgba(0, 0, 0, 0.35) : Qt.rgba(0, 0, 0, 0.06)
+                                    radius: CachyTheme.radiusSmall
                                     border.width: 1
-                                    border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.highlightColor, 0.5)
+                                    border.color: CachyTheme.withAlpha("#00e5ff", 0.40)
 
                                     RowLayout {
                                         id: cmdRow
                                         anchors.fill: parent
-                                        anchors.margins: Kirigami.Units.smallSpacing
-                                        spacing: Kirigami.Units.smallSpacing
+                                        anchors.margins: CachyTheme.spacingSmall
+                                        spacing: CachyTheme.spacingSmall
 
-                                        Kirigami.Icon {
-                                            source: "utilities-terminal-symbolic"
-                                            implicitWidth: Kirigami.Units.iconSizes.small
-                                            implicitHeight: Kirigami.Units.iconSizes.small
-                                            color: Kirigami.Theme.highlightColor
+                                        CachyIcon {
+                                            name: "utilities-terminal-symbolic"
+                                            size: 14
+                                            color: "#00e5ff"
                                         }
 
                                         TextEdit {
@@ -276,31 +245,28 @@ Rectangle {
                                             activeFocusOnPress: false
                                             wrapMode: TextEdit.Wrap
                                             font.family: "monospace"
-                                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                                            color: Kirigami.Theme.textColor
+                                            font.pixelSize: 11
+                                            color: CachyPalette.text
                                             text: cmdCard.modelData
                                         }
 
-                                        QQC2.Button {
-                                            icon.name: "media-playback-start-symbolic"
+                                        CachyButton {
+                                            iconName: "media-playback-start-symbolic"
                                             text: i18n("Ejecutar en Konsole")
+                                            font.pixelSize: 11
                                             onClicked: {
                                                 Plasmoid.executeCommandInKonsole(cmdCard.modelData);
                                             }
-                                            QQC2.ToolTip.visible: hovered
-                                            QQC2.ToolTip.text: i18n("Ejecutar orden en una ventana interactiva de Konsole")
                                         }
 
-                                        QQC2.ToolButton {
-                                            icon.name: "edit-copy-symbolic"
-                                            flat: true
-                                            implicitWidth: Kirigami.Units.iconSizes.smallMedium
-                                            implicitHeight: Kirigami.Units.iconSizes.smallMedium
+                                        CachyToolbarButton {
+                                            iconName: "edit-copy-symbolic"
+                                            implicitWidth: 26
+                                            implicitHeight: 26
+                                            tooltipText: i18n("Copiar orden al portapapeles")
                                             onClicked: {
                                                 Plasmoid.copyToClipboard(cmdCard.modelData);
                                             }
-                                            QQC2.ToolTip.visible: hovered
-                                            QQC2.ToolTip.text: i18n("Copiar orden al portapapeles")
                                         }
                                     }
                                 }
@@ -341,56 +307,53 @@ Rectangle {
                         Flow {
                             visible: !msgDelegate.isUser && msgDelegate.modelData.sources !== undefined && msgDelegate.modelData.sources.length > 0
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                            spacing: CachyTheme.spacingSmall
 
                             Repeater {
                                 model: msgDelegate.modelData.sources || []
 
-                                QQC2.Button {
+                                CachyButton {
                                     required property var modelData
-                                    icon.name: "globe"
+                                    iconName: "globe"
                                     text: modelData.title || i18n("Fuente")
-                                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                                    font.pixelSize: 11
                                     onClicked: Qt.openUrlExternally(modelData.url)
-                                    QQC2.ToolTip.visible: hovered
-                                    QQC2.ToolTip.text: modelData.url || ""
                                 }
                             }
                         }
 
                         RowLayout {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                            spacing: CachyTheme.spacingSmall
 
-                            QQC2.Label {
+                            Text {
                                 text: root.formatTimestamp(msgDelegate.modelData.timestamp ?? "")
-                                font: Kirigami.Theme.smallFont
-                                opacity: 0.55
+                                font.pixelSize: 10
+                                color: CachyPalette.textSecondary
+                                opacity: 0.65
                             }
 
                             Item { Layout.fillWidth: true }
 
                             // Replace Original Text (Writing Tools Apple Intelligence action)
-                            QQC2.Button {
+                            CachyButton {
                                 visible: !msgDelegate.isUser && msgDelegate.modelData.isWritingTool === true
-                                icon.name: "edit-paste-symbolic"
+                                iconName: "edit-paste-symbolic"
                                 text: i18n("Reemplazar original")
-                                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                                font.pixelSize: 11
                                 onClicked: {
                                     Plasmoid.replaceText(msgDelegate.modelData.content);
                                     Plasmoid.expanded = false;
                                 }
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: i18n("Copia el texto al portapapeles y cierra Kity para pegar (Ctrl+V) en tu aplicación")
                             }
 
                             // Speak / Stop button on Assistant responses
-                            QQC2.ToolButton {
+                            CachyToolbarButton {
                                 visible: !msgDelegate.isUser && msgDelegate.modelData.content.length > 0
-                                icon.name: Plasmoid.isSpeaking ? "media-playback-stop-symbolic" : "audio-volume-high-symbolic"
-                                flat: true
-                                implicitWidth: Kirigami.Units.iconSizes.smallMedium
-                                implicitHeight: Kirigami.Units.iconSizes.smallMedium
+                                iconName: Plasmoid.isSpeaking ? "media-playback-stop-symbolic" : "audio-volume-high-symbolic"
+                                implicitWidth: 26
+                                implicitHeight: 26
+                                tooltipText: Plasmoid.isSpeaking ? i18n("Detener lectura") : i18n("Leer en voz alta")
                                 onClicked: {
                                     if (Plasmoid.isSpeaking) {
                                         Plasmoid.stopSpeaking();
@@ -398,22 +361,18 @@ Rectangle {
                                         Plasmoid.speakText(msgDelegate.modelData.content);
                                     }
                                 }
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: Plasmoid.isSpeaking ? i18n("Detener lectura") : i18n("Leer en voz alta")
                             }
 
                             // Copy message button
-                            QQC2.ToolButton {
+                            CachyToolbarButton {
                                 visible: msgDelegate.modelData.content.length > 0
-                                icon.name: "edit-copy-symbolic"
-                                flat: true
-                                implicitWidth: Kirigami.Units.iconSizes.smallMedium
-                                implicitHeight: Kirigami.Units.iconSizes.smallMedium
+                                iconName: "edit-copy-symbolic"
+                                implicitWidth: 26
+                                implicitHeight: 26
+                                tooltipText: i18n("Copiar texto")
                                 onClicked: {
                                     Plasmoid.copyToClipboard(msgDelegate.modelData.content);
                                 }
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: i18n("Copiar texto")
                             }
                         }
                     }

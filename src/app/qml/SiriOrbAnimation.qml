@@ -7,7 +7,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import org.kde.kirigami as Kirigami
+import CachyOS.UI
 
 Item {
     id: orbRoot
@@ -25,8 +25,8 @@ Item {
         }
     }
 
-    implicitWidth: Kirigami.Units.gridUnit * 4.0
-    implicitHeight: Kirigami.Units.gridUnit * 4.0
+    implicitWidth: 64
+    implicitHeight: 64
     width: implicitWidth
     height: implicitHeight
 
@@ -58,13 +58,13 @@ Item {
         } else if (assistantState === "speaking") {
             return "#00e676";
         } else if (assistantState === "error") {
-            return Kirigami.Theme.negativeTextColor;
+            return CachyTheme.errorColor;
         }
         let vIdx = customVoiceIndex >= 0 ? customVoiceIndex : 3;
         if (vIdx >= 0 && vIdx < voicePalettePrimary.length) {
             return voicePalettePrimary[vIdx];
         }
-        return Kirigami.Theme.highlightColor;
+        return CachyTheme.accentColor;
     }
 
     readonly property color secondaryColor: {
@@ -79,7 +79,7 @@ Item {
         if (vIdx >= 0 && vIdx < voicePaletteSecondary.length) {
             return voicePaletteSecondary[vIdx];
         }
-        return Qt.lighter(Kirigami.Theme.highlightColor, 1.4);
+        return Qt.lighter(CachyTheme.accentColor, 1.4);
     }
 
     readonly property bool activeAnimation: assistantState !== "idle" && assistantState !== "error"
@@ -190,15 +190,13 @@ Item {
         border.width: 1
         border.color: Qt.rgba(1.0, 1.0, 1.0, 0.35)
 
-        Kirigami.Icon {
+        CachyIcon {
             id: iconItem
             anchors.centerIn: parent
-            width: parent.width * 0.52
-            height: width
+            size: Math.round(parent.width * 0.52)
             color: "#ffffff"
-            isMask: true
             rotation: 0
-            source: {
+            name: {
                 if (orbRoot.assistantState === "listening") {
                     return "media-playback-stop-symbolic";
                 } else if (orbRoot.assistantState === "speaking") {

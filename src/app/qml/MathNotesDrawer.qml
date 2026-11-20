@@ -9,7 +9,6 @@ import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 
-import org.kde.kirigami as Kirigami
 import CachyOS.UI
 
 Rectangle {
@@ -45,10 +44,9 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 8
 
-            Kirigami.Icon {
-                source: "view-time-schedule-calculus-symbolic"
-                Layout.preferredWidth: 16
-                Layout.preferredHeight: 16
+            CachyIcon {
+                name: "view-time-schedule-calculus-symbolic"
+                size: 16
                 color: CachyTheme.accentColor
             }
 
@@ -98,10 +96,9 @@ Rectangle {
                     anchors.centerIn: parent
                     spacing: 4
 
-                    Kirigami.Icon {
-                        source: "edit-copy-symbolic"
-                        Layout.preferredWidth: 12
-                        Layout.preferredHeight: 12
+                    CachyIcon {
+                        name: "edit-copy-symbolic"
+                        size: 12
                         color: CachyTheme.textSecondary
                     }
 
@@ -134,10 +131,9 @@ Rectangle {
                     anchors.centerIn: parent
                     spacing: 4
 
-                    Kirigami.Icon {
-                        source: "edit-clear-all-symbolic"
-                        Layout.preferredWidth: 12
-                        Layout.preferredHeight: 12
+                    CachyIcon {
+                        name: "edit-clear-all-symbolic"
+                        size: 12
                         color: CachyTheme.textSecondary
                     }
 

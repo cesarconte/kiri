@@ -9,7 +9,6 @@ import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 
-import org.kde.kirigami as Kirigami
 import CachyOS.UI
 
 import "cards" as Cards
@@ -314,10 +313,9 @@ Item {
                                 anchors.centerIn: parent
                                 spacing: 6
 
-                                Kirigami.Icon {
-                                    source: "edit-paste-symbolic"
-                                    Layout.preferredWidth: 14
-                                    Layout.preferredHeight: 14
+                                CachyIcon {
+                                    name: "edit-paste-symbolic"
+                                    size: 14
                                     color: CachyTheme.accentColor
                                 }
 
@@ -349,10 +347,9 @@ Item {
                                 anchors.centerIn: parent
                                 spacing: 5
 
-                                Kirigami.Icon {
-                                    source: "edit-copy-symbolic"
-                                    Layout.preferredWidth: 13
-                                    Layout.preferredHeight: 13
+                                CachyIcon {
+                                    name: "edit-copy-symbolic"
+                                    size: 13
                                     color: CachyTheme.textSecondary
                                 }
 
@@ -383,10 +380,9 @@ Item {
                                 anchors.centerIn: parent
                                 spacing: 5
 
-                                Kirigami.Icon {
-                                    source: "audio-volume-high-symbolic"
-                                    Layout.preferredWidth: 13
-                                    Layout.preferredHeight: 13
+                                CachyIcon {
+                                    name: "audio-volume-high-symbolic"
+                                    size: 13
                                     color: CachyTheme.textSecondary
                                 }
 
@@ -422,10 +418,9 @@ Item {
                                 anchors.centerIn: parent
                                 spacing: 5
 
-                                Kirigami.Icon {
-                                    source: "utilities-terminal-symbolic"
-                                    Layout.preferredWidth: 13
-                                    Layout.preferredHeight: 13
+                                CachyIcon {
+                                    name: "utilities-terminal-symbolic"
+                                    size: 13
                                     color: "#00e5ff"
                                 }
 
@@ -460,10 +455,9 @@ Item {
                                 anchors.centerIn: parent
                                 spacing: 5
 
-                                Kirigami.Icon {
-                                    source: "document-edit-symbolic"
-                                    Layout.preferredWidth: 13
-                                    Layout.preferredHeight: 13
+                                CachyIcon {
+                                    name: "document-edit-symbolic"
+                                    size: 13
                                     color: CachyTheme.textSecondary
                                 }
 

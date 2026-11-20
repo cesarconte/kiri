@@ -1,21 +1,22 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kity contributors
-    SPDX-License-Identifier: GPL-3.0-or-later
-*/
+ * SPDX-FileCopyrightText: 2026 Kity contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
+import CachyOS.UI
 
 Rectangle {
     id: root
     property var cardData: ({})
 
-    implicitHeight: mainLayout.implicitHeight + Kirigami.Units.gridUnit
-    radius: 16
+    implicitHeight: mainLayout.implicitHeight + 16
+    radius: CachyTheme.radiusMedium
     color: Qt.rgba(0.08, 0.10, 0.14, 0.88)
-    border.color: Qt.rgba(1.0, 1.0, 1.0, 0.18)
+    border.color: CachyPalette.specularBorder
     border.width: 1
 
     // Dynamic weather atmosphere gradient tint
@@ -46,26 +47,26 @@ Rectangle {
             left: parent.left
             right: parent.right
             top: parent.top
-            margins: Kirigami.Units.largeSpacing
+            margins: CachyTheme.spacingMedium
         }
-        spacing: Kirigami.Units.smallSpacing
+        spacing: CachyTheme.spacingSmall
 
         // 1. Header (Location & Badge)
         RowLayout {
             Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
+            spacing: CachyTheme.spacingSmall
 
-            Kirigami.Icon {
-                source: "mark-location"
-                implicitWidth: Kirigami.Units.iconSizes.small
-                implicitHeight: Kirigami.Units.iconSizes.small
-                color: Kirigami.Theme.highlightColor
+            CachyIcon {
+                name: "mark-location"
+                size: 16
+                color: CachyTheme.accentColor
             }
 
-            QQC2.Label {
+            Text {
                 text: root.cardData.location || root.cardData.city || i18n("Tiempo actual")
                 font.weight: Font.DemiBold
-                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                font.pixelSize: 13
+                color: CachyPalette.text
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
@@ -78,11 +79,11 @@ Rectangle {
                 border.color: "#00e676"
                 border.width: 1
 
-                QQC2.Label {
+                Text {
                     id: liveLabel
                     anchors.centerIn: parent
                     text: root.cardData.isForecast ? (root.cardData.forecastPeriod ? root.cardData.forecastPeriod.toUpperCase() : i18n("PREVISIÓN")) : i18n("EN VIVO")
-                    font.pixelSize: Math.max(9, Math.round(Kirigami.Theme.smallFont.pixelSize * 0.9))
+                    font.pixelSize: 10
                     font.weight: Font.Bold
                     color: root.cardData.isForecast ? "#00bcd4" : "#00e676"
                 }
@@ -92,9 +93,9 @@ Rectangle {
         // 2. Main Temperature & Weather Icon
         RowLayout {
             Layout.fillWidth: true
-            Layout.topMargin: Kirigami.Units.smallSpacing
-            Layout.bottomMargin: Kirigami.Units.smallSpacing
-            spacing: Kirigami.Units.largeSpacing
+            Layout.topMargin: CachyTheme.spacingSmall
+            Layout.bottomMargin: CachyTheme.spacingSmall
+            spacing: CachyTheme.spacingMedium
 
             ColumnLayout {
                 Layout.fillWidth: true
@@ -102,41 +103,42 @@ Rectangle {
 
                 RowLayout {
                     spacing: 4
-                    QQC2.Label {
+                    Text {
                         text: (root.cardData.temp !== undefined ? Math.round(Number(root.cardData.temp)) : "--") + "°"
                         font.pixelSize: 36
                         font.weight: Font.Bold
+                        color: CachyPalette.text
                     }
-                    QQC2.Label {
+                    Text {
                         text: "C"
                         font.pixelSize: 18
                         font.weight: Font.DemiBold
-                        color: Kirigami.Theme.disabledTextColor
+                        color: CachyPalette.textSecondary
                         Layout.alignment: Qt.AlignTop
                         Layout.topMargin: 6
                     }
                 }
 
-                QQC2.Label {
+                Text {
                     text: (root.cardData.condition || i18n("Despejado")).toString().toUpperCase()
                     font.weight: Font.DemiBold
-                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                    color: Kirigami.Theme.textColor
+                    font.pixelSize: 11
+                    color: CachyPalette.text
                 }
 
-                QQC2.Label {
+                Text {
                     text: root.cardData.isForecast
                         ? i18n("Mín: %1°C · Máx: %2°C", Math.round(Number(root.cardData.tempMin || 0)), Math.round(Number(root.cardData.tempMax || 0)))
                         : i18n("Sensación térmica: %1°C", root.cardData.feelsLike !== undefined ? Math.round(Number(root.cardData.feelsLike)) : "--")
-                    font.pixelSize: Math.max(9, Math.round(Kirigami.Theme.smallFont.pixelSize * 0.9))
-                    color: Kirigami.Theme.disabledTextColor
+                    font.pixelSize: 10
+                    color: CachyPalette.textSecondary
                 }
             }
 
-            Kirigami.Icon {
-                source: root.cardData.iconName || "weather-few-clouds"
-                implicitWidth: 48
-                implicitHeight: 48
+            CachyIcon {
+                name: root.cardData.iconName || "weather-few-clouds"
+                size: 48
+                colored: false
                 Layout.alignment: Qt.AlignVCenter
             }
         }
@@ -144,24 +146,27 @@ Rectangle {
         // 3. Stats Pills (Humedad, Viento, Lluvia)
         RowLayout {
             Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
+            spacing: CachyTheme.spacingSmall
 
             // Humidity
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: stat1.implicitHeight + 8
-                radius: 8
-                color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
+                radius: CachyTheme.radiusSmall
+                color: Qt.rgba(CachyPalette.text.r, CachyPalette.text.g, CachyPalette.text.b, 0.08)
+                border.width: 1
+                border.color: CachyPalette.specularBorder
 
                 RowLayout {
                     id: stat1
                     anchors.centerIn: parent
-                    spacing: 4
-                    QQC2.Label { text: "💧"; font.pixelSize: 11 }
-                    QQC2.Label {
+                    spacing: 5
+                    CachyIcon { name: "weather-fog"; size: 12; color: "#00e5ff" }
+                    Text {
                         text: (root.cardData.humidity || "0") + "%"
-                        font.pixelSize: Math.max(9, Math.round(Kirigami.Theme.smallFont.pixelSize * 0.9))
+                        font.pixelSize: 10
                         font.weight: Font.Medium
+                        color: CachyPalette.text
                     }
                 }
             }
@@ -170,18 +175,21 @@ Rectangle {
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: stat2.implicitHeight + 8
-                radius: 8
-                color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
+                radius: CachyTheme.radiusSmall
+                color: Qt.rgba(CachyPalette.text.r, CachyPalette.text.g, CachyPalette.text.b, 0.08)
+                border.width: 1
+                border.color: CachyPalette.specularBorder
 
                 RowLayout {
                     id: stat2
                     anchors.centerIn: parent
-                    spacing: 4
-                    QQC2.Label { text: "💨"; font.pixelSize: 11 }
-                    QQC2.Label {
+                    spacing: 5
+                    CachyIcon { name: "weather-windy"; size: 12; color: "#00e5ff" }
+                    Text {
                         text: (root.cardData.wind || "0") + " km/h"
-                        font.pixelSize: Math.max(9, Math.round(Kirigami.Theme.smallFont.pixelSize * 0.9))
+                        font.pixelSize: 10
                         font.weight: Font.Medium
+                        color: CachyPalette.text
                     }
                 }
             }
@@ -190,18 +198,21 @@ Rectangle {
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: stat3.implicitHeight + 8
-                radius: 8
-                color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
+                radius: CachyTheme.radiusSmall
+                color: Qt.rgba(CachyPalette.text.r, CachyPalette.text.g, CachyPalette.text.b, 0.08)
+                border.width: 1
+                border.color: CachyPalette.specularBorder
 
                 RowLayout {
                     id: stat3
                     anchors.centerIn: parent
-                    spacing: 4
-                    QQC2.Label { text: "🌧️"; font.pixelSize: 11 }
-                    QQC2.Label {
+                    spacing: 5
+                    CachyIcon { name: "weather-showers"; size: 12; color: "#00e5ff" }
+                    Text {
                         text: (root.cardData.precipitation || "0") + " mm"
-                        font.pixelSize: Math.max(9, Math.round(Kirigami.Theme.smallFont.pixelSize * 0.9))
+                        font.pixelSize: 10
                         font.weight: Font.Medium
+                        color: CachyPalette.text
                     }
                 }
             }

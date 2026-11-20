@@ -1,22 +1,23 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kity contributors
-    SPDX-License-Identifier: GPL-3.0-or-later
-*/
+ * SPDX-FileCopyrightText: 2026 Kity contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
+import CachyOS.UI
 
 Rectangle {
     id: root
     property var cardData: ({})
     signal mediaActionTriggered(string action)
 
-    implicitHeight: mediaLayout.implicitHeight + Kirigami.Units.gridUnit
-    radius: 16
+    implicitHeight: mediaLayout.implicitHeight + 16
+    radius: CachyTheme.radiusMedium
     color: Qt.rgba(0.08, 0.10, 0.14, 0.88)
-    border.color: Qt.rgba(1.0, 1.0, 1.0, 0.18)
+    border.color: CachyPalette.specularBorder
     border.width: 1
 
     // Gradient glow from album art or music vibes
@@ -37,26 +38,26 @@ Rectangle {
             left: parent.left
             right: parent.right
             top: parent.top
-            margins: Kirigami.Units.largeSpacing
+            margins: CachyTheme.spacingMedium
         }
-        spacing: Kirigami.Units.smallSpacing
+        spacing: CachyTheme.spacingSmall
 
         // 1. Header (App Name & Status)
         RowLayout {
             Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
+            spacing: CachyTheme.spacingSmall
 
-            Kirigami.Icon {
-                source: "audio-card"
-                implicitWidth: Kirigami.Units.iconSizes.small
-                implicitHeight: Kirigami.Units.iconSizes.small
-                color: Kirigami.Theme.highlightColor
+            CachyIcon {
+                name: "audio-card"
+                size: 16
+                color: CachyTheme.accentColor
             }
 
-            QQC2.Label {
+            Text {
                 text: root.cardData.player || i18n("Reproductor multimedia")
                 font.weight: Font.DemiBold
-                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                font.pixelSize: 13
+                color: CachyPalette.text
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
@@ -73,13 +74,13 @@ Rectangle {
                     : "#ffa000"
                 border.width: 1
 
-                QQC2.Label {
+                Text {
                     id: playStatus
                     anchors.centerIn: parent
                     text: (root.cardData.status === "Playing" || root.cardData.status === "reproduciendo")
                         ? i18n("REPRODUCIENDO")
                         : i18n("EN PAUSA")
-                    font.pixelSize: Math.max(9, Math.round(Kirigami.Theme.smallFont.pixelSize * 0.9))
+                    font.pixelSize: 10
                     font.weight: Font.Bold
                     color: (root.cardData.status === "Playing" || root.cardData.status === "reproduciendo")
                         ? "#00e676"
@@ -91,14 +92,16 @@ Rectangle {
         // 2. Track Info & Cover
         RowLayout {
             Layout.fillWidth: true
-            spacing: Kirigami.Units.mediumSpacing
+            spacing: CachyTheme.spacingMedium
 
             // Album Art Thumbnail or Music Icon
             Rectangle {
                 implicitWidth: 48
                 implicitHeight: 48
                 radius: 10
-                color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.1)
+                color: Qt.rgba(CachyPalette.text.r, CachyPalette.text.g, CachyPalette.text.b, 0.1)
+                border.width: 1
+                border.color: CachyPalette.specularBorder
                 clip: true
 
                 Image {
@@ -108,11 +111,10 @@ Rectangle {
                     visible: source !== ""
                 }
 
-                Kirigami.Icon {
+                CachyIcon {
                     anchors.centerIn: parent
-                    source: "media-default-album"
-                    implicitWidth: 28
-                    implicitHeight: 28
+                    name: "media-default-album"
+                    size: 28
                     visible: !root.cardData.artUrl
                 }
             }
@@ -121,15 +123,16 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 2
 
-                QQC2.Label {
+                Text {
                     text: root.cardData.title || i18n("Pista de audio")
                     font.weight: Font.Bold
-                    font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                    font.pixelSize: 13
+                    color: CachyPalette.text
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
 
-                QQC2.Label {
+                Text {
                     text: {
                         let sub = root.cardData.artist || "";
                         if (root.cardData.album && root.cardData.album !== "") {
@@ -138,8 +141,8 @@ Rectangle {
                         }
                         return sub.length > 0 ? sub : i18n("Audio del sistema");
                     }
-                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                    color: Kirigami.Theme.disabledTextColor
+                    font.pixelSize: 11
+                    color: CachyPalette.textSecondary
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
@@ -149,36 +152,30 @@ Rectangle {
         // 3. Interactive Playback Controls
         RowLayout {
             Layout.alignment: Qt.AlignHCenter
-            Layout.topMargin: Kirigami.Units.smallSpacing
-            spacing: Kirigami.Units.largeSpacing
+            Layout.topMargin: CachyTheme.spacingSmall
+            spacing: CachyTheme.spacingLarge
 
-            // Previous
-            QQC2.Button {
-                icon.name: "media-skip-backward"
+            CachyToolbarButton {
+                iconName: "media-skip-backward-symbolic"
+                tooltipText: i18n("Pista anterior")
                 onClicked: root.mediaActionTriggered("previous")
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: i18n("Pista anterior")
             }
 
-            // Play / Pause
-            QQC2.Button {
-                icon.name: (root.cardData.status === "Playing" || root.cardData.status === "reproduciendo")
-                    ? "media-playback-pause"
-                    : "media-playback-start"
-                highlighted: true
-                onClicked: root.mediaActionTriggered("play-pause")
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: (root.cardData.status === "Playing" || root.cardData.status === "reproduciendo")
+            CachyToolbarButton {
+                iconName: (root.cardData.status === "Playing" || root.cardData.status === "reproduciendo")
+                    ? "media-playback-pause-symbolic"
+                    : "media-playback-start-symbolic"
+                primary: true
+                tooltipText: (root.cardData.status === "Playing" || root.cardData.status === "reproduciendo")
                     ? i18n("Pausar")
-                    : i18n("Reanudar")
+                    : i18n("Reproducir")
+                onClicked: root.mediaActionTriggered("play_pause")
             }
 
-            // Next
-            QQC2.Button {
-                icon.name: "media-skip-forward"
+            CachyToolbarButton {
+                iconName: "media-skip-forward-symbolic"
+                tooltipText: i18n("Siguiente pista")
                 onClicked: root.mediaActionTriggered("next")
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: i18n("Siguiente pista")
             }
         }
     }

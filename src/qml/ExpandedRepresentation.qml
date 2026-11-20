@@ -9,7 +9,7 @@ import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 
-import org.kde.kirigami as Kirigami
+import CachyOS.UI
 import org.kde.plasma.plasmoid
 
 Item {
@@ -22,15 +22,15 @@ Item {
     property var mathResults: []
     property string visualCaptureScope: "region"
 
-    implicitWidth: Kirigami.Units.gridUnit * 24
-    implicitHeight: Kirigami.Units.gridUnit * 30
+    implicitWidth: 384
+    implicitHeight: 480
 
-    Layout.minimumWidth: Kirigami.Units.gridUnit * 20
-    Layout.minimumHeight: Kirigami.Units.gridUnit * 24
-    Layout.preferredWidth: Kirigami.Units.gridUnit * 24
-    Layout.preferredHeight: Kirigami.Units.gridUnit * 30
-    Layout.maximumWidth: Kirigami.Units.gridUnit * 36
-    Layout.maximumHeight: Kirigami.Units.gridUnit * 40
+    Layout.minimumWidth: 320
+    Layout.minimumHeight: 384
+    Layout.preferredWidth: 384
+    Layout.preferredHeight: 480
+    Layout.maximumWidth: 576
+    Layout.maximumHeight: 640
 
     function focusInput(): void {
         bottomDock.focusInput();
@@ -77,13 +77,13 @@ Item {
         id: voiceInteractionGlow
         anchors.fill: parent
         anchors.margins: 2
-        radius: Kirigami.Units.smallSpacing
+        radius: CachyTheme.radiusSmall
         readonly property bool isVoiceActive: Plasmoid.state === "listening" || Plasmoid.state === "speaking"
         color: isVoiceActive
-            ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.12)
+            ? Qt.rgba(CachyTheme.accentColor.r, CachyTheme.accentColor.g, CachyTheme.accentColor.b, 0.12)
             : "transparent"
         border.width: isVoiceActive ? 1 : 0
-        border.color: Kirigami.Theme.highlightColor
+        border.color: CachyTheme.accentColor
 
         Behavior on color { ColorAnimation { duration: 250 } }
         Behavior on border.width { NumberAnimation { duration: 200 } }
@@ -91,8 +91,8 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Kirigami.Units.mediumSpacing
-        spacing: Kirigami.Units.smallSpacing
+        anchors.margins: CachyTheme.spacingMedium
+        spacing: CachyTheme.spacingSmall
 
         // Top Status & Quick Controls Bar
         TopControlsBar {
@@ -127,7 +127,7 @@ Item {
             }
         }
 
-        Kirigami.Separator {
+        CachyDivider {
             Layout.fillWidth: true
         }
 
@@ -168,10 +168,10 @@ Item {
         }
 
         // Status / Readiness Inline Message
-        Kirigami.InlineMessage {
+        CachyInlineMessage {
             Layout.fillWidth: true
             visible: !Plasmoid.ollamaReachable
-            type: Kirigami.MessageType.Warning
+            messageType: "warning"
             text: i18n("No se puede conectar con Ollama en %1. Ejecuta scripts/setup-models.sh o inicia ollama.service.", Plasmoid.configuration.ollamaUrl)
         }
 
@@ -194,8 +194,8 @@ Item {
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             text: Plasmoid.statusMessage
-            font: Kirigami.Theme.smallFont
-            color: Plasmoid.state === "error" ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.highlightColor
+            font.pixelSize: 11
+            color: Plasmoid.state === "error" ? CachyTheme.errorColor : CachyTheme.accentColor
             wrapMode: Text.WordWrap
         }
 

@@ -1,14 +1,14 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kity contributors
-    SPDX-License-Identifier: GPL-3.0-or-later
-*/
+ * SPDX-FileCopyrightText: 2026 Kity contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
-import org.kde.kirigami as Kirigami
+import CachyOS.UI
 import org.kde.plasma.plasmoid
 
 Rectangle {
@@ -23,29 +23,26 @@ Rectangle {
     }
 
     Layout.fillWidth: true
-    implicitHeight: dockCol.implicitHeight + Kirigami.Units.mediumSpacing * 2
-    radius: Kirigami.Units.smallSpacing
+    implicitHeight: dockCol.implicitHeight + CachyTheme.spacingMedium * 2
+    radius: CachyTheme.radiusSmall
     color: (Plasmoid.state === "listening")
-        ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.14)
-        : Kirigami.Theme.backgroundColor
+        ? Qt.rgba(CachyTheme.accentColor.r, CachyTheme.accentColor.g, CachyTheme.accentColor.b, 0.14)
+        : CachyPalette.cardBackground
     border.width: 1
     border.color: (Plasmoid.state === "listening")
-        ? Kirigami.Theme.highlightColor
-        : Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
+        ? CachyTheme.accentColor
+        : CachyPalette.specularBorder
 
     ColumnLayout {
         id: dockCol
         anchors.fill: parent
-        anchors.topMargin: Kirigami.Units.mediumSpacing
-        anchors.bottomMargin: Kirigami.Units.mediumSpacing
-        anchors.leftMargin: Kirigami.Units.mediumSpacing
-        anchors.rightMargin: Kirigami.Units.mediumSpacing
-        spacing: Kirigami.Units.mediumSpacing
+        anchors.margins: CachyTheme.spacingMedium
+        spacing: CachyTheme.spacingMedium
 
         // Siri Orb Centered Interactive Voice Control
         Item {
             Layout.fillWidth: true
-            implicitHeight: siriOrb.implicitHeight + Kirigami.Units.smallSpacing * 2
+            implicitHeight: siriOrb.implicitHeight + CachyTheme.spacingSmall * 2
             clip: false
 
             SiriOrbAnimation {
@@ -69,40 +66,40 @@ Rectangle {
         Rectangle {
             id: promptInputBox
             Layout.fillWidth: true
-            implicitHeight: Math.max(promptInputRow.implicitHeight + Kirigami.Units.smallSpacing * 2, Kirigami.Units.gridUnit * 2.5)
+            implicitHeight: Math.max(promptInputRow.implicitHeight + CachyTheme.spacingSmall * 2, 40)
             radius: 12
-            color: palette.base
+            color: CachyPalette.isDark ? Qt.rgba(0, 0, 0, 0.32) : Qt.rgba(0, 0, 0, 0.06)
             border.width: promptField.activeFocus ? 1.5 : 1
             border.color: promptField.activeFocus
-                ? palette.highlight
-                : Kirigami.ColorUtils.linearInterpolation(palette.base, palette.text, 0.18)
+                ? CachyTheme.accentColor
+                : CachyPalette.specularBorder
 
             Behavior on border.color { ColorAnimation { duration: 150 } }
 
             RowLayout {
                 id: promptInputRow
                 anchors.fill: parent
-                anchors.leftMargin: Kirigami.Units.mediumSpacing
-                anchors.rightMargin: Kirigami.Units.smallSpacing
-                anchors.topMargin: Kirigami.Units.smallSpacing
-                anchors.bottomMargin: Kirigami.Units.smallSpacing
-                spacing: Kirigami.Units.smallSpacing
+                anchors.leftMargin: CachyTheme.spacingMedium
+                anchors.rightMargin: CachyTheme.spacingSmall
+                anchors.topMargin: CachyTheme.spacingSmall
+                anchors.bottomMargin: CachyTheme.spacingSmall
+                spacing: CachyTheme.spacingSmall
 
                 QQC2.ScrollView {
                     id: promptScrollView
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
-                    Layout.maximumHeight: Kirigami.Units.gridUnit * 6
+                    Layout.maximumHeight: 96
                     QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
 
                     QQC2.TextArea {
                         id: promptField
                         focus: true
-                        color: palette.text
-                        placeholderTextColor: palette.placeholderText
-                        selectionColor: palette.highlight
-                        selectedTextColor: palette.highlightedText
-                        font: Kirigami.Theme.defaultFont
+                        color: CachyPalette.text
+                        placeholderTextColor: CachyPalette.textMuted
+                        selectionColor: CachyTheme.accentColor
+                        selectedTextColor: "#FFFFFF"
+                        font.pixelSize: 13
                         background: null
                         placeholderText: Plasmoid.isRecording
                             ? i18n("Escuchando tu voz…")
@@ -122,35 +119,15 @@ Rectangle {
                     }
                 }
 
-                QQC2.Button {
+                CachyToolbarButton {
                     id: expSendBtn
                     Layout.alignment: Qt.AlignBottom
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2.2
-                    Layout.preferredHeight: Kirigami.Units.gridUnit * 2.2
-                    hoverEnabled: true
+                    implicitWidth: 32
+                    implicitHeight: 32
                     enabled: Plasmoid.state === "thinking" || promptField.text.trim().length > 0
-
-                    contentItem: Kirigami.Icon {
-                        anchors.centerIn: parent
-                        source: Plasmoid.state === "thinking" ? "process-stop-symbolic" : "document-send-symbolic"
-                        color: expSendBtn.enabled
-                            ? (Plasmoid.state === "thinking" ? Kirigami.Theme.negativeTextColor : (expSendBtn.hovered ? palette.highlight : palette.buttonText))
-                            : palette.placeholderText
-                    }
-
-                    background: Rectangle {
-                        radius: 8
-                        color: expSendBtn.down
-                            ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.25)
-                            : (expSendBtn.hovered
-                                ? Kirigami.ColorUtils.tintWithAlpha(palette.button, palette.highlight, 0.12)
-                                : (expSendBtn.enabled ? palette.button : "transparent"))
-                        border.width: 1
-                        border.color: expSendBtn.enabled
-                            ? (expSendBtn.hovered ? palette.highlight : Kirigami.ColorUtils.linearInterpolation(palette.window, palette.windowText, 0.15))
-                            : "transparent"
-                    }
-
+                    primary: enabled && Plasmoid.state !== "thinking"
+                    iconName: Plasmoid.state === "thinking" ? "process-stop-symbolic" : "document-send-symbolic"
+                    tooltipText: Plasmoid.state === "thinking" ? i18n("Detener generación") : i18n("Enviar mensaje")
                     onClicked: {
                         if (Plasmoid.state === "thinking") {
                             Plasmoid.stopGeneration();
@@ -159,8 +136,6 @@ Rectangle {
                             promptField.text = "";
                         }
                     }
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: Plasmoid.state === "thinking" ? i18n("Detener generación") : i18n("Enviar mensaje")
                 }
             }
         }

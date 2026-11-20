@@ -9,7 +9,6 @@ import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 
-import org.kde.kirigami as Kirigami
 import CachyOS.UI
 
 ColumnLayout {
@@ -219,12 +218,10 @@ ColumnLayout {
                                 elide: Text.ElideRight
                             }
 
-                            Kirigami.Icon {
+                            CachyIcon {
                                 visible: convCard.modelData.pinned === true || convHover.hovered
-                                source: "window-pin"
-                                Layout.preferredWidth: 13
-                                Layout.preferredHeight: 13
-                                isMask: true
+                                name: "window-pin"
+                                size: 13
                                 color: CachyTheme.textSecondary
                                 opacity: convCard.modelData.pinned ? 0.95 : 0.45
 
@@ -302,12 +299,10 @@ ColumnLayout {
         Layout.topMargin: 24
         spacing: 10
 
-        Kirigami.Icon {
-            source: "chat"
+        CachyIcon {
+            name: "chat"
             Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: 36
-            Layout.preferredHeight: 36
-            isMask: true
+            size: 36
             color: CachyTheme.textMuted
             opacity: 0.5
         }

@@ -1,15 +1,13 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kity contributors
-    SPDX-License-Identifier: GPL-3.0-or-later
-*/
+ * SPDX-FileCopyrightText: 2026 Kity contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls as QQC2
 import QtQuick.Layouts
-import org.kde.kirigami as Kirigami
-import org.kde.plasma.plasmoid
+import CachyOS.UI
 
 RowLayout {
     id: root
@@ -23,7 +21,7 @@ RowLayout {
     signal toggleMathNotes()
 
     Layout.fillWidth: true
-    spacing: Kirigami.Units.smallSpacing
+    spacing: CachyTheme.spacingSmall
 
     Rectangle {
         implicitWidth: 8
@@ -31,21 +29,22 @@ RowLayout {
         radius: 4
         color: {
             if (!Plasmoid.ollamaReachable) {
-                return Kirigami.Theme.negativeTextColor;
+                return CachyTheme.errorColor;
             }
             if (Plasmoid.state === "listening") {
                 return "#00e5ff";
             }
             if (Plasmoid.wakeWordEnabled) {
-                return Kirigami.Theme.positiveTextColor;
+                return CachyTheme.successColor;
             }
-            return Kirigami.Theme.disabledTextColor;
+            return CachyTheme.textMuted;
         }
     }
 
-    QQC2.Label {
+    Text {
         Layout.fillWidth: true
-        font: Kirigami.Theme.smallFont
+        font.pixelSize: 11
+        color: CachyPalette.text
         opacity: 0.85
         elide: Text.ElideRight
         text: {
@@ -72,27 +71,25 @@ RowLayout {
     }
 
     // Quick Toggle for "¡Hola Kity!" Wake Word
-    QQC2.ToolButton {
+    CachyToolbarButton {
         id: wakeWordButton
         visible: Plasmoid.whisperAvailable
-        icon.name: Plasmoid.wakeWordEnabled ? "mic-on" : "mic-off"
+        iconName: Plasmoid.wakeWordEnabled ? "mic-on" : "mic-off"
         checkable: true
         checked: Plasmoid.wakeWordEnabled
-        onClicked: {
-            const nextState = !Plasmoid.wakeWordEnabled;
-            Plasmoid.configuration.wakeWordEnabled = nextState;
-            Plasmoid.wakeWordEnabled = nextState;
+        onToggled: (next) => {
+            Plasmoid.configuration.wakeWordEnabled = next;
+            Plasmoid.wakeWordEnabled = next;
         }
-        QQC2.ToolTip.visible: hovered
-        QQC2.ToolTip.text: Plasmoid.wakeWordEnabled
+        tooltipText: Plasmoid.wakeWordEnabled
             ? i18n("Escucha activa «¡Hola Kity!» activada (clic para desactivar)")
             : i18n("Activar escucha manos libres «¡Hola Kity!»")
     }
 
     // Speech Output Mode Selector Button
-    QQC2.ToolButton {
+    CachyToolbarButton {
         id: speechModeButton
-        icon.name: {
+        iconName: {
             const mode = Plasmoid.configuration.speechOutputMode;
             if (mode === "always") {
                 return "audio-volume-high-symbolic";
@@ -101,7 +98,6 @@ RowLayout {
             }
             return "audio-volume-muted-symbolic";
         }
-        checkable: false
         onClicked: {
             const current = Plasmoid.configuration.speechOutputMode;
             if (current === "manual") {
@@ -113,58 +109,51 @@ RowLayout {
                 Plasmoid.stopSpeaking();
             }
         }
-        QQC2.ToolTip.visible: hovered
-        QQC2.ToolTip.text: {
+        tooltipText: {
             const mode = Plasmoid.configuration.speechOutputMode;
             if (mode === "always") {
                 return i18n("Respuestas por voz: Hablar siempre en voz alta");
             } else if (mode === "voice_only") {
                 return i18n("Respuestas por voz: Hablar cuando preguntes con la voz");
             }
-            return i18n("Respuestas por voz: Solo manual (al pulsar el altavoz en un mensaje)");
+            return i18n("Respuestas por voz: Solo manual");
         }
     }
 
     // Apple Intelligence Writing Tools Toggle Button
-    QQC2.ToolButton {
+    CachyToolbarButton {
         id: writingToolsButton
-        icon.name: "document-edit-symbolic"
-        icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
+        iconName: "document-edit-symbolic"
         checkable: true
         checked: root.showWritingTools
-        onClicked: root.toggleWritingTools()
-        QQC2.ToolTip.visible: hovered
-        QQC2.ToolTip.text: i18n("Herramientas de Escritura (Corregir, Reescribir, Tono y Resumen sobre texto seleccionado o escrito)")
+        onToggled: root.toggleWritingTools()
+        tooltipText: i18n("Herramientas de Escritura")
     }
 
     // Visual Intelligence & Live Text Toggle Button
-    QQC2.ToolButton {
+    CachyToolbarButton {
         id: visualIntelButton
-        icon.name: "camera-photo-symbolic"
-        icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
+        iconName: "camera-photo-symbolic"
         checkable: true
         checked: root.showVisualIntelligence
-        onClicked: root.toggleVisualIntelligence()
-        QQC2.ToolTip.visible: hovered
-        QQC2.ToolTip.text: i18n("Inteligencia Visual y Live Text (Capturar región o ventana con Spectacle + OCR + IA)")
+        onToggled: root.toggleVisualIntelligence()
+        tooltipText: i18n("Inteligencia Visual y Live Text")
     }
 
     // Math Notes Toggle Button
-    QQC2.ToolButton {
+    CachyToolbarButton {
         id: mathNotesButton
-        icon.name: "view-time-schedule-calculus-symbolic"
-        icon.color: checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
+        iconName: "view-time-schedule-calculus-symbolic"
         checkable: true
         checked: root.showMathNotes
-        onClicked: root.toggleMathNotes()
-        QQC2.ToolTip.visible: hovered
-        QQC2.ToolTip.text: i18n("Notas matemáticas (cálculo en vivo con variables, unidades y divisas)")
+        onToggled: root.toggleMathNotes()
+        tooltipText: i18n("Notas matemáticas")
     }
 
     // Kity Mobile Remote Button
-    QQC2.ToolButton {
+    CachyToolbarButton {
         id: mobileRemoteButton
-        icon.name: "kdeconnect-symbolic"
+        iconName: "kdeconnect-symbolic"
         onClicked: {
             var shared = Plasmoid.shareMobilePairingWithKdeConnect();
             if (shared) {
@@ -173,16 +162,14 @@ RowLayout {
                 Qt.openUrlExternally(Plasmoid.mobilePairingUrl);
             }
         }
-        QQC2.ToolTip.visible: hovered
-        QQC2.ToolTip.text: i18n("Conectar teléfono como micrófono (Kity Mobile Portal)")
+        tooltipText: i18n("Conectar teléfono como micrófono (Kity Mobile)")
     }
 
     // Clear Conversation Button
-    QQC2.ToolButton {
-        icon.name: "edit-clear-history-symbolic"
+    CachyToolbarButton {
+        iconName: "edit-clear-history-symbolic"
         visible: Plasmoid.messages.length > 0
         onClicked: Plasmoid.clearHistory()
-        QQC2.ToolTip.visible: hovered
-        QQC2.ToolTip.text: i18n("Limpiar conversación")
+        tooltipText: i18n("Limpiar conversación")
     }
 }

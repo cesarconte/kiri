@@ -9,7 +9,6 @@ import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 
-import org.kde.kirigami as Kirigami
 import CachyOS.UI
 
 import "cards" as Cards
@@ -240,12 +239,10 @@ Item {
                     radius: 15
                     color: kityClient.isRecording ? "#FF375F" : "transparent"
 
-                    Kirigami.Icon {
+                    CachyIcon {
                         anchors.centerIn: parent
-                        width: 16
-                        height: 16
-                        source: "audio-input-microphone-symbolic"
-                        isMask: true
+                        size: 16
+                        name: "audio-input-microphone-symbolic"
                         color: Qt.rgba(1, 1, 0.82, 0.82)
                     }
 
@@ -336,11 +333,9 @@ Item {
                             anchors.rightMargin: 12
                             spacing: 12
 
-                            Kirigami.Icon {
-                                source: spotRow.modelData.icon
-                                Layout.preferredWidth: 16
-                                Layout.preferredHeight: 16
-                                isMask: true
+                            CachyIcon {
+                                name: spotRow.modelData.icon
+                                size: 16
                                 color: "#FFFFFF"
                             }
 
@@ -556,11 +551,9 @@ Item {
                     id: spotAnswerCopyRow
                     anchors.centerIn: parent
                     spacing: 6
-                    Kirigami.Icon {
-                        source: "edit-copy-symbolic"
-                        Layout.preferredWidth: 12
-                        Layout.preferredHeight: 12
-                        isMask: true
+                    CachyIcon {
+                        name: "edit-copy-symbolic"
+                        size: 12
                         color: "#FFFFFF"
                     }
                     Text {
@@ -600,11 +593,9 @@ Item {
                     id: spotAnswerSpeakRow
                     anchors.centerIn: parent
                     spacing: 6
-                    Kirigami.Icon {
-                        source: kityClient.isSpeaking ? "media-playback-stop-symbolic" : "audio-volume-high-symbolic"
-                        Layout.preferredWidth: 12
-                        Layout.preferredHeight: 12
-                        isMask: true
+                    CachyIcon {
+                        name: kityClient.isSpeaking ? "media-playback-stop-symbolic" : "audio-volume-high-symbolic"
+                        size: 12
                         color: kityClient.isSpeaking ? "#FF375F" : "#FFFFFF"
                     }
                     Text {
@@ -721,12 +712,10 @@ Item {
                 radius: 15
                 color: kityClient.isRecording ? "#FF375F" : Qt.rgba(1, 1, 1, 0.14)
 
-                Kirigami.Icon {
+                CachyIcon {
                     anchors.centerIn: parent
-                    width: 15
-                    height: 15
-                    source: "audio-input-microphone-symbolic"
-                    isMask: true
+                    size: 15
+                    name: "audio-input-microphone-symbolic"
                     color: "#FFFFFF"
                 }
 

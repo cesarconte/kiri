@@ -1,14 +1,13 @@
 /*
-    SPDX-FileCopyrightText: 2026 Kity contributors
-    SPDX-License-Identifier: GPL-3.0-or-later
-*/
+ * SPDX-FileCopyrightText: 2026 Kity contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls as QQC2
 import QtQuick.Layouts
-import org.kde.kirigami as Kirigami
+import CachyOS.UI
 import org.kde.plasma.plasmoid
 
 Rectangle {
@@ -18,33 +17,33 @@ Rectangle {
     signal toolTriggered(string action, string customText)
 
     Layout.fillWidth: true
-    implicitHeight: wtCol.implicitHeight + Kirigami.Units.smallSpacing * 2
-    radius: Kirigami.Units.smallSpacing
-    color: Kirigami.Theme.alternateBackgroundColor
+    implicitHeight: wtCol.implicitHeight + CachyTheme.spacingSmall * 2
+    radius: CachyTheme.radiusSmall
+    color: CachyPalette.cardBackground
     border.width: 1
-    border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.14)
+    border.color: CachyPalette.specularBorder
 
     ColumnLayout {
         id: wtCol
         anchors.fill: parent
-        anchors.margins: Kirigami.Units.smallSpacing
-        spacing: Kirigami.Units.smallSpacing
+        anchors.margins: CachyTheme.spacingSmall
+        spacing: CachyTheme.spacingSmall
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
+            spacing: CachyTheme.spacingSmall
 
-            Kirigami.Icon {
-                source: "document-edit-symbolic"
-                implicitWidth: Kirigami.Units.iconSizes.small
-                implicitHeight: Kirigami.Units.iconSizes.small
-                color: Kirigami.Theme.highlightColor
+            CachyIcon {
+                name: "document-edit-symbolic"
+                size: 16
+                color: CachyTheme.accentColor
             }
 
-            QQC2.Label {
+            Text {
                 Layout.fillWidth: true
                 font.bold: true
-                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                font.pixelSize: 11
+                color: CachyPalette.text
                 text: root.promptText.trim().length > 0
                     ? i18n("Herramientas de Escritura (usando caja de texto)")
                     : i18n("Herramientas de Escritura (usando selección / portapapeles Wayland)")
@@ -55,8 +54,8 @@ Rectangle {
         GridLayout {
             Layout.fillWidth: true
             columns: 4
-            columnSpacing: Kirigami.Units.smallSpacing
-            rowSpacing: Kirigami.Units.smallSpacing
+            columnSpacing: CachyTheme.spacingSmall
+            rowSpacing: CachyTheme.spacingSmall
             uniformCellWidths: true
 
             Repeater {
@@ -73,11 +72,11 @@ Rectangle {
                     { action: "translate:es", label: i18n("🌐 → Español") }
                 ]
 
-                QQC2.Button {
+                CachyButton {
                     required property var modelData
                     Layout.fillWidth: true
                     text: modelData.label
-                    font: Kirigami.Theme.smallFont
+                    font.pixelSize: 11
                     enabled: !Plasmoid.isBusy
                     onClicked: {
                         const customText = root.promptText.trim();

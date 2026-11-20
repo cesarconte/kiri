@@ -9,7 +9,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 
-import org.kde.kirigami as Kirigami
+import CachyOS.UI
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
 
@@ -104,13 +104,11 @@ PlasmoidItem {
             opacity: 0.35
         }
 
-        Kirigami.Icon {
+        CachyPlasmoidIcon {
             anchors.fill: parent
-            anchors.margins: Math.round(Kirigami.Units.smallSpacing / 2)
-            source: Plasmoid.icon
-            fallback: "qrc:/qt/qml/plasma/applet/org/cesar/kity/" + Plasmoid.icon + ".svg"
-            isMask: Plasmoid.panelIconStyle !== "color"
-            active: compactMouse.containsMouse
+            anchors.margins: 2
+            iconName: Plasmoid.icon
+            fallbackIconName: "kity-symbolic"
         }
     }
 }
