@@ -128,7 +128,6 @@ int main(int argc, char *argv[])
 
     KityClient client;
     QQmlApplicationEngine engine;
-    engine.addImportPath(QDir::homePath() + QStringLiteral("/.local/lib/qt6/qml"));
     engine.addImportPath(QStringLiteral("/usr/lib/qt6/qml"));
     engine.rootContext()->setContextObject(new KLocalizedContext(&engine));
 

@@ -46,7 +46,7 @@ Item {
             text: i18n("¿En qué te puedo ayudar hoy?")
             font.pixelSize: 22
             font.weight: Font.Bold
-            color: CachyTheme.textPrimary
+            color: CachyPalette.text
         }
 
         Text {
@@ -55,7 +55,7 @@ Item {
             wrapMode: Text.WordWrap
             text: i18n("Pulsa Meta + K para la píldora flotante rápida o selecciona una sugerencia inteligente:")
             font.pixelSize: 13
-            color: CachyTheme.textSecondary
+            color: CachyPalette.textSecondary
         }
 
         Flow {
@@ -101,7 +101,7 @@ Item {
                         text: modelData.label
                         font.pixelSize: 12
                         font.weight: Font.Medium
-                        color: CachyTheme.textPrimary
+                        color: CachyPalette.text
                     }
                 }
             }
@@ -145,7 +145,7 @@ Item {
                 cursorVisible: false
                 activeFocusOnPress: false
                 wrapMode: TextEdit.Wrap
-                color: CachyTheme.textPrimary
+                color: CachyPalette.text
                 font.pixelSize: Math.round(14 * kityClient.textScale)
                 textFormat: TextEdit.RichText
                 text: kityClient.renderMarkdown(kityClient.streamingText)
@@ -187,7 +187,7 @@ Item {
                         anchors.centerIn: parent
                         width: Math.min(implicitWidth, msgCol.width * 0.82 - 24)
                         wrapMode: Text.WordWrap
-                        color: CachyTheme.textPrimary
+                        color: CachyPalette.text
                         font.pixelSize: Math.round(13 * kityClient.textScale)
                         font.weight: Font.Medium
                         text: msgDelegate.modelData.content || ""
@@ -204,7 +204,7 @@ Item {
                     cursorVisible: false
                     activeFocusOnPress: false
                     wrapMode: TextEdit.Wrap
-                    color: CachyTheme.textPrimary
+                    color: CachyPalette.text
                     font.pixelSize: Math.round(14 * kityClient.textScale)
                     textFormat: TextEdit.RichText
                     onLinkActivated: link => Qt.openUrlExternally(link)
@@ -234,7 +234,7 @@ Item {
                                 anchors.centerIn: parent
                                 text: modelData.title || i18n("Source +1")
                                 font.pixelSize: 11
-                                color: CachyTheme.textSecondary
+                                color: CachyPalette.textSecondary
                             }
 
                             TapHandler {
@@ -323,7 +323,7 @@ Item {
                                     text: i18n("Reemplazar original")
                                     font.pixelSize: 11
                                     font.weight: Font.DemiBold
-                                    color: CachyTheme.textPrimary
+                                    color: CachyPalette.text
                                 }
                             }
                         }
@@ -350,13 +350,13 @@ Item {
                                 CachyIcon {
                                     name: "edit-copy-symbolic"
                                     size: 13
-                                    color: CachyTheme.textSecondary
+                                    color: CachyPalette.textSecondary
                                 }
 
                                 Text {
                                     text: i18n("Copiar")
                                     font.pixelSize: 11
-                                    color: CachyTheme.textPrimary
+                                    color: CachyPalette.text
                                 }
                             }
                         }
@@ -383,13 +383,13 @@ Item {
                                 CachyIcon {
                                     name: "audio-volume-high-symbolic"
                                     size: 13
-                                    color: CachyTheme.textSecondary
+                                    color: CachyPalette.textSecondary
                                 }
 
                                 Text {
                                     text: i18n("Escuchar")
                                     font.pixelSize: 11
-                                    color: CachyTheme.textPrimary
+                                    color: CachyPalette.text
                                 }
                             }
                         }
@@ -428,7 +428,7 @@ Item {
                                     text: i18n("Ejecutar en Konsole")
                                     font.pixelSize: 11
                                     font.weight: Font.DemiBold
-                                    color: CachyTheme.textPrimary
+                                    color: CachyPalette.text
                                 }
                             }
                         }
@@ -458,43 +458,43 @@ Item {
                                 CachyIcon {
                                     name: "document-edit-symbolic"
                                     size: 13
-                                    color: CachyTheme.textSecondary
+                                    color: CachyPalette.textSecondary
                                 }
 
                                 Text {
                                     text: i18n("Cambiar tono…")
                                     font.pixelSize: 11
-                                    color: CachyTheme.textSecondary
+                                    color: CachyPalette.textSecondary
                                 }
                             }
 
-                            QQC2.Menu {
+                            CachyMenu {
                                 id: toneMenu
-                                QQC2.MenuItem {
+                                CachyMenuItem {
                                     text: i18n("💼 Profesional")
                                     onTriggered: kityClient.applyWritingTool("professional", msgDelegate.modelData.sourceText || "")
                                 }
-                                QQC2.MenuItem {
+                                CachyMenuItem {
                                     text: i18n("😊 Amigable")
                                     onTriggered: kityClient.applyWritingTool("friendly", msgDelegate.modelData.sourceText || "")
                                 }
-                                QQC2.MenuItem {
+                                CachyMenuItem {
                                     text: i18n("⚡ Conciso")
                                     onTriggered: kityClient.applyWritingTool("concise", msgDelegate.modelData.sourceText || "")
                                 }
-                                QQC2.MenuItem {
+                                CachyMenuItem {
                                     text: i18n("↻ Reescribir")
                                     onTriggered: kityClient.applyWritingTool("rewrite", msgDelegate.modelData.sourceText || "")
                                 }
-                                QQC2.MenuItem {
+                                CachyMenuItem {
                                     text: i18n("📝 Resumen")
                                     onTriggered: kityClient.applyWritingTool("summary", msgDelegate.modelData.sourceText || "")
                                 }
-                                QQC2.MenuItem {
+                                CachyMenuItem {
                                     text: i18n("• Puntos clave")
                                     onTriggered: kityClient.applyWritingTool("keypoints", msgDelegate.modelData.sourceText || "")
                                 }
-                                QQC2.MenuItem {
+                                CachyMenuItem {
                                     text: i18n("📊 Tabla")
                                     onTriggered: kityClient.applyWritingTool("table", msgDelegate.modelData.sourceText || "")
                                 }

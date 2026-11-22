@@ -48,45 +48,20 @@ Rectangle {
                 text: i18n("Inteligencia Visual & Live Text:")
                 font.bold: true
                 font.pixelSize: 12
-                color: CachyTheme.textPrimary
+                color: CachyPalette.text
             }
 
             Item { Layout.fillWidth: true }
 
             // Scope selector
-            Repeater {
-                model: [
-                    { scope: "region", label: i18n("📐 Región") },
-                    { scope: "activewindow", label: i18n("🪟 Ventana activa") },
-                    { scope: "fullscreen", label: i18n("🖥️ Pantalla") }
-                ]
-
-                Rectangle {
-                    required property var modelData
-                    height: 26
-                    implicitWidth: scopeText.implicitWidth + 16
-                    radius: 13
-                    color: viRoot.captureScope === modelData.scope
-                        ? CachyTheme.withAlpha(CachyTheme.accentColor, 0.28)
-                        : (scopeHover.hovered ? CachyTheme.cardBackgroundHover : "transparent")
-                    border.width: 1
-                    border.color: viRoot.captureScope === modelData.scope
-                        ? CachyTheme.withAlpha(CachyTheme.accentColor, 0.6)
-                        : CachyTheme.specularBorder
-
-                    HoverHandler { id: scopeHover; cursorShape: Qt.PointingHandCursor }
-                    TapHandler {
-                        onTapped: viRoot.captureScope = modelData.scope
-                    }
-
-                    Text {
-                        id: scopeText
-                        anchors.centerIn: parent
-                        text: modelData.label
-                        font.pixelSize: 11
-                        font.weight: viRoot.captureScope === modelData.scope ? Font.DemiBold : Font.Normal
-                        color: viRoot.captureScope === modelData.scope ? CachyTheme.textPrimary : CachyTheme.textSecondary
-                    }
+            CachySegmentedControl {
+                model: [ i18n("📐 Región"), i18n("🪟 Ventana activa"), i18n("🖥️ Pantalla") ]
+                currentIndex: viRoot.captureScope === "region" ? 0 : (viRoot.captureScope === "activewindow" ? 1 : 2)
+                accentSelected: true
+                onCurrentIndexChanged: {
+                    if (currentIndex === 0) viRoot.captureScope = "region";
+                    else if (currentIndex === 1) viRoot.captureScope = "activewindow";
+                    else viRoot.captureScope = "fullscreen";
                 }
             }
         }

@@ -97,11 +97,6 @@ QString WhisperEngine::findDefaultModel()
         return sysBase;
     }
 
-    const QString kiriModel = QDir::homePath() + QStringLiteral("/.local/share/kiri/models/ggml-base.bin");
-    if (QFileInfo::exists(kiriModel)) {
-        return kiriModel;
-    }
-
     return QString();
 }
 

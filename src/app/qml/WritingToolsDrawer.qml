@@ -34,7 +34,7 @@ Rectangle {
             Layout.fillWidth: true
             font.bold: true
             font.pixelSize: 12
-            color: CachyTheme.textPrimary
+            color: CachyPalette.text
             text: i18n("✍️ Writing Tools (Apple Intelligence / Golden Gate)")
         }
 

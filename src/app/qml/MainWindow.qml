@@ -316,8 +316,7 @@ CachyWindow {
     // 1. GOLDEN GATE EDGE-TO-EDGE SIDEBAR
     // =========================================================================
     sidebarHeaderActions: [
-        Row {
-            spacing: 6
+        CachyToolbarGroup {
             anchors.verticalCenter: parent.verticalCenter
 
             CachyToolbarButton {
@@ -352,8 +351,7 @@ CachyWindow {
     // 2. HEADER TOOLBAR
     // =========================================================================
     headerLeading: [
-        Row {
-            spacing: 6
+        CachyToolbarGroup {
             anchors.verticalCenter: parent.verticalCenter
 
             CachyToolbarButton {
@@ -444,7 +442,7 @@ CachyWindow {
                     text: kityClient.ollamaModel.length > 0 ? ("Kity • " + kityClient.ollamaModel) : i18n("Kity")
                     font.bold: true
                     font.pixelSize: 12
-                    color: CachyTheme.textPrimary
+                    color: CachyPalette.text
                     elide: Text.ElideRight
                     Layout.maximumWidth: 190
                 }
@@ -452,24 +450,24 @@ CachyWindow {
                 Text {
                     text: "▾"
                     font.pixelSize: 10
-                    color: CachyTheme.textSecondary
+                    color: CachyPalette.textSecondary
                 }
             }
 
-            QQC2.Menu {
+            CachyMenu {
                 id: modelMenu
 
-                QQC2.MenuItem {
+                CachyMenuItem {
                     text: i18n("Modelos de Ollama disponibles:")
                     enabled: false
                 }
 
-                QQC2.MenuSeparator {}
+                CachyMenuSeparator {}
 
                 Repeater {
                     model: kityClient.availableModels
 
-                    QQC2.MenuItem {
+                    CachyMenuItem {
                         required property var modelData
                         text: modelData
                         checkable: true
@@ -482,23 +480,20 @@ CachyWindow {
     ]
 
     headerActions: [
-        Row {
-            spacing: 4
+        CachyToolbarGroup {
             anchors.verticalCenter: parent.verticalCenter
 
-            QQC2.ToolButton {
-                icon.name: "search"
+            CachyToolbarButton {
+                iconName: "search"
                 checkable: true
                 checked: root.showSearchFilter
-                QQC2.ToolTip.text: i18n("Buscar en conversaciones")
-                QQC2.ToolTip.visible: hovered
+                tooltipText: i18n("Buscar en conversaciones")
                 onClicked: root.showSearchFilter = !root.showSearchFilter
             }
 
-            QQC2.ToolButton {
+            CachyToolbarButton {
                 text: "Aa"
-                QQC2.ToolTip.text: i18n("Cambiar tamaño del texto")
-                QQC2.ToolTip.visible: hovered
+                tooltipText: i18n("Cambiar tamaño del texto")
                 onClicked: {
                     if (kityClient.textScale < 1.1) {
                         kityClient.textScale = 1.15;
@@ -510,26 +505,23 @@ CachyWindow {
                 }
             }
 
-            QQC2.ToolButton {
+            CachyToolbarButton {
                 text: "⤡"
-                QQC2.ToolTip.text: i18n("Cambiar a Cápsula Rápida (Search or Ask)")
-                QQC2.ToolTip.visible: hovered
+                tooltipText: i18n("Cambiar a Cápsula Rápida (Search or Ask)")
                 onClicked: root.compactMode = true
             }
 
-            QQC2.ToolButton {
-                icon.name: root.isPinned ? "window-pin" : "window-unpin"
+            CachyToolbarButton {
+                iconName: root.isPinned ? "window-pin" : "window-unpin"
                 checkable: true
                 checked: root.isPinned
-                QQC2.ToolTip.text: root.isPinned ? i18n("Desanclar de primer plano") : i18n("Mantener siempre encima")
-                QQC2.ToolTip.visible: hovered
+                tooltipText: root.isPinned ? i18n("Desanclar de primer plano") : i18n("Mantener siempre encima")
                 onClicked: root.isPinned = !root.isPinned
             }
 
-            QQC2.ToolButton {
-                icon.name: "configure"
-                QQC2.ToolTip.text: i18n("Abrir Ajustes de Kity en Preferencias del Sistema…")
-                QQC2.ToolTip.visible: hovered
+            CachyToolbarButton {
+                iconName: "configure"
+                tooltipText: i18n("Abrir Ajustes de Kity en Preferencias del Sistema…")
                 onClicked: kityClient.openSettings()
             }
         }

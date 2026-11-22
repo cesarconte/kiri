@@ -37,7 +37,7 @@ RowLayout {
             if (Plasmoid.wakeWordEnabled) {
                 return CachyTheme.successColor;
             }
-            return CachyTheme.textMuted;
+            return CachyPalette.textMuted;
         }
     }
 

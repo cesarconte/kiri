@@ -54,13 +54,13 @@ Rectangle {
                 text: i18n("Notas Matemáticas & Scratchpad:")
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
-                color: CachyTheme.textPrimary
+                color: CachyPalette.text
             }
 
             Text {
                 text: i18n("(evaluación reactiva, variables persistentes, unidades y divisas)")
                 font.pixelSize: 11
-                color: CachyTheme.textSecondary
+                color: CachyPalette.textSecondary
             }
 
             Item { Layout.fillWidth: true }
@@ -99,13 +99,13 @@ Rectangle {
                     CachyIcon {
                         name: "edit-copy-symbolic"
                         size: 12
-                        color: CachyTheme.textSecondary
+                        color: CachyPalette.textSecondary
                     }
 
                     Text {
                         text: i18n("Copiar cálculos")
                         font.pixelSize: 11
-                        color: CachyTheme.textPrimary
+                        color: CachyPalette.text
                     }
                 }
             }
@@ -134,13 +134,13 @@ Rectangle {
                     CachyIcon {
                         name: "edit-clear-all-symbolic"
                         size: 12
-                        color: CachyTheme.textSecondary
+                        color: CachyPalette.textSecondary
                     }
 
                     Text {
                         text: i18n("Limpiar")
                         font.pixelSize: 11
-                        color: CachyTheme.textPrimary
+                        color: CachyPalette.text
                     }
                 }
             }
@@ -170,8 +170,8 @@ Rectangle {
                         font.family: "monospace"
                         font.pixelSize: 12
                         wrapMode: TextEdit.NoWrap
-                        color: CachyTheme.textPrimary
-                        placeholderTextColor: CachyTheme.textMuted
+                        color: CachyPalette.text
+                        placeholderTextColor: CachyPalette.textMuted
                         placeholderText: i18n("precio = 12,5\ncantidad = 8\ntotal = precio * cantidad\n15% de total\n100 dolares a euros\n5 km a millas\n25 celsius a fahrenheit")
                         onTextChanged: mathDebounce.restart()
                         background: null

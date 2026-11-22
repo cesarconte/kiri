@@ -634,25 +634,25 @@ Item {
                     onTapped: compactPlusMenu.popup()
                 }
 
-                QQC2.Menu {
+                CachyMenu {
                     id: compactPlusMenu
 
-                    QQC2.MenuItem {
-                        icon.name: "image-x-generic"
+                    CachyMenuItem {
+                        iconName: "image-x-generic"
                         text: i18n("Fotos…")
                         onTriggered: spotlightRoot.openPhotoDialogRequested()
                     }
 
-                    QQC2.MenuItem {
-                        icon.name: "document-open"
+                    CachyMenuItem {
+                        iconName: "document-open"
                         text: i18n("Archivos…")
                         onTriggered: spotlightRoot.openFileDialogRequested()
                     }
 
-                    QQC2.MenuSeparator {}
+                    CachyMenuSeparator {}
 
-                    QQC2.MenuItem {
-                        icon.name: "document-edit-symbolic"
+                    CachyMenuItem {
+                        iconName: "document-edit-symbolic"
                         text: i18n("Herramientas de Escritura")
                         onTriggered: {
                             spotlightRoot.expandToFullRequested();
@@ -660,8 +660,8 @@ Item {
                         }
                     }
 
-                    QQC2.MenuItem {
-                        icon.name: "camera-photo-symbolic"
+                    CachyMenuItem {
+                        iconName: "camera-photo-symbolic"
                         text: i18n("Inteligencia Visual (Capturar pantalla)")
                         onTriggered: {
                             spotlightRoot.expandToFullRequested();
@@ -669,8 +669,8 @@ Item {
                         }
                     }
 
-                    QQC2.MenuItem {
-                        icon.name: "accessories-calculator"
+                    CachyMenuItem {
+                        iconName: "accessories-calculator"
                         text: i18n("Notas Matemáticas")
                         onTriggered: {
                             spotlightRoot.expandToFullRequested();

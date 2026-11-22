@@ -23,10 +23,10 @@ ColumnLayout {
     required property var windowRoot
 
     // Optional Sidebar Search Filter
-    CachyTextField {
+    CachySearchField {
         visible: sidebarRoot.windowRoot.showSearchFilter
         Layout.fillWidth: true
-        isSearch: true
+        pillStyle: true
         placeholderText: i18n("Filtrar conversaciones...")
         text: sidebarRoot.windowRoot.searchQuery
         onTextChanged: sidebarRoot.windowRoot.searchQuery = text
@@ -53,7 +53,7 @@ ColumnLayout {
                 wrapMode: Text.WordWrap
                 font.pixelSize: 11
                 font.bold: true
-                color: CachyTheme.textPrimary
+                color: CachyPalette.text
                 text: sidebarRoot.windowRoot.deletingConversationId === "__MULTI__"
                     ? i18n("¿Eliminar definitivamente las %1 conversaciones seleccionadas?", sidebarRoot.windowRoot.selectedConversationIds.length)
                     : i18n("¿Eliminar definitivamente esta conversación?")
@@ -165,17 +165,17 @@ ColumnLayout {
                         onTapped: convContextMenu.popup()
                     }
 
-                    QQC2.Menu {
+                    CachyMenu {
                         id: convContextMenu
 
-                        QQC2.MenuItem {
-                            icon.name: convCard.modelData.pinned ? "window-unpin" : "window-pin"
+                        CachyMenuItem {
+                            iconName: convCard.modelData.pinned ? "window-unpin" : "window-pin"
                             text: convCard.modelData.pinned ? i18n("Desfijar") : i18n("Fijar")
                             onTriggered: kityClient.togglePinConversation(convCard.modelData.id)
                         }
 
-                        QQC2.MenuItem {
-                            icon.name: "edit-rename"
+                        CachyMenuItem {
+                            iconName: "edit-rename"
                             text: i18n("Renombrar…")
                             onTriggered: {
                                 sidebarRoot.windowRoot.renamingConversationId = convCard.modelData.id;
@@ -183,10 +183,11 @@ ColumnLayout {
                             }
                         }
 
-                        QQC2.MenuSeparator {}
+                        CachyMenuSeparator {}
 
-                        QQC2.MenuItem {
-                            icon.name: "edit-delete"
+                        CachyMenuItem {
+                            iconName: "edit-delete"
+                            destructive: true
                             text: sidebarRoot.windowRoot.selectedConversationIds.length > 1
                                 ? i18n("Eliminar %1 conversaciones…", sidebarRoot.windowRoot.selectedConversationIds.length)
                                 : i18n("Eliminar…")
@@ -214,7 +215,7 @@ ColumnLayout {
                                 Layout.fillWidth: true
                                 text: convCard.modelData.timeLabel || "Today"
                                 font.pixelSize: 10
-                                color: CachyTheme.textMuted
+                                color: CachyPalette.textMuted
                                 elide: Text.ElideRight
                             }
 
@@ -222,7 +223,7 @@ ColumnLayout {
                                 visible: convCard.modelData.pinned === true || convHover.hovered
                                 name: "window-pin"
                                 size: 13
-                                color: CachyTheme.textSecondary
+                                color: CachyPalette.textSecondary
                                 opacity: convCard.modelData.pinned ? 0.95 : 0.45
 
                                 TapHandler {
@@ -237,7 +238,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 4
 
-                            QQC2.TextField {
+                            CachyTextField {
                                 id: renameField
                                 Layout.fillWidth: true
                                 text: sidebarRoot.windowRoot.renamingTitleText
@@ -251,10 +252,10 @@ ColumnLayout {
                                 }
                             }
 
-                            QQC2.ToolButton {
+                            CachyButton {
                                 text: "✓"
-                                implicitWidth: 22
-                                implicitHeight: 22
+                                implicitWidth: 26
+                                implicitHeight: 26
                                 onClicked: {
                                     if (renameField.text.trim().length > 0) {
                                         kityClient.renameConversation(convCard.modelData.id, renameField.text.trim());
@@ -270,7 +271,7 @@ ColumnLayout {
                             text: convCard.modelData.title || i18n("Kity AI")
                             font.pixelSize: 13
                             font.bold: true
-                            color: CachyTheme.textPrimary
+                            color: CachyPalette.text
                             wrapMode: Text.WordWrap
                             maximumLineCount: 2
                             elide: Text.ElideRight
@@ -280,7 +281,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             text: convCard.modelData.preview || ""
                             font.pixelSize: 11
-                            color: CachyTheme.textSecondary
+                            color: CachyPalette.textSecondary
                             wrapMode: Text.WordWrap
                             maximumLineCount: kityClient.previewLines
                             elide: Text.ElideRight
@@ -303,7 +304,7 @@ ColumnLayout {
             name: "chat"
             Layout.alignment: Qt.AlignHCenter
             size: 36
-            color: CachyTheme.textMuted
+            color: CachyPalette.textMuted
             opacity: 0.5
         }
 
@@ -313,7 +314,7 @@ ColumnLayout {
             text: i18n("Sin conversaciones guardadas")
             font.pixelSize: 12
             font.weight: Font.Medium
-            color: CachyTheme.textMuted
+            color: CachyPalette.textMuted
         }
 
         CachyButton {

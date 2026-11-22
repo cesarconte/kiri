@@ -42,40 +42,40 @@ RowLayout {
             anchors.centerIn: parent
             text: "+"
             font.pixelSize: 18
-            color: CachyTheme.textPrimary
+            color: CachyPalette.text
         }
 
-        QQC2.Menu {
+        CachyMenu {
             id: plusMenu
 
-            QQC2.MenuItem {
-                icon.name: "image-x-generic"
+            CachyMenuItem {
+                iconName: "image-x-generic"
                 text: i18n("Fotos…")
                 onTriggered: inputBarRoot.openPhotoDialogRequested()
             }
 
-            QQC2.MenuItem {
-                icon.name: "document-open"
+            CachyMenuItem {
+                iconName: "document-open"
                 text: i18n("Archivos…")
                 onTriggered: inputBarRoot.openFileDialogRequested()
             }
 
-            QQC2.MenuSeparator {}
+            CachyMenuSeparator {}
 
-            QQC2.MenuItem {
-                icon.name: "document-edit-symbolic"
+            CachyMenuItem {
+                iconName: "document-edit-symbolic"
                 text: i18n("Herramientas de Escritura")
                 onTriggered: inputBarRoot.toggleWritingToolsRequested()
             }
 
-            QQC2.MenuItem {
-                icon.name: "camera-photo-symbolic"
+            CachyMenuItem {
+                iconName: "camera-photo-symbolic"
                 text: i18n("Inteligencia Visual (Capturar pantalla)")
                 onTriggered: inputBarRoot.toggleVisualIntelligenceRequested()
             }
 
-            QQC2.MenuItem {
-                icon.name: "accessories-calculator"
+            CachyMenuItem {
+                iconName: "accessories-calculator"
                 text: i18n("Notas Matemáticas")
                 onTriggered: inputBarRoot.toggleMathNotesRequested()
             }
@@ -97,8 +97,8 @@ RowLayout {
             anchors.leftMargin: 14
             anchors.rightMargin: 14
             focus: true
-            color: CachyTheme.textPrimary
-            placeholderTextColor: CachyTheme.textMuted
+            color: CachyPalette.text
+            placeholderTextColor: CachyPalette.textMuted
             font.pixelSize: 13
             background: null
             placeholderText: kityClient.isRecording
@@ -141,7 +141,7 @@ RowLayout {
             anchors.centerIn: parent
             size: 16
             name: "audio-input-microphone-symbolic"
-            color: kityClient.isRecording ? "#FFFFFF" : CachyTheme.textPrimary
+            color: kityClient.isRecording ? "#FFFFFF" : CachyPalette.text
         }
     }
 }

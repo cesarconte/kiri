@@ -215,25 +215,6 @@ install(FILES res/kity-symbolic.svg
         DESTINATION ${KDE_INSTALL_ICONDIR}/breeze-dark/status/16
 )
 
-# Also ensure macOS-GoldenGate theme variants receive the symbolic and full-color icons
-install(CODE "
-    set(THEME_NAMES macOS-GoldenGate macOS-GoldenGate-dark macOS-GoldenGate-light)
-    foreach(theme \${THEME_NAMES})
-        set(THEME_DIR \"\$ENV{HOME}/.local/share/icons/\${theme}\")
-        if(IS_DIRECTORY \"\${THEME_DIR}\")
-            file(MAKE_DIRECTORY \"\${THEME_DIR}/apps/symbolic\" \"\${THEME_DIR}/status/symbolic\" \"\${THEME_DIR}/apps/scalable\")
-            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/kity-symbolic.svg\" DESTINATION \"\${THEME_DIR}/apps/symbolic\")
-            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/kity-symbolic.svg\" DESTINATION \"\${THEME_DIR}/status/symbolic\")
-            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/kity-listening-symbolic.svg\" DESTINATION \"\${THEME_DIR}/apps/symbolic\")
-            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/kity-listening-symbolic.svg\" DESTINATION \"\${THEME_DIR}/status/symbolic\")
-            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/kity.svg\" DESTINATION \"\${THEME_DIR}/apps/scalable\")
-            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/kity-listening.svg\" DESTINATION \"\${THEME_DIR}/apps/scalable\")
-            file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/res/org.cesar.kity.svg\" DESTINATION \"\${THEME_DIR}/apps/scalable\")
-            execute_process(COMMAND gtk-update-icon-cache -f -t \"\${THEME_DIR}\" ERROR_QUIET OUTPUT_QUIET)
-        endif()
-    endforeach()
-")
-
 # Spotlight / KRunner Plugin (Phase 4)
 kcoreaddons_add_plugin(krunner_kity
     INSTALL_NAMESPACE "kf6/krunner"
