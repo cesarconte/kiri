@@ -316,10 +316,12 @@ CachyWindow {
     // 1. GOLDEN GATE EDGE-TO-EDGE SIDEBAR
     // =========================================================================
     sidebarHeaderActions: [
-        CachyToolbarGroup {
+        Row {
             anchors.verticalCenter: parent.verticalCenter
+            spacing: 4
 
             CachyToolbarButton {
+                pillStyle: false
                 visible: root.selectedConversationIds.length > 0
                 text: "🗑 (" + root.selectedConversationIds.length + ")"
                 tooltipText: i18n("Eliminar conversaciones seleccionadas")
@@ -329,6 +331,7 @@ CachyWindow {
             }
 
             CachyToolbarButton {
+                pillStyle: false
                 text: kityClient.sidebarViewMode === "grid" ? "⊞" : "☰"
                 tooltipText: kityClient.sidebarViewMode === "grid"
                     ? i18n("Cambiar a vista de lista")
@@ -351,10 +354,12 @@ CachyWindow {
     // 2. HEADER TOOLBAR
     // =========================================================================
     headerLeading: [
-        CachyToolbarGroup {
+        Row {
             anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
 
             CachyToolbarButton {
+                pillStyle: false
                 iconName: "document-new-symbolic"
                 text: "✎"
                 tooltipText: i18n("Nueva conversación (Ctrl+N)")
@@ -362,6 +367,7 @@ CachyWindow {
             }
 
             CachyToolbarButton {
+                pillStyle: false
                 iconName: "document-edit-symbolic"
                 text: "✦"
                 checkable: true
@@ -380,6 +386,7 @@ CachyWindow {
             }
 
             CachyToolbarButton {
+                pillStyle: false
                 iconName: "camera-photo-symbolic"
                 text: "⌖"
                 checkable: true
@@ -395,6 +402,7 @@ CachyWindow {
             }
 
             CachyToolbarButton {
+                pillStyle: false
                 text: "∑"
                 checkable: true
                 checked: root.showMathNotes
@@ -480,10 +488,12 @@ CachyWindow {
     ]
 
     headerActions: [
-        CachyToolbarGroup {
+        Row {
             anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
 
             CachyToolbarButton {
+                pillStyle: false
                 iconName: "search"
                 checkable: true
                 checked: root.showSearchFilter
@@ -492,6 +502,7 @@ CachyWindow {
             }
 
             CachyToolbarButton {
+                pillStyle: false
                 text: "Aa"
                 tooltipText: i18n("Cambiar tamaño del texto")
                 onClicked: {
@@ -506,12 +517,14 @@ CachyWindow {
             }
 
             CachyToolbarButton {
+                pillStyle: false
                 text: "⤡"
                 tooltipText: i18n("Cambiar a Cápsula Rápida (Search or Ask)")
                 onClicked: root.compactMode = true
             }
 
             CachyToolbarButton {
+                pillStyle: false
                 iconName: root.isPinned ? "window-pin" : "window-unpin"
                 checkable: true
                 checked: root.isPinned
@@ -520,6 +533,7 @@ CachyWindow {
             }
 
             CachyToolbarButton {
+                pillStyle: false
                 iconName: "configure"
                 tooltipText: i18n("Abrir Ajustes de Kity en Preferencias del Sistema…")
                 onClicked: kityClient.openSettings()
